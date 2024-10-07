@@ -23,7 +23,9 @@ export const readLines = async (
                 ? (reader.result as string).split(/\r\n|\r|\n/, options.lines)
                 : (reader.result as string).split(/\r\n|\r|\n/);
 
-            content = options?.removeWhite ? content.filter(line => line.length !== 0) : content;
+            if (options?.removeWhite) {
+                content = content.filter(line => line.length !== 0);
+            }
 
             resolve(content);
         }
@@ -32,14 +34,17 @@ export const readLines = async (
     });
 }
 
-export async function parseHeader(file: File){
-    const headers = new Set<string>()
+export async function parseCsvFile(file: File){
+    const fileHeaders = new Set<string>();
 
-    const lines = await readLines(file, {lines: 1})
+    const lines = await readLines(file, { removeWhite: true });
 
     for (const word of lines[0].split(',')) {
-        headers.add(word)
+        fileHeaders.add(word);
     }
 
-    return headers
+    const startLog = new Date(lines[1].split(',')[6].replace(' ', 'T')).toISOString().slice(0, 10);
+    const endLog = new Date(lines[lines.length - 1].split(',')[7].replace(' ', 'T')).toISOString().slice(0, 10);
+
+    return { fileHeaders, startLog, endLog };
 }

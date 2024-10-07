@@ -1,11 +1,11 @@
 "use client";
 
 import {useEffect, useState} from "react";
-import {readLines} from "@utils/fileHandlers";
+import {readLines} from "@utils/fileHelpers";
 import {Dialog, DialogBackdrop, DialogPanel, DialogTitle} from "@headlessui/react";
 import {clsx} from "clsx/lite";
-import {filesize} from "@node_modules/filesize";
-import {XMarkIcon} from "@node_modules/@heroicons/react/24/outline";
+import {filesize} from "filesize";
+import {XMarkIcon} from "@heroicons/react/24/outline";
 
 interface Props {
     file: File | null

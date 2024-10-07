@@ -1,6 +1,6 @@
-import {Accept, ErrorCode, useDropzone} from "@node_modules/react-dropzone-esm";
+import {Accept, ErrorCode, useDropzone} from "react-dropzone-esm";
 import {clsx} from "clsx/lite";
-import {ArrowDownTrayIcon, ArrowUpTrayIcon, NoSymbolIcon} from "@node_modules/@heroicons/react/24/outline";
+import {ArrowDownTrayIcon, ArrowUpTrayIcon, NoSymbolIcon} from "@heroicons/react/24/outline";
 import {filesize} from "filesize";
 import {toast} from "sonner";
 
@@ -8,9 +8,10 @@ interface Props {
     onChange: (files: File[]) => void,
     accepts: Accept,
     maxSize: number,
+    message?: string,
 }
 
-const FileInput = ({ onChange, accepts, maxSize }: Props) => {
+const FileInput = ({ onChange, accepts, maxSize, message }: Props) => {
     const {
         getRootProps,
         getInputProps,
@@ -71,7 +72,7 @@ const FileInput = ({ onChange, accepts, maxSize }: Props) => {
             !isDragActive && <>
                 <ArrowUpTrayIcon className='size-24 stroke-1'/>
                 <p className='mt-12 text-center font-black'>
-                    Drop your log file or click
+                    { message ?? "Drop your log file or click" }
                     <button onClick={open}
                             type='button'
                             className = {

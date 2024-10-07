@@ -1,15 +1,191 @@
 "use client";
 
-import {useContext} from "react";
-import {HeadersContext} from "@context/headers";
+import {useContext, useEffect} from "react";
+import {DataContext} from "@context/DataContext";
+import {useRouter} from "next/navigation";
+import {
+    AdjustmentsHorizontalIcon, ArrowRightIcon,
+    ArrowsRightLeftIcon,
+    DocumentTextIcon,
+    ShieldCheckIcon,
+    WindowIcon
+} from "@heroicons/react/24/outline";
+import {AlgorithmConfiguration, LogMapping} from "@utils/customTypes";
+import {toast} from "sonner";
+import { MappingInput, Stepper, Step, BpmnInput, Preview } from "@components/simulationSetup";
+import { ConfigInput, WindowSizeInput, StartingPointInput } from "@components/simulationSetup/configInput";
+import { CsvContext } from "@context/CsvContext";
+import {clsx} from "clsx/lite";
 
 const Setup = () => {
-    const { headers } = useContext(HeadersContext);
-    console.log(headers);
+    const { data, setData } = useContext(DataContext);
+    const { csvData: { headers, logStartDate, logEndDate } } = useContext(CsvContext);
+    const router = useRouter();
 
-    return (
-        <p>Salam, Setup</p>
-    )
+    useEffect(() => {
+        if (!data.id) {
+            router.replace('/');
+        }
+    }, [data.id, router]);
+
+    const onMappingCompleted = (data: FormData) => {
+        const logMapping: LogMapping = {
+            case: data.get('case') as string,
+            activity: data.get('activity') as string,
+            enablement: data.get('enablement') as string,
+            start: data.get('start') as string,
+            end: data.get('end') as string,
+            resource: data.get('resource') as string,
+        }
+
+        logMapping.attributes = Object.fromEntries(
+            [...headers].filter(header => !Object.values(logMapping).includes(header)).map(header => [header, header])
+        );
+
+        setData((prev) => ({
+            ...prev,
+            mapping: logMapping,
+        }));
+
+        if (new Set(Object.keys(logMapping)).size === new Set(Object.values(logMapping)).size) {
+            return true
+        } else {
+            toast.error('Invalid mapping', {description: 'You assigned the same column to multiple attributes!'})
+            return false
+        }
+    }
+
+    const onConfigCompleted = (data: FormData) => {
+        const algorithmConfiguration: AlgorithmConfiguration = {
+            window_size_value: data.has('window_size_value') ? data.get('window_size_value') as number : undefined,
+            window_size_unit: data.has('window_size_unit') ? data.get('window_size_unit') as string : undefined,
+            starting_point: data.has('starting_point') ? data.get('starting_point') as string : undefined,
+        }
+
+        setData((prev) => ({
+            ...prev,
+            config: algorithmConfiguration,
+        }));
+
+        if (Object.values(algorithmConfiguration).some(value => value === undefined)) {
+            toast.error('Invalid configuration', {description: 'You have to set a value for every configuration parameter!'});
+            return false;
+        } else {
+            return true;
+        }
+    }
+
+    const onBpmnCompleted = () => {
+        if (data.bpmnFile) return true;
+        else {
+            toast.error('Invalid BPMN', {description: 'You have to upload a BPMN model!'});
+            return false;
+        }
+    }
+
+    const onSubmit = () => {
+        // Here, send the data to back-end
+        router.push('/simulation');
+    }
+
+    return <div>
+        <Stepper onSubmit={onSubmit}>
+            <Step label='Setup the log mapping'
+                  icon={<ArrowsRightLeftIcon/>}
+                  onNext={onMappingCompleted}
+            >
+                <p className = 'mb-4 px-4 text-justify text-sm font-medium italic text-slate-400'>
+                    Configure the mapping between the log attributes and the CSV file columns.
+                    Only mandatory attributes need to be mapped.
+                    The rest of the columns from the CSV file will be considered as additional log attributes.
+                </p>
+                <div className = 'flex flex-col gap-2 p-4'>
+                    <MappingInput field = 'case' label = 'Case ID' />
+                    <MappingInput field = 'activity' label = 'Activity' />
+                    <MappingInput field = 'enablement' label = 'Enablement timestamp' />
+                    <MappingInput field = 'start' label = 'Start timestamp' />
+                    <MappingInput field = 'end' label = 'End timestamp' />
+                    <MappingInput field = 'resource' label = 'Resource' />
+                </div>
+            </Step>
+            <Step label='Setup your experiment'
+                  icon={<AdjustmentsHorizontalIcon/>}
+                  onNext={onConfigCompleted}
+            >
+                <div className = 'flex flex-col gap-4 p-4'>
+                    <ConfigInput label='Window Size' description='The window size determines the amount of time represented by each of the windows.'>
+                        <WindowSizeInput />
+                    </ConfigInput>
+                    <ConfigInput label='Starting Point' description='This is a point in time between the start and end of the log.'>
+                        <StartingPointInput minDate={logStartDate} maxDate={logEndDate} />
+                    </ConfigInput>
+                </div>
+            </Step>
+            <Step label='Upload the BPMN model'
+                  icon={<WindowIcon />}
+                  onNext={onBpmnCompleted}
+            >
+                <p className = 'mb-4 px-4 text-justify text-sm font-medium italic text-slate-400'>
+                    Only the files with the <code>.bpmn</code> extension are accepted
+                </p>
+                <BpmnInput />
+            </Step>
+            <Step label='Validate configuration'
+                  icon={<ShieldCheckIcon />}
+                  onNext={() => true}
+            >
+                <p className = 'mb-4 px-4 text-justify text-sm font-medium italic text-slate-400'>
+                    Please, check that the files, mapping and configuration specified are correct.
+                    Also, if you want to receive a notification in your email when the results are available, please introduce your address below.
+                </p>
+                <div className = 'flex flex-col gap-2 p-4'>
+                    <div className='mb-4 grid grid-cols-3 gap-2'>
+                        <Preview label='Files'>
+                            <ul>
+                                <li className='flex items-center gap-2 font-mono'>
+                                    <DocumentTextIcon className='size-3'/>
+                                    {(data.bpmnFile as File)?.name}
+                                </li>
+                            </ul>
+                        </Preview>
+                        <Preview label = 'Mapping'>
+                            <table className = 'w-full font-mono'>
+                                <tbody>
+                                {
+                                    Object.entries(data.mapping)
+                                        .filter(([key, _]) => key !== 'attributes')
+                                        .map(([key, value]) =>
+                                            <tr key={key}>
+                                                <td>{key}</td>
+                                                <td className = 'px-2'>
+                                                    <ArrowRightIcon className='size-3'/>
+                                                </td>
+                                                <td className = { clsx('text-right', value === '__DISCOVER__' && 'italic') }>
+                                                    {value === '__DISCOVER__' ? 'Discover' : value}
+                                                </td>
+                                            </tr>
+                                        )
+                                }
+                                </tbody>
+                            </table>
+                        </Preview>
+                        <Preview label = 'Setup'>
+                            <ul className='flex w-full flex-col font-mono'>
+                                {
+                                    Object.entries(data.config).map(([key, value]) =>
+                                        <li key={key} className = 'flex flex-row justify-between'>
+                                            <span>{key}</span>
+                                            <span className = 'text-right italic text-slate-400'>{value}</span>
+                                        </li>
+                                    )
+                                }
+                            </ul>
+                        </Preview>
+                    </div>
+                </div>
+            </Step>
+        </Stepper>
+    </div>
 }
 
 export default Setup;

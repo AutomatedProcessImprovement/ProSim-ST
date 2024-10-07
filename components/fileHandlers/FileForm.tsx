@@ -4,15 +4,18 @@ import {useContext, useState} from "react";
 import FileItem from "@components/fileHandlers/FileItem";
 import FileInput from "@components/fileHandlers/FileInput";
 import FilePreview from "@components/fileHandlers/FilePreview";
-import {PlayIcon} from "@node_modules/@heroicons/react/24/solid";
-import {HeadersContext} from "@context/headers";
-import {parseHeader} from "@utils/fileHandlers";
+import {PlayIcon} from "@heroicons/react/24/solid";
+import {DataContext} from "@context/DataContext";
+import {parseCsvFile} from "@utils/fileHelpers";
 import {useRouter} from "next/navigation";
+import { v4 as uuid } from 'uuid';
+import {CsvContext} from "@context/CsvContext";
 
 const FileForm = () => {
     const [files, setFiles] = useState<File[]>([]);
     const [preview, setPreview] = useState<File | null>(null)
-    const { setHeaders } = useContext(HeadersContext);
+    const { setData } = useContext(DataContext);
+    const { setCsvData } = useContext(CsvContext);
     const router = useRouter();
 
     const onFilePreviewOpen = (file: File) => setPreview(file);
@@ -30,19 +33,33 @@ const FileForm = () => {
     const onFormSubmit = async (e) => {
         e.preventDefault();
 
-        const headers = new Set<string>();
+        let logStartDate = '';
+        let logEndDate = '';
+        let headers = new Set<string>();
+
         for (const file of files) {
-            for (const header of await parseHeader(file)) {
-                headers.add(header);
-            }
+            const { fileHeaders, startLog, endLog } = await parseCsvFile(file);
+
+            logStartDate = startLog;
+            logEndDate = endLog;
+            headers = new Set([...headers, ...fileHeaders]);
         }
-        setHeaders(headers);
+        setData(prevData => ({
+            ...prevData,
+            id: uuid(),
+        }));
+        setCsvData(prevData => ({
+            ...prevData,
+            headers,
+            logStartDate,
+            logEndDate,
+        }));
 
         router.push('/setup');
     }
 
     return (
-      <form className='w-full absolute inset-0 flex flex-col justify-center gap-4 container max-w-screen-lg h-full mx-auto p-4'
+      <form className='w-full inset-0 flex flex-col justify-center gap-4 container h-full'
             onSubmit={onFormSubmit}>
           <div className='flex aspect-video min-h-96 flex-row items-center justify-center gap-4'>
               {
