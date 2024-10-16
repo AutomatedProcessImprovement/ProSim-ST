@@ -10,7 +10,7 @@ import axios from "axios";
 
 const Simulation = () => {
     const viewerRef = useRef(null);
-    const [xml, setXml] = useState(null);
+    const [xml, setXml] = useState<string>(null);
     const [simulationData, setSimulationData] = useState({});
     const router = useRouter();
     const { id } = useParams();
