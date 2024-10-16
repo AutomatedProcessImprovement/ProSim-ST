@@ -32,9 +32,7 @@ const RootLayout = ({ children }: Readonly<{ children: ReactNode; }>) => {
 
         <DataProvider>
           <CsvProvider>
-            <div className='max-w-screen-lg mx-auto p-4'>
-              <Suspense fallback={<Loader />}>{children}</Suspense>
-            </div>
+            <Suspense fallback={<Loader />}>{children}</Suspense>
           </CsvProvider>
         </DataProvider>
       </body>

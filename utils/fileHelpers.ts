@@ -43,8 +43,23 @@ export async function parseCsvFile(file: File){
         fileHeaders.add(word);
     }
 
-    const startLog = new Date(lines[1].split(',')[6].replace(' ', 'T')).toISOString().slice(0, 10);
-    const endLog = new Date(lines[lines.length - 1].split(',')[7].replace(' ', 'T')).toISOString().slice(0, 10);
+    const startLog = new Date(
+        lines[1]
+            .split(',')[6]
+            .replace(' ', 'T')
+            .slice(0, 19) + '+00:00'
+    )
+        .toISOString()
+        .slice(0, 19);
+
+    const endLog = new Date(
+        lines[lines.length - 1]
+            .split(',')[7]
+            .replace(' ', 'T')
+            .slice(0, 19) + '+00:00'
+    )
+        .toISOString()
+        .slice(0, 19);
 
     return { fileHeaders, startLog, endLog };
 }

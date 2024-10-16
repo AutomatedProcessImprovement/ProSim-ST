@@ -11,21 +11,17 @@ const WindowSizeInput = () => {
     const [value, setValue] = useState(window_size_value || 1);
     const [unit, setUnit] = useState(window_size_unit || 'days');
     const units = ['days', 'weeks', 'months'];
-    const maxValues = { days: 90, weeks: 13, months: 3 };
 
     const handleValueChange = (e: ChangeEvent<HTMLInputElement>) => {
-        setValue(Math.max(1, Math.min(maxValues[unit], floor(Number(e.target.value)))));
+        setValue(Math.max(1, floor(Number(e.target.value))));
     };
 
     const handleUnitChange = (val: string) => {
-        const newUnit = units.includes(val) ? val : 'days';
-
-        setUnit(newUnit);
-        setValue(value > maxValues[newUnit] ? maxValues[newUnit] : value);
+        setUnit(units.includes(val) ? val : 'days');
     }
 
     return <>
-        <input type="number" name="window_size_value" value={value} onChange={handleValueChange} min={1} max={maxValues[unit]}
+        <input type="number" name="window_size_value" value={value} onChange={handleValueChange} min={1}
                className='w-1/2 rounded-2xl bg-white px-4 py-1 me-0.5 text-left data-[invalid]:border-2 data-[invalid]:border-red-500 data-[focused]:bg-slate-200'/>
         <Listbox name="window_size_unit" value={unit as any} onChange={handleUnitChange}>
             <ListboxButton className = {`group flex w-1/2 flex-row items-center 

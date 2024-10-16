@@ -16,6 +16,7 @@ import { MappingInput, Stepper, Step, BpmnInput, Preview } from "@components/sim
 import { ConfigInput, WindowSizeInput, StartingPointInput } from "@components/simulationSetup/configInput";
 import { CsvContext } from "@context/CsvContext";
 import {clsx} from "clsx/lite";
+import axios, {AxiosError} from "axios";
 
 const Setup = () => {
     const { data, setData } = useContext(DataContext);
@@ -83,12 +84,26 @@ const Setup = () => {
         }
     }
 
-    const onSubmit = () => {
-        // Here, send the data to back-end
-        router.push('/simulation');
+    const onSubmit = async () => {
+        let formData = new FormData();
+        Object.keys(data).forEach((key) => {
+            let value = data[key];
+            if (!(data[key] instanceof File) && (typeof data[key] === 'object')) {
+                value = JSON.stringify(data[key]);
+            }
+            formData.append(key, value);
+        });
+
+        try {
+            const res = await axios.post('/api/simulation', formData);
+
+            router.push(`/simulation/${res.data.id}`);
+        } catch (error: AxiosError) {
+            toast.error("Error occurred!", {description: error.response.data.error});
+        }
     }
 
-    return <div>
+    return <div className={'max-w-screen-lg mx-auto p-4'}>
         <Stepper onSubmit={onSubmit}>
             <Step label='Setup the log mapping'
                   icon={<ArrowsRightLeftIcon/>}
