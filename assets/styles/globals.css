@@ -19,6 +19,10 @@ h1 {
   text-align: center;
 }
 
+.token {
+  transition: transform 0.1s linear;
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;

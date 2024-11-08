@@ -4,8 +4,7 @@ import {useEffect, useRef, useState} from "react";
 import { useRouter, useParams } from "next/navigation";
 
 import NavigatedViewer from 'bpmn-js/lib/NavigatedViewer';
-import TokenSimulationModule from "bpmn-js-token-simulation/lib/viewer";
-import "bpmn-js-token-simulation/assets/css/bpmn-js-token-simulation.css";
+import simulateToken from "@modules/simulation";
 import axios from "axios";
 
 const Simulation = () => {
@@ -45,13 +44,31 @@ const Simulation = () => {
 
     useEffect(() => {
         if (xml !== null && typeof window !== "undefined") {
+            const mockSimulationData = [
+                [
+                    "StartEvent_1", "Activity_02r7xaq",
+                    "Activity_1mgpbn0", "Gateway_1prgzlv", "Activity_1cihc2o",
+                    "Activity_0qhd8v2"
+                ],
+                [
+                    "StartEvent_1", "Activity_02r7xaq",
+                    "Activity_1mgpbn0", "Gateway_1prgzlv", "Activity_0paeij3",
+                ],
+                [
+                    "Activity_02r7xaq", "Activity_1mgpbn0",
+                    "Gateway_1prgzlv", "Activity_1edcm8i",
+                ],
+            ]; // to be removed
             const viewer = new NavigatedViewer({
                 container: viewerRef.current,
-                additionalModules: [TokenSimulationModule]
+                additionalModules: [simulateToken(mockSimulationData)]
             });
 
             viewer.importXML(xml).then(() => {
                 viewer.get('canvas').zoom('fit-viewport');
+
+                const tokenSimulation = viewer.get('tokenSimulation');
+                tokenSimulation.start();
             });
         }
     }, [xml]);
