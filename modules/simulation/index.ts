@@ -1,109 +1,53 @@
-import {getRandomColor} from "@modules/simulation/util";
+import {Canvas, ElementInterface} from "@utils/customTypes/simulation/interfaces";
+import {getRandomColor} from "@utils/colors";
+import {FrameCase, SimulationData, Tokens} from "@utils/customTypes/simulation/types";
+import {ElementTypes} from "@utils/customTypes/simulation/enums";
 
-const simulateToken = (simulationData) => {
+const simulateToken = (simulationData: SimulationData) => {
     return {
         __init__: ['tokenSimulation'],
-        tokenSimulation: ['type', function(canvas, elementRegistry) {
-            const tokens = new Array(simulationData.length);
-            const paths = new Array(simulationData.length);
+        tokenSimulation: ['type', function(canvas: Canvas, elementRegistry: ElementInterface) {
+            let tokens: Tokens;
+            let viewport;
 
-            function createToken(startElementId, index) {
-                tokens[index] = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-                tokens[index].setAttribute("r", "10");
-                tokens[index].setAttribute("fill", getRandomColor());
-                tokens[index].classList.add("token");
+            function createToken(frameCase: FrameCase) {
+                tokens[frameCase.case_id] = [];
+                frameCase.active_elements.forEach(active_element => {
+                    const token = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                    token.setAttribute("r", "10");
+                    token.setAttribute("fill", getRandomColor());
+                    token.classList.add("token");
+                    tokens[frameCase.case_id].push(token);
+                    viewport.appendChild(token);
+                    const startElement = elementRegistry.get(active_element);
 
-                const viewport = canvas.getContainer().querySelector('svg g[data-element-id]');
-                viewport.appendChild(tokens[index]);
-
-                const startElement = elementRegistry.get(startElementId);
-                const { x, y } = startElement?.outgoing[0]?.waypoints[0];
-                if (x && y) {
-                    console.log(x, y)
-                    tokens[index].setAttribute("transform", `translate(${x}, ${y})`);
-                }
-            }
-
-            function deriveTokenPath(batch, index) {
-                paths[index] = [];
-                for (let i = 0; i < batch.length - 1; i++) {
-                    const currentElementId = batch[i];
-                    const nextElementId = batch[i + 1];
-
-                    const currentElement = elementRegistry.get(currentElementId);
-                    const connection = currentElement?.outgoing.find(conn => conn.target.id === nextElementId);
-
-                    if (connection) {
-                        connection.waypoints.forEach(point => {
-                            paths[index].push({x: point.x, y: point.y});
-                        });
+                    if (startElement?.type === ElementTypes.Flow) {
+                        const waypoints = startElement.waypoints;
+                        const endWaypoint = waypoints[waypoints.length - 1];
+                        if (endWaypoint) {
+                            token.setAttribute("cx", endWaypoint.x.toString());
+                            token.setAttribute("cy", endWaypoint.y.toString());
+                        }
+                    } else if (startElement?.type === ElementTypes.Task) {
+                        const { x, y, width, height } = startElement;
+                        const centerX = x + width / 2;
+                        const centerY = y + height / 2;
+                        token.setAttribute("cx", centerX.toString());
+                        token.setAttribute("cy", centerY.toString());
                     } else {
-                        console.warn(`No connection from ${currentElementId} to ${nextElementId}`);
+                        console.warn(`This type of element is not handled.`);
                     }
-                }
-            }
-
-            function moveTokens() {
-                tokens.forEach((token, index) => {
-                    const path = paths[index]
-                    if (!path || path.length === 0) return;
-
-                    const delta = 2000;
-                    const startTime = performance.now();
-
-                    function animateToken(time) {
-                        const elapsedTime = time - startTime;
-                        const progress = Math.min(elapsedTime / delta, 1); // from 0 to 1 over the duration
-
-                        // Calculate the total path length
-                        let pathLength = 0;
-                        for (let i = 0; i < path.length - 1; i++) {
-                            const dx = path[i + 1].x - path[i].x;
-                            const dy = path[i + 1].y - path[i].y;
-                            pathLength += Math.sqrt(dx * dx + dy * dy);
-                        }
-
-                        // Determine current distance based on progress
-                        const currentDistance = progress * pathLength;
-
-                        // Find the current segment based on the distance
-                        let accumulatedDistance = 0;
-                        for (let i = 0; i < path.length - 1; i++) {
-                            const segmentStart = path[i];
-                            const segmentEnd = path[i + 1];
-                            const dx = segmentEnd.x - segmentStart.x;
-                            const dy = segmentEnd.y - segmentStart.y;
-                            const segmentLength = Math.sqrt(dx * dx + dy * dy);
-
-                            if (accumulatedDistance + segmentLength >= currentDistance) {
-                                // Interpolate within this segment
-                                const segmentProgress = (currentDistance - accumulatedDistance) / segmentLength;
-                                const x = segmentStart.x + dx * segmentProgress;
-                                const y = segmentStart.y + dy * segmentProgress;
-                                token.setAttribute("transform", `translate(${x}, ${y})`);
-                                break;
-                            }
-
-                            accumulatedDistance += segmentLength;
-                        }
-
-                        if (progress < 1) {
-                            requestAnimationFrame(animateToken);
-                        }
-                    }
-
-                    requestAnimationFrame(animateToken);
                 });
             }
 
             this.start = () => {
-                simulationData.forEach((batches, index) => {
-                    createToken(batches[0], index);
-                    deriveTokenPath(batches, index);
+                tokens = {};
+                viewport = canvas.getContainer().querySelector('svg g[data-element-id]');
+
+                simulationData.frame_mockup.forEach(frameCase => {
+                    createToken(frameCase);
                 });
-                console.log(paths);
-                moveTokens();
-            };
+            }
         }],
     }
 };

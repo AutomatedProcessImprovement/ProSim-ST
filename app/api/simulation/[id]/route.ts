@@ -1,21 +1,26 @@
 import {NextResponse} from "next/server";
 import {getRedisInstance} from "@database/redis";
-import path from "path";
+import {join} from "path";
 import {readFile} from "fs/promises";
 
 export const GET = async (request, {params}) => {
+    const mockDataFilePath = join(process.cwd(), 'assets/jsons/mockup-example-simple.json'); // ToDo: to be removed
+
     try {
         const redis = getRedisInstance();
         let simulation = await redis.get(params.id);
         simulation = JSON.parse(simulation);
 
-        const filePath = path.join(process.cwd(), 'public/assets', simulation.fileName);
+        const filePath = join(process.cwd(), 'public/assets', simulation.fileName);
         const file = await readFile(filePath);
 
         redis.disconnect();
 
+        const mockContent = await readFile(mockDataFilePath, 'utf8'); // ToDo: to be removed
+        const mockData = JSON.parse(mockContent); // ToDo: to be removed
+
         return NextResponse.json({
-            simulationData: simulation.data,
+            simulationData: mockData, // ToDo: simulation.data,
             file
         }, { status: 200 });
     } catch (e) {

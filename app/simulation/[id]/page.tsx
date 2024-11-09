@@ -6,11 +6,12 @@ import { useRouter, useParams } from "next/navigation";
 import NavigatedViewer from 'bpmn-js/lib/NavigatedViewer';
 import simulateToken from "@modules/simulation";
 import axios from "axios";
+import {SimulationData} from "@utils/customTypes/simulation/types";
 
 const Simulation = () => {
     const viewerRef = useRef(null);
     const [xml, setXml] = useState<string>(null);
-    const [simulationData, setSimulationData] = useState({});
+    const [simulationData, setSimulationData] = useState<SimulationData>();
     const router = useRouter();
     const { id } = useParams();
 
@@ -44,24 +45,9 @@ const Simulation = () => {
 
     useEffect(() => {
         if (xml !== null && typeof window !== "undefined") {
-            const mockSimulationData = [
-                [
-                    "StartEvent_1", "Activity_02r7xaq",
-                    "Activity_1mgpbn0", "Gateway_1prgzlv", "Activity_1cihc2o",
-                    "Activity_0qhd8v2"
-                ],
-                [
-                    "StartEvent_1", "Activity_02r7xaq",
-                    "Activity_1mgpbn0", "Gateway_1prgzlv", "Activity_0paeij3",
-                ],
-                [
-                    "Activity_02r7xaq", "Activity_1mgpbn0",
-                    "Gateway_1prgzlv", "Activity_1edcm8i",
-                ],
-            ]; // to be removed
             const viewer = new NavigatedViewer({
                 container: viewerRef.current,
-                additionalModules: [simulateToken(mockSimulationData)]
+                additionalModules: [simulateToken(simulationData)]
             });
 
             viewer.importXML(xml).then(() => {
