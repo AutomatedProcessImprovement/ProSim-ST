@@ -6,7 +6,7 @@ import { useRouter, useParams } from "next/navigation";
 import NavigatedViewer from 'bpmn-js/lib/NavigatedViewer';
 import simulateToken from "@modules/simulation";
 import axios from "axios";
-import {SimulationData} from "@utils/customTypes/simulation/types";
+import {SimulationData} from "@definitions/simulation/types";
 
 const Simulation = () => {
     const viewerRef = useRef(null);

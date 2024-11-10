@@ -10,7 +10,7 @@ import {
     ShieldCheckIcon,
     WindowIcon
 } from "@heroicons/react/24/outline";
-import {AlgorithmConfiguration, LogMapping} from "@utils/customTypes";
+import {AlgorithmConfiguration, LogMapping} from "@definitions/config.d.ts";
 import {toast} from "sonner";
 import { MappingInput, Stepper, Step, BpmnInput, Preview } from "@components/simulationSetup";
 import { ConfigInput, WindowSizeInput, StartingPointInput } from "@components/simulationSetup/configInput";

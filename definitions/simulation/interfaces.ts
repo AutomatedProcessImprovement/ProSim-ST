@@ -1,20 +1,20 @@
-import {ElementTypes} from "@utils/customTypes/simulation/enums";
+import {ElementTypes} from "@definitions/simulation/enums";
 
 export interface Canvas {
     getContainer: () => HTMLDivElement,
 }
 
-export interface ElementInterface {
+export interface ElementRegistry {
     get: (elementId: string) => Flow | Task,
 }
 
-interface Flow {
-    type: ElementTypes.Flow,
+export interface Flow {
+    type: ElementTypes.FLOW,
     waypoints: Array<Waypoint>,
 }
 
 interface Task {
-    type: ElementTypes.Task,
+    type: ElementTypes.TASK,
     outgoing: Array<Flow>,
     x: number,
     y: number,
@@ -22,7 +22,7 @@ interface Task {
     height: number,
 }
 
-interface Waypoint {
+export interface Waypoint {
     x: number,
     y: number
 }
