@@ -71,16 +71,18 @@ const simulateToken = (simulationData: SimulationData) => {
                     let path: Array<Waypoint> = [];
 
                     batchEvents.forEach(batchEvent => {
-                        const nodeId = batchEvent.node_id;
                         const batchEventEntries = Object.entries(batchEvent.paths);
                         const [ tokenId, elements ] = batchEventEntries.length ? batchEventEntries[0] : ['', new Array<string>()];
 
                         switch (batchEvent.lifecycle) {
                             case LifecycleTypes.CASE_ARRIVAL:
-                                token = createToken(nodeId, caseId, tokenId);
+                                token = createToken(elements[0], caseId, tokenId);
                                 elements.forEach(elementId => {
                                     const element = elementRegistry.get(elementId);
-                                    if (!element) return;
+                                    if (!element) {
+                                        console.warn(`The element ${elementId} does not exists!`);
+                                        break;
+                                    }
                                     if (element.type === FlowTypes.FLOW) path = [...path, ...element.waypoints];
                                     else path.push(calculateCenterPoint(element));
                                 });
@@ -91,9 +93,12 @@ const simulateToken = (simulationData: SimulationData) => {
                                     x: Number(token.getAttribute("cx")),
                                     y: Number(token.getAttribute("cy")),
                                 });
-                                const startingNode: Node = elementRegistry.get(elements[0]) as Node;
-                                if (!startingNode) return;
-                                path.push(calculateCenterPoint(startingNode));
+                                const startEvent: Node = elementRegistry.get(elements[0]) as Node;
+                                if (!startEvent) {
+                                    console.warn(`The element ${elements[0]} does not exists!`);
+                                    break;
+                                }
+                                path.push(calculateCenterPoint(startEvent));
                                 break;
                             case LifecycleTypes.ENABLE:
                                 if (elements.length) {
@@ -104,7 +109,10 @@ const simulateToken = (simulationData: SimulationData) => {
                                     });
                                     elements.forEach(elementId => {
                                         const element = elementRegistry.get(elementId);
-                                        if (!element) return;
+                                        if (!element) {
+                                            console.warn(`The element ${elementId} does not exists!`);
+                                            break;
+                                        }
                                         if (element.type === FlowTypes.FLOW) path = [...path, ...element.waypoints];
                                         else path.push(calculateCenterPoint(element));
                                     });
@@ -114,7 +122,10 @@ const simulateToken = (simulationData: SimulationData) => {
                                 token = tokens[caseId][tokenId];
                                 elements.forEach(elementId => {
                                     const element = elementRegistry.get(elementId);
-                                    if (!element) return;
+                                    if (!element) {
+                                        console.warn(`The element ${elementId} does not exists!`);
+                                        break;
+                                    }
                                     if (element.type === FlowTypes.FLOW) path = [...path, ...element.waypoints];
                                     else path.push(calculateCenterPoint(element));
                                 });
@@ -126,7 +137,10 @@ const simulateToken = (simulationData: SimulationData) => {
                                     y: Number(token.getAttribute("cy")),
                                 });
                                 const endEvent: Node = elementRegistry.get(elements[0]) as Node;
-                                if (!endEvent) return;
+                                if (!endEvent) {
+                                    console.warn(`The element ${elements[0]} does not exists!`);
+                                    break;
+                                }
                                 path.push(calculateCenterPoint(endEvent));
                                 setTimeout(() => {
                                     viewport.removeChild(token);

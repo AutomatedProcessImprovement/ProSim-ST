@@ -1,6 +1,7 @@
 export enum NodeTypes {
     TASK = 'bpmn:Task',
     GATEWAY = 'bpmn:Gateway',
+    START_EVENT = 'bpmn:StartEvent',
 }
 
 export enum FlowTypes {

@@ -21,16 +21,6 @@ export interface Node {
     height: number,
 }
 
-interface Task extends Node {
-    type: NodeTypes.TASK,
-    outgoing: Flow,
-}
-
-interface Gateway extends Node {
-    type: NodeTypes.GATEWAY,
-    outgoings: Array<Flow>,
-}
-
 export interface Waypoint {
     x: number,
     y: number
