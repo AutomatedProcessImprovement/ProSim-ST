@@ -1,28 +1,37 @@
 import {LifecycleTypes} from "@definitions/simulation/enums";
 
+export type Token = SVGCircleElement
+
 export type Tokens = {
-    [key: string]: Array<SVGCircleElement>,
+    [caseId: string]: {
+        [tokenId: string]: Token,
+    },
 }
 
 export type SimulationData = {
     frame_mockup: Array<FrameCase>,
+    deltas_mockup: Array<Batch>
 }
 
 export type FrameCase = {
-    active_elements: Array<string>,
     case_id: string,
+    active_elements: {
+        [tokenId: string]: string,
+    },
 }
 
 export type BatchEvent = {
     case_id: string,
     lifecycle: LifecycleTypes,
     timestamp: string,
-    activity_id: string,
-    flow_path: string[],
+    node_id: string,
+    paths: {
+        [tokenId: string]: Array<string>,
+    },
 }
 
-export type Batch = BatchEvent[];
+export type Batch = Array<BatchEvent>;
 
 export type EventsByCaseId = {
-    [caseId: string]: BatchEvent[]
+    [caseId: string]: Array<BatchEvent>,
 }

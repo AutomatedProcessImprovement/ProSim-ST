@@ -1,11 +1,16 @@
-export enum ElementTypes {
-    FLOW = 'bpmn:SequenceFlow',
+export enum NodeTypes {
     TASK = 'bpmn:Task',
+    GATEWAY = 'bpmn:Gateway',
+}
+
+export enum FlowTypes {
+    FLOW = 'bpmn:SequenceFlow',
 }
 
 export enum LifecycleTypes {
     START = 'START',
-    ENABLED = 'ENABLED',
+    ENABLE = 'ENABLE',
     COMPLETE = 'COMPLETE',
-    END = 'END',
+    CASE_ARRIVAL = 'CASE_ARRIVAL',
+    CASE_END = 'CASE_END',
 }

@@ -1,7 +1,15 @@
-import {Canvas, ElementRegistry, Flow, Waypoint} from "@definitions/simulation/interfaces";
+import {Canvas, Node, ElementRegistry, Waypoint} from "@definitions/simulation/interfaces";
 import {getRandomColor} from "@utils/colors";
-import {Batch, BatchEvent, EventsByCaseId, FrameCase, SimulationData, Tokens} from "@definitions/simulation/types";
-import {ElementTypes, LifecycleTypes} from "@definitions/simulation/enums";
+import {
+    Batch,
+    BatchEvent,
+    EventsByCaseId,
+    FrameCase,
+    SimulationData,
+    Token,
+    Tokens
+} from "@definitions/simulation/types";
+import {FlowTypes, LifecycleTypes} from "@definitions/simulation/enums";
 
 const simulateToken = (simulationData: SimulationData) => {
     return {
@@ -12,64 +20,118 @@ const simulateToken = (simulationData: SimulationData) => {
             let viewport: HTMLDivElement;
             let batches: Batch[];
 
-            function createToken(frameCase: FrameCase) {
-                tokens[frameCase.case_id] = [];
-                frameCase.active_elements.forEach(activeElement => {
-                    const token = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-                    token.setAttribute("r", "10");
-                    token.setAttribute("fill", getRandomColor());
-                    token.classList.add("token");
-                    const startElement = elementRegistry.get(activeElement);
-
-                    if (startElement?.type === ElementTypes.FLOW) {
-                        const waypoints = startElement.waypoints;
-                        const endWaypoint = waypoints[waypoints.length - 1];
-                        if (endWaypoint) {
-                            placeToken(token, endWaypoint.x.toString(), endWaypoint.y.toString());
-                            viewport.appendChild(token);
-                            tokens[frameCase.case_id].push(token);
-                        }
-                    } else if (startElement?.type === ElementTypes.TASK) {
-                        const { x, y, width, height } = startElement;
-                        const centerX = x + width / 2;
-                        const centerY = y + height / 2;
-                        placeToken(token, centerX.toString(), centerY.toString());
-                        viewport.appendChild(token);
-                        tokens[frameCase.case_id].push(token);
-                    } else {
-                        console.warn(`This type of element is not handled.`);
-                    }
+            function createTokensForFrame(frameCase: FrameCase) {
+                Object.entries(frameCase.active_elements).forEach(([tokenId, activeElementId]) => {
+                    createToken(activeElementId, frameCase.case_id, tokenId);
                 });
             }
 
-            function handleBatchEvents(batchEvents: Array<BatchEvent>): Promise<void> {
+            function createToken(activeElementId: string, caseId: string, tokenId: string): Token {
+                tokens[caseId] = {};
+
+                const token = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                token.setAttribute("r", "10");
+                token.setAttribute("fill", getRandomColor());
+                token.classList.add("token");
+                const activeElement = elementRegistry.get(activeElementId);
+
+                if (activeElement?.type === FlowTypes.FLOW) {
+                    const waypoints = activeElement.waypoints;
+                    const endWaypoint = waypoints[waypoints.length - 1];
+                    if (endWaypoint) {
+                        placeToken(token, endWaypoint.x.toString(), endWaypoint.y.toString());
+                        viewport.appendChild(token);
+                        tokens[caseId][tokenId] = token;
+                    }
+                } else {
+                    const { x: centerX, y: centerY } = calculateCenterPoint(activeElement);
+                    placeToken(token, centerX.toString(), centerY.toString());
+                    viewport.appendChild(token);
+                    tokens[caseId][tokenId] = token;
+                }
+
+                return token;
+            }
+
+            function calculateCenterPoint(shape: Node): Waypoint {
+                const {x, y, width, height} = shape;
+
+                return {
+                    x: x + width / 2,
+                    y: y + height / 2,
+                }
+            }
+
+            function handleBatchEvents({caseId, batchEvents}: {
+                caseId: string;
+                batchEvents: Array<BatchEvent>;
+            }): Promise<void> {
                 return new Promise((resolve: () => void) => {
-                    const token = tokens[batchEvents[0].case_id][0];
-                    let path: Array<Waypoint> = [{
-                        x: parseFloat(token.getAttribute("cx")),
-                        y: parseFloat(token.getAttribute("cy")),
-                    }];
+                    let token: Token;
+                    let path: Array<Waypoint> = [];
 
                     batchEvents.forEach(batchEvent => {
-                        switch (batchEvent.lifecycle) {
-                            case LifecycleTypes.START:
-                                const targetActivity = elementRegistry.get(batchEvent.activity_id);
-                                const {x: targetActivityX, y: targetActivityY, width, height} = targetActivity;
-                                const endPoint: Waypoint = {
-                                    x: targetActivityX + width / 2,
-                                    y: targetActivityY + height / 2
-                                };
-                                path.push(endPoint);
-                                break;
-                            case LifecycleTypes.ENABLED:
-                            case LifecycleTypes.COMPLETE:
-                            case LifecycleTypes.END:
-                                batchEvent.flow_path.forEach(elementId => {
-                                    if (!elementId.startsWith("Flow_")) return;
+                        const nodeId = batchEvent.node_id;
+                        const batchEventEntries = Object.entries(batchEvent.paths);
+                        const [ tokenId, elements ] = batchEventEntries.length ? batchEventEntries[0] : ['', new Array<string>()];
 
-                                    const flowElement = elementRegistry.get(elementId) as Flow;
-                                    path = [...path, ...flowElement.waypoints];
+                        switch (batchEvent.lifecycle) {
+                            case LifecycleTypes.CASE_ARRIVAL:
+                                token = createToken(nodeId, caseId, tokenId);
+                                elements.forEach(elementId => {
+                                    const element = elementRegistry.get(elementId);
+                                    if (!element) return;
+                                    if (element.type === FlowTypes.FLOW) path = [...path, ...element.waypoints];
+                                    else path.push(calculateCenterPoint(element));
                                 });
+                                break;
+                            case LifecycleTypes.START:
+                                token = tokens[caseId][tokenId];
+                                path.push({
+                                    x: Number(token.getAttribute("cx")),
+                                    y: Number(token.getAttribute("cy")),
+                                });
+                                const startingNode: Node = elementRegistry.get(elements[0]) as Node;
+                                if (!startingNode) return;
+                                path.push(calculateCenterPoint(startingNode));
+                                break;
+                            case LifecycleTypes.ENABLE:
+                                if (elements.length) {
+                                    token = tokens[caseId][tokenId];
+                                    path.push({
+                                        x: Number(token.getAttribute("cx")),
+                                        y: Number(token.getAttribute("cy")),
+                                    });
+                                    elements.forEach(elementId => {
+                                        const element = elementRegistry.get(elementId);
+                                        if (!element) return;
+                                        if (element.type === FlowTypes.FLOW) path = [...path, ...element.waypoints];
+                                        else path.push(calculateCenterPoint(element));
+                                    });
+                                }
+                                break;
+                            case LifecycleTypes.COMPLETE:
+                                token = tokens[caseId][tokenId];
+                                elements.forEach(elementId => {
+                                    const element = elementRegistry.get(elementId);
+                                    if (!element) return;
+                                    if (element.type === FlowTypes.FLOW) path = [...path, ...element.waypoints];
+                                    else path.push(calculateCenterPoint(element));
+                                });
+                                break;
+                            case LifecycleTypes.CASE_END:
+                                token = tokens[caseId][tokenId];
+                                path.push({
+                                    x: Number(token.getAttribute("cx")),
+                                    y: Number(token.getAttribute("cy")),
+                                });
+                                const endEvent: Node = elementRegistry.get(elements[0]) as Node;
+                                if (!endEvent) return;
+                                path.push(calculateCenterPoint(endEvent));
+                                setTimeout(() => {
+                                    viewport.removeChild(token);
+                                    delete tokens[caseId][tokenId];
+                                }, delta*2);
                                 break;
                             default:
                                 break;
@@ -80,7 +142,7 @@ const simulateToken = (simulationData: SimulationData) => {
                 });
             }
 
-            function animateToken(token: SVGCircleElement, path: Waypoint[], onComplete: () => void) {
+            function animateToken(token: Token, path: Waypoint[], onComplete: () => void) {
                 if (!path || path.length <= 1) {
                     setTimeout(onComplete, delta);
                     return;
@@ -128,19 +190,17 @@ const simulateToken = (simulationData: SimulationData) => {
                 requestAnimationFrame(animate);
             }
 
-            function placeToken(token: SVGCircleElement, x: string, y: string) {
+            function placeToken(token: Token, x: string, y: string) {
                 token.setAttribute("cx", x);
                 token.setAttribute("cy", y);
             }
 
             this.start = async () => {
                 viewport = canvas.getContainer().querySelector('svg g[data-element-id]');
-                batches = Object.keys(simulationData)
-                    .filter(key => key.startsWith("delta_"))
-                    .map(key => simulationData[key]);
+                batches = simulationData.deltas_mockup;
 
                 simulationData.frame_mockup.forEach(frameCase => {
-                    createToken(frameCase);
+                    createTokensForFrame(frameCase);
                 });
 
                 for (const batch of batches) {
@@ -153,7 +213,13 @@ const simulateToken = (simulationData: SimulationData) => {
                             }
                             eventsByCaseId[event.case_id].push(event);
                         });
-                        await Promise.all(Object.values(eventsByCaseId).map(batchEvents => handleBatchEvents(batchEvents)));
+
+                        await Promise.all(Object.entries(eventsByCaseId).map(
+                            ([caseId, batchEvents]) => handleBatchEvents({
+                                caseId,
+                                batchEvents
+                            })
+                        ));
                     }
                 }
             }

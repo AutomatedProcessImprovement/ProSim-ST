@@ -1,25 +1,34 @@
-import {ElementTypes} from "@definitions/simulation/enums";
+import {FlowTypes, NodeTypes} from "@definitions/simulation/enums";
 
 export interface Canvas {
     getContainer: () => HTMLDivElement,
 }
 
 export interface ElementRegistry {
-    get: (elementId: string) => Flow | Task,
+    get: (elementId: string) => Flow | Node,
 }
 
 export interface Flow {
-    type: ElementTypes.FLOW,
+    type: FlowTypes.FLOW,
     waypoints: Array<Waypoint>,
 }
 
-interface Task {
-    type: ElementTypes.TASK,
-    outgoing: Array<Flow>,
+export interface Node {
+    type: NodeTypes,
     x: number,
     y: number,
     width: number,
     height: number,
+}
+
+interface Task extends Node {
+    type: NodeTypes.TASK,
+    outgoing: Flow,
+}
+
+interface Gateway extends Node {
+    type: NodeTypes.GATEWAY,
+    outgoings: Array<Flow>,
 }
 
 export interface Waypoint {

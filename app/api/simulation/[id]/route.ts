@@ -4,7 +4,7 @@ import {join} from "path";
 import {readFile} from "fs/promises";
 
 export const GET = async (request, {params}) => {
-    const mockDataFilePath = join(process.cwd(), 'assets/jsons/mockup-example-simple.json'); // ToDo: to be removed
+    const mockDataFilePath = join(process.cwd(), 'assets/jsons/exclusive-entire-case-with_token_id.json'); // ToDo: to be removed
 
     try {
         const redis = getRedisInstance();
@@ -24,6 +24,7 @@ export const GET = async (request, {params}) => {
             file
         }, { status: 200 });
     } catch (e) {
+        console.log(e)
         return NextResponse.json({ error: "Failed to get simulation data." }, { status: 500 });
     }
 }
