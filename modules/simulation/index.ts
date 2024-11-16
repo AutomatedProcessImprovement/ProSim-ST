@@ -42,17 +42,18 @@ const simulateToken = (simulationData: SimulationData) => {
             }
 
             function createTokensForFrame(frameCase: FrameCase) {
+                const color = getRandomColor();
                 Object.entries(frameCase.active_elements).forEach(([tokenId, activeElementId]) => {
-                    createToken(activeElementId, frameCase.case_id, tokenId);
+                    createToken(activeElementId, frameCase.case_id, tokenId, color);
                 });
             }
 
-            function createToken(activeElementId: string, caseId: string, tokenId: string): Token {
-                tokens[caseId] = {};
+            function createToken(activeElementId: string, caseId: string, tokenId: string, color: string): Token {
+                if (!tokens[caseId]) tokens[caseId] = {};
 
                 const token = document.createElementNS("http://www.w3.org/2000/svg", "circle");
                 token.setAttribute("r", "10");
-                token.setAttribute("fill", getRandomColor());
+                token.setAttribute("fill", color);
                 token.classList.add("token");
                 const activeElement = elementRegistry.get(activeElementId);
 
@@ -88,7 +89,7 @@ const simulateToken = (simulationData: SimulationData) => {
 
                         switch (batchEvent.lifecycle) {
                             case LifecycleTypes.CASE_ARRIVAL:
-                                token = createToken(elements[0], caseId, tokenId);
+                                token = createToken(elements[0], caseId, tokenId, getRandomColor());
                                 break;
                             case LifecycleTypes.START:
                                 token = tokens[caseId][tokenId];
@@ -186,25 +187,25 @@ const simulateToken = (simulationData: SimulationData) => {
                     createTokensForFrame(frameCase);
                 });
 
-                for (const batch of batches) {
-                    if (batch.length === 0) await new Promise(resolve => setTimeout(resolve, delta));
-                    else {
-                        const eventsByCaseId: EventsByCaseId = {};
-                        batch.forEach((event) => {
-                            if (!eventsByCaseId[event.case_id]) {
-                                eventsByCaseId[event.case_id] = [];
-                            }
-                            eventsByCaseId[event.case_id].push(event);
-                        });
-
-                        await Promise.all(Object.entries(eventsByCaseId).map(
-                            ([caseId, batchEvents]) => handleBatchEvents({
-                                caseId,
-                                batchEvents
-                            })
-                        ));
-                    }
-                }
+                // for (const batch of batches) {
+                //     if (batch.length === 0) await new Promise(resolve => setTimeout(resolve, delta));
+                //     else {
+                //         const eventsByCaseId: EventsByCaseId = {};
+                //         batch.forEach((event) => {
+                //             if (!eventsByCaseId[event.case_id]) {
+                //                 eventsByCaseId[event.case_id] = [];
+                //             }
+                //             eventsByCaseId[event.case_id].push(event);
+                //         });
+                //
+                //         await Promise.all(Object.entries(eventsByCaseId).map(
+                //             ([caseId, batchEvents]) => handleBatchEvents({
+                //                 caseId,
+                //                 batchEvents
+                //             })
+                //         ));
+                //     }
+                // }
             }
         }],
     }
