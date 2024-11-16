@@ -1,4 +1,4 @@
-import {Canvas, Node, ElementRegistry, Waypoint} from "@definitions/simulation/interfaces";
+import {Canvas, ElementRegistry, Node, Waypoint} from "@definitions/simulation/interfaces";
 import {getRandomColor} from "@utils/colors";
 import {
     Batch,
@@ -19,6 +19,27 @@ const simulateToken = (simulationData: SimulationData) => {
             const tokens: Tokens = {};
             let viewport: HTMLDivElement;
             let batches: Batch[];
+
+            function placeToken(token: Token, x: string, y: string) {
+                token.setAttribute("cx", x);
+                token.setAttribute("cy", y);
+            }
+
+            function calculateCenterPoint(shape: Node): Waypoint {
+                const {x, y, width, height} = shape;
+
+                return {
+                    x: x + width / 2,
+                    y: y + height / 2,
+                }
+            }
+
+            function getTokenCoordinates(token: Token): Waypoint {
+                return {
+                    x: Number(token.getAttribute("cx")),
+                    y: Number(token.getAttribute("cy")),
+                }
+            }
 
             function createTokensForFrame(frameCase: FrameCase) {
                 Object.entries(frameCase.active_elements).forEach(([tokenId, activeElementId]) => {
@@ -53,15 +74,6 @@ const simulateToken = (simulationData: SimulationData) => {
                 return token;
             }
 
-            function calculateCenterPoint(shape: Node): Waypoint {
-                const {x, y, width, height} = shape;
-
-                return {
-                    x: x + width / 2,
-                    y: y + height / 2,
-                }
-            }
-
             function handleBatchEvents({caseId, batchEvents}: {
                 caseId: string;
                 batchEvents: Array<BatchEvent>;
@@ -77,85 +89,41 @@ const simulateToken = (simulationData: SimulationData) => {
                         switch (batchEvent.lifecycle) {
                             case LifecycleTypes.CASE_ARRIVAL:
                                 token = createToken(elements[0], caseId, tokenId);
-                                elements.forEach(elementId => {
-                                    const element = elementRegistry.get(elementId);
-                                    if (!element) {
-                                        console.warn(`The element ${elementId} does not exists!`);
-                                        return;
-                                    }
-                                    if (element.type === FlowTypes.FLOW) path = [...path, ...element.waypoints];
-                                    else path.push(calculateCenterPoint(element));
-                                });
                                 break;
                             case LifecycleTypes.START:
                                 token = tokens[caseId][tokenId];
-                                path.push({
-                                    x: Number(token.getAttribute("cx")),
-                                    y: Number(token.getAttribute("cy")),
-                                });
-                                elements.forEach(elementId => {
-                                    const element = elementRegistry.get(elementId);
-                                    if (!element) {
-                                        console.warn(`The element ${elementId} does not exists!`);
-                                        return;
-                                    }
-                                    if (element.type === FlowTypes.FLOW) path = [...path, ...element.waypoints];
-                                    else path.push(calculateCenterPoint(element));
-                                })
+                                path.push(getTokenCoordinates(token));
                                 break;
                             case LifecycleTypes.ENABLE:
-                                if (elements.length) {
+                                if (tokenId) {
                                     token = tokens[caseId][tokenId];
-                                    path.push({
-                                        x: Number(token.getAttribute("cx")),
-                                        y: Number(token.getAttribute("cy")),
-                                    });
-                                    elements.forEach(elementId => {
-                                        const element = elementRegistry.get(elementId);
-                                        if (!element) {
-                                            console.warn(`The element ${elementId} does not exists!`);
-                                            return;
-                                        }
-                                        if (element.type === FlowTypes.FLOW) path = [...path, ...element.waypoints];
-                                        else path.push(calculateCenterPoint(element));
-                                    });
+                                    path.push(getTokenCoordinates(token));
                                 }
                                 break;
                             case LifecycleTypes.COMPLETE:
                                 token = tokens[caseId][tokenId];
-                                elements.forEach(elementId => {
-                                    const element = elementRegistry.get(elementId);
-                                    if (!element) {
-                                        console.warn(`The element ${elementId} does not exists!`);
-                                        return;
-                                    }
-                                    if (element.type === FlowTypes.FLOW) path = [...path, ...element.waypoints];
-                                    else path.push(calculateCenterPoint(element));
-                                });
                                 break;
                             case LifecycleTypes.CASE_END:
                                 token = tokens[caseId][tokenId];
-                                path.push({
-                                    x: Number(token.getAttribute("cx")),
-                                    y: Number(token.getAttribute("cy")),
-                                });
-                                elements.forEach(elementId => {
-                                    const element = elementRegistry.get(elementId);
-                                    if (!element) {
-                                        console.warn(`The element ${elementId} does not exists!`);
-                                        return;
-                                    }
-                                    if (element.type === FlowTypes.FLOW) path = [...path, ...element.waypoints];
-                                    else path.push(calculateCenterPoint(element));
-                                });
-                                setTimeout(() => {
-                                    viewport.removeChild(token);
-                                    delete tokens[caseId][tokenId];
-                                }, delta*2);
-                                break;
-                            default:
+                                path.push(getTokenCoordinates(token));
+                                resolve = () => {
+                                    setTimeout(() => {
+                                        viewport.removeChild(token);
+                                        delete tokens[caseId][tokenId];
+                                    }, delta);
+                                }
                                 break;
                         }
+
+                        elements.forEach(elementId => {
+                            const element = elementRegistry.get(elementId);
+                            if (!element) {
+                                console.warn(`The element ${elementId} does not exists!`);
+                                return;
+                            }
+                            if (element.type === FlowTypes.FLOW) path = [...path, ...element.waypoints];
+                            else path.push(calculateCenterPoint(element));
+                        });
                     });
 
                     animateToken(token, path, resolve);
@@ -163,7 +131,7 @@ const simulateToken = (simulationData: SimulationData) => {
             }
 
             function animateToken(token: Token, path: Waypoint[], onComplete: () => void) {
-                if (!path || path.length <= 1) {
+                if (!path || path.length <= 1 || !token) {
                     setTimeout(onComplete, delta);
                     return;
                 }
@@ -208,11 +176,6 @@ const simulateToken = (simulationData: SimulationData) => {
                 }
 
                 requestAnimationFrame(animate);
-            }
-
-            function placeToken(token: Token, x: string, y: string) {
-                token.setAttribute("cx", x);
-                token.setAttribute("cy", y);
             }
 
             this.start = async () => {
