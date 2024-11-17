@@ -223,28 +223,24 @@ const simulateToken = (simulationData: SimulationData) => {
                     return;
                 }
 
-                function animationCompleted() {
-                    console.log("resolving")
-                    resolve();
-                }
-
+                let nextTokenIds = [];
                 rootTokenIds.forEach((rootTokenId, index) => {
                     const token = tokens[caseId][rootTokenId];
                     if (isHidden) viewport.appendChild(token);
-                    const asyncAnimationDataOfRootToken = asyncAnimationData[rootTokenId]
-                    let nextTokenIds = [];
+                    const asyncAnimationDataOfRootToken = asyncAnimationData[rootTokenId];
                     animateToken(token, asyncAnimationDataOfRootToken.path, () => {
-                        const asyncAnimationDataOfRootTokenNextTokenIds = asyncAnimationDataOfRootToken.nextTokenIds ?? [];
-                        nextTokenIds = [...nextTokenIds, ...asyncAnimationDataOfRootTokenNextTokenIds];
+                        const nextTokenIdsOfRootToken = asyncAnimationDataOfRootToken.nextTokenIds ?? [];
+                        if (nextTokenIdsOfRootToken.length) deleteToken(caseId, rootTokenId);
+                        nextTokenIds = [...new Set([...nextTokenIds, ...nextTokenIdsOfRootToken])];
                         if (index === rootTokenIds.length - 1) {
                             if (nextTokenIds && nextTokenIds.length) {
                                 const nextAsyncAnimationEntries = Object.entries(asyncAnimationData)
                                     .filter(([tokenId, _]) => !rootTokenIds.includes(tokenId));
                                 const nextAsyncAnimationData: AnimationData = Object.fromEntries(nextAsyncAnimationEntries);
                                 startAsyncAnimations(nextAsyncAnimationData, caseId, resolve, true);
-                                deleteToken(caseId, rootTokenId);
                             } else {
-                                animationCompleted();
+                                console.log("resolving")
+                                resolve();
                             }
                         }
                     });
