@@ -1,4 +1,5 @@
 import {LifecycleTypes} from "@definitions/simulation/enums";
+import {Waypoint} from "@definitions/simulation/interfaces";
 
 export type Token = SVGCircleElement
 
@@ -35,3 +36,10 @@ export type Batch = Array<BatchEvent>;
 export type EventsByCaseId = {
     [caseId: string]: Array<BatchEvent>,
 }
+
+export type AnimationData = {
+    [tokenId: string]: {
+        path: Array<Waypoint>,
+        onComplete: () => void,
+    },
+};

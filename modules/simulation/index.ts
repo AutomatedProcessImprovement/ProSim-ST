@@ -1,6 +1,7 @@
 import {Canvas, ElementRegistry, Node, Waypoint} from "@definitions/simulation/interfaces";
 import {getRandomColor} from "@utils/colors";
 import {
+    AnimationData,
     Batch,
     BatchEvent,
     EventsByCaseId,
@@ -9,7 +10,7 @@ import {
     Token,
     Tokens
 } from "@definitions/simulation/types";
-import {FlowTypes, LifecycleTypes} from "@definitions/simulation/enums";
+import {FlowTypes, LifecycleTypes, NodeTypes} from "@definitions/simulation/enums";
 
 const simulateToken = (simulationData: SimulationData) => {
     return {
@@ -80,63 +81,76 @@ const simulateToken = (simulationData: SimulationData) => {
                 batchEvents: Array<BatchEvent>;
             }): Promise<void> {
                 return new Promise((resolve: () => void) => {
-                    let token: Token;
-                    let path: Array<Waypoint> = [];
+                    let animationData: AnimationData = {};
 
                     batchEvents.forEach(batchEvent => {
-                        const batchEventEntries = Object.entries(batchEvent.paths);
-                        const [ tokenId, elements ] = batchEventEntries.length ? batchEventEntries[0] : ['', new Array<string>()];
+                        const batchEventPathEntries = Object.entries(batchEvent.paths);
+                        batchEventPathEntries.forEach(batchEventPathEntry => {
+                            let token: Token;
+                            let path: Array<Waypoint> = [];
+                            let onComplete = resolve;
 
-                        switch (batchEvent.lifecycle) {
-                            case LifecycleTypes.CASE_ARRIVAL:
-                                token = createToken(elements[0], caseId, tokenId, getRandomColor());
-                                break;
-                            case LifecycleTypes.START:
-                                token = tokens[caseId][tokenId];
-                                path.push(getTokenCoordinates(token));
-                                break;
-                            case LifecycleTypes.ENABLE:
-                                if (tokenId) {
-                                    token = tokens[caseId][tokenId];
-                                    path.push(getTokenCoordinates(token));
+                            const [ tokenId, elements ] = batchEventPathEntry;
+                            const tokensOfCurrentCase = tokens[caseId];
+                            if (tokensOfCurrentCase) {
+                                if (tokensOfCurrentCase[tokenId]) token = tokens[caseId][tokenId];
+                                else {
+                                    let color = Object.values(tokensOfCurrentCase)[0].getAttribute("fill");
+                                    token = createToken(elements[0], caseId, tokenId, color);
                                 }
-                                break;
-                            case LifecycleTypes.COMPLETE:
-                                token = tokens[caseId][tokenId];
-                                break;
-                            case LifecycleTypes.CASE_END:
-                                token = tokens[caseId][tokenId];
-                                path.push(getTokenCoordinates(token));
-                                resolve = () => {
+                            } else {
+                                token = createToken(elements[0], caseId, tokenId, getRandomColor());
+                            }
+
+                            if (!animationData[tokenId]) path.push(getTokenCoordinates(token));
+                            elements.forEach((elementId, index) => {
+                                const element = elementRegistry.get(elementId);
+                                if (!element) {
+                                    console.warn(`The element ${elementId} does not exists!`);
+                                    return;
+                                }
+                                if (element.type === FlowTypes.FLOW) path = [...path, ...element.waypoints];
+                                else {
+                                    const centerPoint = calculateCenterPoint(element);
+                                    const lastPoint = path.length ?
+                                        path[path.length - 1] :
+                                        animationData[tokenId].path[animationData[tokenId].path.length - 1];
+                                    if (lastPoint.x !== centerPoint.x || lastPoint.y !== centerPoint.y) path.push(centerPoint);
+                                }
+
+                                if (index === elements.length - 1 && element.type === NodeTypes.PARALLEL_GATEWAY) {
+                                    onComplete = () => {
+                                        viewport.removeChild(token);
+                                        delete tokens[caseId][tokenId];
+                                    }
+                                } else {
+                                    onComplete = resolve
+                                }
+                            });
+
+                            if (!animationData[tokenId]) animationData[tokenId] = { path, onComplete };
+                            else animationData[tokenId] = { path: [...animationData[tokenId].path, ...path], onComplete };
+
+                            if (batchEvent.lifecycle === LifecycleTypes.CASE_END) {
+                                animationData[tokenId].onComplete = () => {
                                     setTimeout(() => {
                                         viewport.removeChild(token);
                                         delete tokens[caseId][tokenId];
                                     }, delta);
                                 }
-                                break;
-                        }
-
-                        elements.forEach(elementId => {
-                            const element = elementRegistry.get(elementId);
-                            if (!element) {
-                                console.warn(`The element ${elementId} does not exists!`);
-                                return;
                             }
-                            if (element.type === FlowTypes.FLOW) path = [...path, ...element.waypoints];
-                            else path.push(calculateCenterPoint(element));
                         });
                     });
 
-                    animateToken(token, path, resolve);
+                    if (Object.keys(animationData).length === 0) setTimeout(resolve, delta);
+                    Object.entries(animationData).forEach((animationEntry) => {
+                        const [ tokenId, { path, onComplete } ] = animationEntry;
+                        animateToken(tokens[caseId][tokenId], path, onComplete);
+                    });
                 });
             }
 
             function animateToken(token: Token, path: Waypoint[], onComplete: () => void) {
-                if (!path || path.length <= 1 || !token) {
-                    setTimeout(onComplete, delta);
-                    return;
-                }
-
                 const startTime = performance.now();
 
                 function animate(time: number) {
@@ -187,25 +201,25 @@ const simulateToken = (simulationData: SimulationData) => {
                     createTokensForFrame(frameCase);
                 });
 
-                // for (const batch of batches) {
-                //     if (batch.length === 0) await new Promise(resolve => setTimeout(resolve, delta));
-                //     else {
-                //         const eventsByCaseId: EventsByCaseId = {};
-                //         batch.forEach((event) => {
-                //             if (!eventsByCaseId[event.case_id]) {
-                //                 eventsByCaseId[event.case_id] = [];
-                //             }
-                //             eventsByCaseId[event.case_id].push(event);
-                //         });
-                //
-                //         await Promise.all(Object.entries(eventsByCaseId).map(
-                //             ([caseId, batchEvents]) => handleBatchEvents({
-                //                 caseId,
-                //                 batchEvents
-                //             })
-                //         ));
-                //     }
-                // }
+                for (const batch of batches) {
+                    if (batch.length === 0) await new Promise(resolve => setTimeout(resolve, delta));
+                    else {
+                        const eventsByCaseId: EventsByCaseId = {};
+                        batch.forEach((event) => {
+                            if (!eventsByCaseId[event.case_id]) {
+                                eventsByCaseId[event.case_id] = [];
+                            }
+                            eventsByCaseId[event.case_id].push(event);
+                        });
+
+                        await Promise.all(Object.entries(eventsByCaseId).map(
+                            ([caseId, batchEvents]) => handleBatchEvents({
+                                caseId,
+                                batchEvents
+                            })
+                        ));
+                    }
+                }
             }
         }],
     }
