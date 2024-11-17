@@ -40,6 +40,7 @@ export type EventsByCaseId = {
 export type AnimationData = {
     [tokenId: string]: {
         path: Array<Waypoint>,
-        onComplete: () => void,
+        onComplete?: () => void,
+        nextTokenIds?: Array<string>,
     },
 };
