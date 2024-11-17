@@ -158,10 +158,7 @@ const simulateToken = (simulationData: SimulationData) => {
                                 if (batchEvent.lifecycle === LifecycleTypes.CASE_END) {
                                     asyncAnimationData[tokenId].onComplete = () => {
                                         resolve();
-                                        setTimeout(() => {
-                                            viewport.removeChild(token);
-                                            delete tokens[caseId][tokenId];
-                                        }, delta);
+                                        setTimeout(() => deleteToken(caseId, tokenId), delta);
                                     };
                                 }
                             });
@@ -201,10 +198,7 @@ const simulateToken = (simulationData: SimulationData) => {
                                 if (batchEvent.lifecycle === LifecycleTypes.CASE_END) {
                                     syncAnimationData[tokenId].onComplete = () => {
                                         resolve();
-                                        setTimeout(() => {
-                                            viewport.removeChild(token);
-                                            delete tokens[caseId][tokenId];
-                                        }, delta);
+                                        setTimeout(() => deleteToken(caseId, tokenId), delta);
                                     }
                                 } else {
                                     syncAnimationData[tokenId].onComplete = resolve;
