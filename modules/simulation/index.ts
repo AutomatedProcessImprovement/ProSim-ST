@@ -81,6 +81,16 @@ const simulateToken = (simulationData: SimulationData) => {
                 delete tokens[caseId][tokenId];
             }
 
+            function calculatePathLength(path: Waypoint[]): number {
+                let pathLength = 0;
+                for (let i = 0; i < path.length - 1; i++) {
+                    const dx = path[i + 1].x - path[i].x;
+                    const dy = path[i + 1].y - path[i].y;
+                    pathLength += Math.sqrt(dx * dx + dy * dy);
+                }
+                return pathLength;
+            }
+
             function handleBatchEvents({caseId, batchEvents}: {
                 caseId: string;
                 batchEvents: Array<BatchEvent>;
@@ -157,7 +167,7 @@ const simulateToken = (simulationData: SimulationData) => {
                             });
                         });
 
-                        startAsyncAnimations(asyncAnimationData, caseId, resolve);
+                        startAsyncAnimations(asyncAnimationData, caseId, resolve, calculateLongestPath(asyncAnimationData));
                     } else {
                         let syncAnimationData: AnimationData = {};
 
@@ -211,8 +221,36 @@ const simulateToken = (simulationData: SimulationData) => {
                 });
             }
 
-            function startAsyncAnimations(asyncAnimationData: AnimationData, caseId: string, resolve: () => void, isHidden: boolean = false) {
-                console.log(asyncAnimationData)
+            function calculateLongestPath(asyncAnimationData: AnimationData): number {
+                let longestPath = 0;
+
+                function findLongestPath(tokenId: string, currentPath: Waypoint[] = []) {
+                    const tokenData = asyncAnimationData[tokenId];
+                    const mergedPath = [...currentPath, ...tokenData.path];
+                    const mergedPathLength = calculatePathLength(mergedPath);
+
+                    if (!(tokenData.nextTokenIds && tokenData.nextTokenIds.length)) {
+                        if (mergedPathLength > longestPath) longestPath = mergedPathLength;
+                    }
+
+                    const nextTokenIds = tokenData.nextTokenIds || [];
+                    nextTokenIds.forEach(nextTokenId => {
+                        findLongestPath(nextTokenId, mergedPath);
+                    });
+                }
+
+                const rootTokenIds = Object.keys(asyncAnimationData).filter(tokenId =>
+                    !Object.values(asyncAnimationData).some(data => data.nextTokenIds?.includes(tokenId))
+                );
+
+                rootTokenIds.forEach(rootTokenId => {
+                    findLongestPath(rootTokenId);
+                });
+
+                return longestPath;
+            }
+
+            function startAsyncAnimations(asyncAnimationData: AnimationData, caseId: string, resolve: () => void, longestPath: number, isHidden: boolean = false) {
                 const rootTokenIds = Object.keys(asyncAnimationData).filter(tokenId => {
                     return !Object.values(asyncAnimationData).some(data => data.nextTokenIds?.includes(tokenId));
                 });
@@ -223,12 +261,17 @@ const simulateToken = (simulationData: SimulationData) => {
                     return;
                 }
 
+                const duration = rootTokenIds.reduce((maxDuration, rootTokenId) => {
+                    const currentDuration = calculatePathLength(asyncAnimationData[rootTokenId].path) * delta / longestPath;
+                    return currentDuration > maxDuration ? currentDuration : maxDuration;
+                }, 0);
+
                 let nextTokenIds = [];
                 rootTokenIds.forEach((rootTokenId, index) => {
                     const token = tokens[caseId][rootTokenId];
                     if (isHidden) viewport.appendChild(token);
                     const asyncAnimationDataOfRootToken = asyncAnimationData[rootTokenId];
-                    animateToken(token, asyncAnimationDataOfRootToken.path, () => {
+                    const onComplete = () => {
                         const nextTokenIdsOfRootToken = asyncAnimationDataOfRootToken.nextTokenIds ?? [];
                         if (nextTokenIdsOfRootToken.length) deleteToken(caseId, rootTokenId);
                         nextTokenIds = [...new Set([...nextTokenIds, ...nextTokenIdsOfRootToken])];
@@ -237,31 +280,23 @@ const simulateToken = (simulationData: SimulationData) => {
                                 const nextAsyncAnimationEntries = Object.entries(asyncAnimationData)
                                     .filter(([tokenId, _]) => !rootTokenIds.includes(tokenId));
                                 const nextAsyncAnimationData: AnimationData = Object.fromEntries(nextAsyncAnimationEntries);
-                                startAsyncAnimations(nextAsyncAnimationData, caseId, resolve, true);
-                            } else {
-                                console.log("resolving")
-                                resolve();
-                            }
+                                startAsyncAnimations(nextAsyncAnimationData, caseId, resolve, longestPath, true);
+                            } else resolve();
                         }
-                    });
+                    }
+                    animateToken(token, asyncAnimationDataOfRootToken.path, onComplete, duration);
                 });
             }
 
-            function animateToken(token: Token, path: Waypoint[], onComplete: () => void) {
+            function animateToken(token: Token, path: Waypoint[], onComplete: () => void, duration: number = delta) {
                 const startTime = performance.now();
 
                 function animate(time: number) {
                     const elapsedTime = time - startTime;
-                    const progress = Math.min(elapsedTime / delta, 1);
-
-                    let pathLength = 0;
-                    for (let i = 0; i < path.length - 1; i++) {
-                        const dx = path[i + 1].x - path[i].x;
-                        const dy = path[i + 1].y - path[i].y;
-                        pathLength += Math.sqrt(dx * dx + dy * dy);
-                    }
-
+                    const progress = Math.min(elapsedTime / duration, 1);
+                    let pathLength = calculatePathLength(path);
                     const currentDistance = progress * pathLength;
+
                     let accumulatedDistance = 0;
                     for (let i = 0; i < path.length - 1; i++) {
                         const segmentStart = path[i];
