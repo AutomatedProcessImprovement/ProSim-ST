@@ -44,3 +44,10 @@ export type AnimationData = {
         nextTokenIds?: Array<string>,
     },
 };
+
+export type PathMap = {
+    [tokenId: string]: {
+        longestSubPathLength?: number;
+        subPaths: PathMap;
+    };
+};

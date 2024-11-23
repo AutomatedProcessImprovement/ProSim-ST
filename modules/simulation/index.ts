@@ -6,6 +6,7 @@ import {
     BatchEvent,
     EventsByCaseId,
     FrameCase,
+    PathMap,
     SimulationData,
     Token,
     Tokens
@@ -164,7 +165,7 @@ const simulateToken = (simulationData: SimulationData) => {
                             });
                         });
 
-                        startAsyncAnimations(asyncAnimationData, caseId, resolve, calculateLongestPath(asyncAnimationData));
+                        startAsyncAnimations(asyncAnimationData, caseId, resolve);
                     } else {
                         let syncAnimationData: AnimationData = {};
 
@@ -215,22 +216,28 @@ const simulateToken = (simulationData: SimulationData) => {
                 });
             }
 
-            function calculateLongestPath(asyncAnimationData: AnimationData): number {
-                let longestPath = 0;
+            function buildPathMap(asyncAnimationData: AnimationData): PathMap {
+                const pathMap: PathMap = {};
 
-                function findLongestPath(tokenId: string, currentPath: Waypoint[] = []) {
+                function buildPathMapRec(tokenId: string, currentPathMap: PathMap, currentPath: Waypoint[] = []): number {
                     const tokenData = asyncAnimationData[tokenId];
-                    const mergedPath = [...currentPath, ...tokenData.path];
-                    const mergedPathLength = calculatePathLength(mergedPath);
+                    const currentTokenPath = tokenData.path
+                    const currentTokenPathLength = calculatePathLength(currentTokenPath);
+                    currentPathMap[tokenId] = { subPaths: {} };
+                    let longestSubPath = 0;
 
                     if (!(tokenData.nextTokenIds && tokenData.nextTokenIds.length)) {
-                        if (mergedPathLength > longestPath) longestPath = mergedPathLength;
+                        currentPathMap[tokenId].longestSubPathLength = currentTokenPathLength;
+                    } else {
+                        const nextTokenIds = tokenData.nextTokenIds || [];
+                        nextTokenIds.forEach(nextTokenId => {
+                            const subPathLength = buildPathMapRec(nextTokenId, currentPathMap[tokenId].subPaths, [...currentPath, ...currentTokenPath]);
+                            longestSubPath = Math.max(longestSubPath, subPathLength);
+                        });
+                        currentPathMap[tokenId].longestSubPathLength = currentTokenPathLength + longestSubPath;
                     }
 
-                    const nextTokenIds = tokenData.nextTokenIds || [];
-                    nextTokenIds.forEach(nextTokenId => {
-                        findLongestPath(nextTokenId, mergedPath);
-                    });
+                    return currentTokenPathLength + longestSubPath;
                 }
 
                 const rootTokenIds = Object.keys(asyncAnimationData).filter(tokenId =>
@@ -238,13 +245,14 @@ const simulateToken = (simulationData: SimulationData) => {
                 );
 
                 rootTokenIds.forEach(rootTokenId => {
-                    findLongestPath(rootTokenId);
+                    buildPathMapRec(rootTokenId, pathMap);
                 });
 
-                return longestPath;
+                return pathMap;
             }
 
-            function startAsyncAnimations(asyncAnimationData: AnimationData, caseId: string, resolve: () => void, longestPath: number, isHidden: boolean = false) {
+            function startAsyncAnimations(asyncAnimationData: AnimationData, caseId: string, resolve: () => void, remainingDuration: number = delta, isHidden: boolean = false) {
+                const pathMap = buildPathMap(asyncAnimationData);
                 const rootTokenIds = Object.keys(asyncAnimationData).filter(tokenId => {
                     return !Object.values(asyncAnimationData).some(data => data.nextTokenIds?.includes(tokenId));
                 });
@@ -255,28 +263,54 @@ const simulateToken = (simulationData: SimulationData) => {
                     return;
                 }
 
-                const duration = rootTokenIds.reduce((maxDuration, rootTokenId) => {
-                    const currentDuration = calculatePathLength(asyncAnimationData[rootTokenId].path) * delta / longestPath;
-                    return currentDuration > maxDuration ? currentDuration : maxDuration;
-                }, 0);
+                const durations: Record<string, number> = {};
+                const mergingTokenIds = new Array<string>();
+
+                rootTokenIds.forEach(rootTokenId => {
+                   if (Object.keys(pathMap[rootTokenId].subPaths).length === 1) {
+                       mergingTokenIds.push(rootTokenId);
+                   } else {
+                       durations[rootTokenId] = calculatePathLength(asyncAnimationData[rootTokenId].path) * remainingDuration / pathMap[rootTokenId].longestSubPathLength;
+                   }
+                });
+
+                if (mergingTokenIds.length) {
+                    const tokenIdWithLongestPath = mergingTokenIds.reduce((longestPathTokenId, tokenId) =>
+                        pathMap[tokenId].longestSubPathLength > pathMap[longestPathTokenId].longestSubPathLength ? tokenId : longestPathTokenId
+                    );
+                    const longestPath = pathMap[tokenIdWithLongestPath].longestSubPathLength;
+                    const tokenWithLongestPathSegmentLength = calculatePathLength(asyncAnimationData[tokenIdWithLongestPath].path);
+                    const tokenWithLongestPathDuration = remainingDuration * tokenWithLongestPathSegmentLength / longestPath;
+                    const tokenWithLongestPathRemainingPathLength = longestPath - tokenWithLongestPathSegmentLength;
+                    const tokenWithLongestPathRemainingDuration = remainingDuration - tokenWithLongestPathDuration;
+
+                    mergingTokenIds.forEach(tokenId => {
+                        const segmentLength = calculatePathLength(asyncAnimationData[tokenId].path);
+                        const remainingPathLength = pathMap[tokenId].longestSubPathLength - segmentLength;
+                        const currentRemainingDuration = remainingPathLength * tokenWithLongestPathRemainingDuration / tokenWithLongestPathRemainingPathLength;
+                        durations[tokenId] = remainingDuration - currentRemainingDuration;
+                    });
+                }
 
                 let nextTokenIds = [];
                 rootTokenIds.forEach((rootTokenId, index) => {
                     const token = tokens[caseId][rootTokenId];
                     if (isHidden) viewport.appendChild(token);
                     const asyncAnimationDataOfRootToken = asyncAnimationData[rootTokenId];
+                    const duration = durations[rootTokenId];
                     const onComplete = () => {
                         const nextTokenIdsOfRootToken = asyncAnimationDataOfRootToken.nextTokenIds ?? [];
                         if (nextTokenIdsOfRootToken.length) deleteToken(caseId, rootTokenId);
-                        nextTokenIds = [...new Set([...nextTokenIds, ...nextTokenIdsOfRootToken])];
-                        if (index === rootTokenIds.length - 1) {
+                        nextTokenIds = [...nextTokenIds, ...nextTokenIdsOfRootToken];
+                        // if (index === rootTokenIds.length - 1) {
+                            nextTokenIds = [...new Set(nextTokenIds)];
                             if (nextTokenIds && nextTokenIds.length) {
                                 const nextAsyncAnimationEntries = Object.entries(asyncAnimationData)
                                     .filter(([tokenId, _]) => !rootTokenIds.includes(tokenId));
                                 const nextAsyncAnimationData: AnimationData = Object.fromEntries(nextAsyncAnimationEntries);
-                                startAsyncAnimations(nextAsyncAnimationData, caseId, resolve, longestPath, true);
+                                startAsyncAnimations(nextAsyncAnimationData, caseId, resolve, remainingDuration - duration, true);
                             } else resolve();
-                        }
+                        // }
                     }
                     animateToken(token, asyncAnimationDataOfRootToken.path, onComplete, duration);
                 });

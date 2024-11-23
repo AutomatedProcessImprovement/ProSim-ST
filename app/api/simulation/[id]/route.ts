@@ -4,7 +4,7 @@ import {join} from "path";
 import {readFile} from "fs/promises";
 
 export const GET = async (request, {params}) => {
-    const mockDataFilePath = join(process.cwd(), 'assets/jsons/parallel-entire-case-with_token_id.json'); // ToDo: to be removed
+    const mockDataFilePath = join(process.cwd(), 'assets/jsons/nested-parallel-entire-case-with_token_id.json'); // ToDo: to be removed
 
     try {
         const redis = getRedisInstance();
