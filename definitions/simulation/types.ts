@@ -47,7 +47,9 @@ export type AnimationData = {
 
 export type PathMap = {
     [tokenId: string]: {
-        longestSubPathLength?: number;
+        path: Array<Waypoint>,
         subPaths: PathMap;
+        longestSubPathLength?: number;
+        onComplete: () => void,
     };
 };
