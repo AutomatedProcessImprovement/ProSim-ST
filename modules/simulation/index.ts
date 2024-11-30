@@ -11,7 +11,7 @@ import {
     Token,
     Tokens
 } from "@definitions/simulation/types";
-import {FlowTypes, LifecycleTypes, NodeTypes} from "@definitions/simulation/enums";
+import { FlowTypes, LifecycleTypes, NodeTypes } from "@definitions/simulation/enums";
 
 const simulateToken = (simulationData: SimulationData) => {
     return {
@@ -53,25 +53,23 @@ const simulateToken = (simulationData: SimulationData) => {
             function createToken(activeElementId: string, caseId: string, tokenId: string, color: string, show: boolean = true): Token {
                 if (!tokens[caseId]) tokens[caseId] = {};
 
-                const token = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                const token = document.createElementNS("http://www.w3.org/2000/svg", "circle"); // this should be installed locally
                 token.setAttribute("r", "10");
                 token.setAttribute("fill", color);
                 token.classList.add("token");
                 const activeElement = elementRegistry.get(activeElementId);
 
-                if (activeElement?.type === FlowTypes.FLOW) {
-                    const waypoints = activeElement.waypoints;
-                    const endWaypoint = waypoints[waypoints.length - 1];
-                    if (endWaypoint) {
-                        placeToken(token, endWaypoint.x.toString(), endWaypoint.y.toString());
-                        if (show) viewport.appendChild(token);
-                        tokens[caseId][tokenId] = token;
-                    }
-                } else {
-                    const { x: centerX, y: centerY } = calculateCenterPoint(activeElement);
-                    placeToken(token, centerX.toString(), centerY.toString());
+                function addTokenToList(token: Token, point: Waypoint, show: boolean) {
+                    placeToken(token, point.x.toString(), point.y.toString());
                     if (show) viewport.appendChild(token);
                     tokens[caseId][tokenId] = token;
+                }
+
+                if (activeElement?.type === FlowTypes.FLOW) {
+                    const waypoints = activeElement.waypoints;
+                    if (waypoints && waypoints.length) addTokenToList(token, waypoints[waypoints.length - 1], show);
+                } else {
+                    addTokenToList(token, calculateCenterPoint(activeElement), show)
                 }
 
                 return token;
@@ -92,126 +90,110 @@ const simulateToken = (simulationData: SimulationData) => {
                 return pathLength;
             }
 
-            function handleBatchEvents({caseId, batchEvents}: {
-                caseId: string;
-                batchEvents: Array<BatchEvent>;
-            }): Promise<void> {
+            function handleBatchEvents({caseId, batchEvents}: { caseId: string; batchEvents: Array<BatchEvent>; }): Promise<void> {
+                function addCentralPointToPath(element: Node, path: Array<Waypoint>, animationData: AnimationData, tokenId: string) {
+                    const centerPoint = calculateCenterPoint(element);
+                    const lastPoint = path.length ?
+                        path[path.length - 1] :
+                        animationData[tokenId].path[animationData[tokenId].path.length - 1];
+                    if (lastPoint.x !== centerPoint.x || lastPoint.y !== centerPoint.y) path.push(centerPoint);
+                }
+
+                function addElementsToPath(
+                    animationData: AnimationData,
+                    tokenId: string,
+                    caseId: string,
+                    elements: Array<string>,
+                    batchEventPathEntries: Array<[string, Array<string>]>
+                ): { path: Array<Waypoint>, nextTokenIds: Array<string> } {
+                    let path: Array<Waypoint> = [];
+                    let nextTokenIds: Array<string> = [];
+
+                    if (!animationData[tokenId]) path.push(getTokenCoordinates(tokens[caseId][tokenId]));
+                    elements.forEach((elementId, index) => {
+                        const element = elementRegistry.get(elementId);
+                        if (!element) {
+                            console.warn(`The element ${elementId} does not exist!`);
+                            return;
+                        }
+
+                        if (element.type === FlowTypes.FLOW) path = [...path, ...element.waypoints];
+                        else {
+                            addCentralPointToPath(element, path, animationData, tokenId);
+
+                            if (element.type === NodeTypes.PARALLEL_GATEWAY && index === elements.length - 1) {
+                                nextTokenIds = batchEventPathEntries
+                                    .filter(([otherTokenId, otherElements]) =>
+                                        otherElements[0] === elementId &&
+                                        otherTokenId !== tokenId &&
+                                        otherElements.length > 1
+                                    )
+                                    .map(([otherTokenId, _]) => otherTokenId);
+                            }
+                        }
+                    });
+
+                    return { path, nextTokenIds };
+                }
+
+                function fillAnimationDataOfToken(animationData: AnimationData, tokenId: string, path: Array<Waypoint>, nextTokenIds: Array<string> = []) {
+                    if (!animationData[tokenId]) animationData[tokenId] = {path, nextTokenIds};
+                    else {
+                        animationData[tokenId] = {
+                            path: [...animationData[tokenId].path, ...path],
+                            nextTokenIds,
+                        };
+                    }
+                }
+
+                function fillOnCompleteEventOfToken(batchEvent: BatchEvent, animationData: AnimationData, tokenId: string, resolve: () => void) {
+                    if (batchEvent.lifecycle === LifecycleTypes.CASE_END) {
+                        animationData[tokenId].onComplete = () => {
+                            resolve();
+                            setTimeout(() => deleteToken(caseId, tokenId), delta);
+                        };
+                    } else {
+                        animationData[tokenId].onComplete = resolve;
+                    }
+                }
+
+                function buildAnimationDataOfToken(animationData: AnimationData, tokenId: string, elements: Array<string>, batchEventPathEntries: [string, Array<string>][], batchEvent: BatchEvent, resolve: () => void) {
+                    const {
+                        path,
+                        nextTokenIds
+                    } = addElementsToPath(animationData, tokenId, caseId, elements, batchEventPathEntries);
+                    fillAnimationDataOfToken(animationData, tokenId, path, nextTokenIds);
+                    fillOnCompleteEventOfToken(batchEvent, animationData, tokenId, resolve);
+                }
+
                 return new Promise((resolve: () => void) => {
-                    let isAsyncAnimation = batchEvents.some(batchEvent => Object.keys(batchEvent.paths).length > 1);
+                    let animationData: AnimationData = {};
+                    let isAsyncAnimation = batchEvents.some(batchEvent => Object.keys(batchEvent.paths).length > 1)
 
-                    if (isAsyncAnimation) {
-                        let asyncAnimationData: AnimationData = {};
-
-                        batchEvents.forEach(batchEvent => {
-                            const batchEventPathEntries = Object.entries(batchEvent.paths);
-
+                    batchEvents.forEach(batchEvent => {
+                        const batchEventPathEntries = Object.entries(batchEvent.paths);
+                        if (isAsyncAnimation) {
                             batchEventPathEntries.forEach(([tokenId, elements]) => {
-                                let path: Array<Waypoint> = [];
-                                let nextTokenIds: string[];
-                                let token: Token;
-
                                 const tokensOfCurrentCase = tokens[caseId];
-                                if (tokensOfCurrentCase?.[tokenId]) {
-                                    token = tokensOfCurrentCase[tokenId];
-                                } else {
+                                if (!tokensOfCurrentCase?.[tokenId]) {
                                     const [color, show]: [string, boolean] = tokensOfCurrentCase
                                         ? [Object.values(tokensOfCurrentCase)[0].getAttribute("fill"), false]
                                         : [getRandomColor(), true];
-                                    token = createToken(elements[0], caseId, tokenId, color, show);
+                                    createToken(elements[0], caseId, tokenId, color, show);
                                 }
-
-                                if (!asyncAnimationData[tokenId]) path.push(getTokenCoordinates(token));
-                                elements.forEach((elementId, index) => {
-                                    const element = elementRegistry.get(elementId);
-                                    if (!element) {
-                                        console.warn(`The element ${elementId} does not exist!`);
-                                        return;
-                                    }
-
-                                    if (element.type === FlowTypes.FLOW) path = [...path, ...element.waypoints];
-                                    else {
-                                        const centerPoint = calculateCenterPoint(element);
-                                        const lastPoint = path.length ?
-                                            path[path.length - 1] :
-                                            asyncAnimationData[tokenId].path[asyncAnimationData[tokenId].path.length - 1];
-                                        if (lastPoint.x !== centerPoint.x || lastPoint.y !== centerPoint.y) path.push(centerPoint);
-
-                                        if (element.type === NodeTypes.PARALLEL_GATEWAY && index === elements.length - 1) {
-                                            nextTokenIds = batchEventPathEntries
-                                                .filter(([otherTokenId, otherElements]) =>
-                                                    otherElements[0] === elementId &&
-                                                    otherTokenId !== tokenId &&
-                                                    otherElements.length > 1
-                                                )
-                                                .map(([otherTokenId, _]) => otherTokenId);
-                                        }
-                                    }
-                                });
-
-                                if (!asyncAnimationData[tokenId]) asyncAnimationData[tokenId] = { path, nextTokenIds };
-                                else {
-                                    asyncAnimationData[tokenId] = {
-                                        path: [...asyncAnimationData[tokenId].path, ...path],
-                                        nextTokenIds,
-                                    };
-                                }
-
-                                if (batchEvent.lifecycle === LifecycleTypes.CASE_END) {
-                                    asyncAnimationData[tokenId].onComplete = () => {
-                                        resolve();
-                                        setTimeout(() => deleteToken(caseId, tokenId), delta);
-                                    };
-                                } else {
-                                    asyncAnimationData[tokenId].onComplete = resolve;
-                                }
+                                buildAnimationDataOfToken(animationData, tokenId, elements, batchEventPathEntries, batchEvent, resolve);
                             });
-                        });
+                        } else if (batchEventPathEntries.length) {
+                            const [tokenId, elements] = batchEventPathEntries[0];
+                            if (!tokens[caseId]) createToken(elements[0], caseId, tokenId, getRandomColor());
+                            buildAnimationDataOfToken(animationData, tokenId, elements, batchEventPathEntries, batchEvent, resolve);
+                        }
+                    });
 
-                        const pathMap = buildPathMap(asyncAnimationData);
-                        startAsyncAnimations(pathMap, caseId);
-                    } else {
-                        let syncAnimationData: AnimationData = {};
-
-                        batchEvents.forEach(batchEvent => {
-                            const batchEventPathEntries = Object.entries(batchEvent.paths);
-                            if (batchEventPathEntries.length) {
-                                const [tokenId, elements] = batchEventPathEntries[0];
-                                let token = tokens[caseId] ? tokens[caseId][tokenId] : createToken(elements[0], caseId, tokenId, getRandomColor());
-                                let path: Array<Waypoint> = [];
-
-                                if (!syncAnimationData[tokenId]) path.push(getTokenCoordinates(token));
-                                elements.forEach(elementId => {
-                                    const element = elementRegistry.get(elementId);
-                                    if (!element) {
-                                        console.warn(`The element ${elementId} does not exists!`);
-                                        return;
-                                    }
-                                    if (element.type === FlowTypes.FLOW) path = [...path, ...element.waypoints];
-                                    else {
-                                        const centerPoint = calculateCenterPoint(element);
-                                        const lastPoint = path.length ?
-                                            path[path.length - 1] :
-                                            syncAnimationData[tokenId].path[syncAnimationData[tokenId].path.length - 1];
-                                        if (lastPoint.x !== centerPoint.x || lastPoint.y !== centerPoint.y) path.push(centerPoint);
-                                    }
-                                });
-
-                                if (!syncAnimationData[tokenId]) syncAnimationData[tokenId] = { path };
-                                else syncAnimationData[tokenId] = { path: [...syncAnimationData[tokenId].path, ...path] };
-
-                                if (batchEvent.lifecycle === LifecycleTypes.CASE_END) {
-                                    syncAnimationData[tokenId].onComplete = () => {
-                                        resolve();
-                                        setTimeout(() => deleteToken(caseId, tokenId), delta);
-                                    }
-                                } else {
-                                    syncAnimationData[tokenId].onComplete = resolve;
-                                }
-                            }
-                        });
-
-                        if (Object.keys(syncAnimationData).length === 0) setTimeout(resolve, delta);
-                        else Object.entries(syncAnimationData).forEach(animationEntry => {
+                    if (isAsyncAnimation) animateAsyncData(buildPathMap(animationData), caseId);
+                    else {
+                        if (Object.keys(animationData).length === 0) setTimeout(resolve, delta);
+                        else Object.entries(animationData).forEach(animationEntry => {
                             const [tokenId, {path, onComplete}] = animationEntry;
                             animateToken(tokens[caseId][tokenId], path, onComplete);
                         });
@@ -247,29 +229,20 @@ const simulateToken = (simulationData: SimulationData) => {
                     !Object.values(asyncAnimationData).some(data => data.nextTokenIds?.includes(tokenId))
                 );
 
-                tokenIds.forEach(tokenIds => {
-                    buildPathMapRec(tokenIds, pathMap);
-                });
+                tokenIds.forEach(tokenId => { buildPathMapRec(tokenId, pathMap); });
 
                 return pathMap;
             }
 
-            function startAsyncAnimations(pathMap: PathMap, caseId: string, overallDuration: number = delta, isHidden: boolean = false, animatedTokens: Set<string> = new Set()) {
-                const pathMapEntries = Object.entries(pathMap);
-
-                if (pathMapEntries.length === 0) {
-                    console.warn("No root tokens found in pathMap.");
-                    return;
-                }
-
+            function calculateDurations(pathMap: PathMap, animatedTokens: Set<string>, overallDuration: number) {
                 const durations: Record<string, number> = {};
                 const mergingTokenIds = new Array<string>();
 
-                pathMapEntries.forEach(([tokenId, tokenData]) => {
+                Object.entries(pathMap).forEach(([tokenId, tokenData]) => {
                     if (animatedTokens.has(tokenId)) return;
 
-                   if (Object.keys(tokenData.subPaths).length === 1) mergingTokenIds.push(tokenId);
-                   else durations[tokenId] = calculatePathLength(tokenData.path) * overallDuration / tokenData.longestSubPathLength;
+                    if (Object.keys(tokenData.subPaths).length === 1) mergingTokenIds.push(tokenId);
+                    else durations[tokenId] = calculatePathLength(tokenData.path) * overallDuration / tokenData.longestSubPathLength;
                 });
 
                 if (mergingTokenIds.length) {
@@ -290,17 +263,22 @@ const simulateToken = (simulationData: SimulationData) => {
                     });
                 }
 
-                pathMapEntries.forEach(([tokenId, tokenData]) => {
+                return durations;
+            }
+
+            function animateAsyncData(pathMap: PathMap, caseId: string, overallDuration: number = delta, isHidden: boolean = false, animatedTokens: Set<string> = new Set()) {
+                const durations = calculateDurations(pathMap, animatedTokens, overallDuration);
+
+                Object.entries(pathMap).forEach(([tokenId, tokenData]) => {
                     if (animatedTokens.has(tokenId)) return;
 
                     const token = tokens[caseId][tokenId];
                     if (isHidden) viewport.appendChild(token);
                     const duration = durations[tokenId];
-                    console.log(tokenId, duration);
                     const onComplete = () => {
                         if (Object.keys(tokenData.subPaths).length) {
                             deleteToken(caseId, tokenId);
-                            startAsyncAnimations(tokenData.subPaths, caseId, overallDuration - duration, true, animatedTokens);
+                            animateAsyncData(tokenData.subPaths, caseId, overallDuration - duration, true, animatedTokens);
                         } else {
                             tokenData.onComplete();
                         }
@@ -312,11 +290,11 @@ const simulateToken = (simulationData: SimulationData) => {
 
             function animateToken(token: Token, path: Waypoint[], onComplete: () => void, duration: number = delta) {
                 const startTime = performance.now();
+                let pathLength = calculatePathLength(path);
 
                 function animate(time: number) {
                     const elapsedTime = time - startTime;
                     const progress = Math.min(elapsedTime / duration, 1);
-                    let pathLength = calculatePathLength(path);
                     const currentDistance = progress * pathLength;
 
                     let accumulatedDistance = 0;
@@ -337,11 +315,8 @@ const simulateToken = (simulationData: SimulationData) => {
                         accumulatedDistance += segmentLength;
                     }
 
-                    if (progress < 1) {
-                        requestAnimationFrame(animate);
-                    } else {
-                        onComplete();
-                    }
+                    if (progress < 1) requestAnimationFrame(animate);
+                    else onComplete();
                 }
 
                 requestAnimationFrame(animate);
@@ -360,18 +335,15 @@ const simulateToken = (simulationData: SimulationData) => {
                     else {
                         const eventsByCaseId: EventsByCaseId = {};
                         batch.forEach((event) => {
-                            if (!eventsByCaseId[event.case_id]) {
-                                eventsByCaseId[event.case_id] = [];
-                            }
+                            if (!eventsByCaseId[event.case_id]) eventsByCaseId[event.case_id] = [];
                             eventsByCaseId[event.case_id].push(event);
                         });
 
-                        await Promise.all(Object.entries(eventsByCaseId).map(
-                            ([caseId, batchEvents]) => handleBatchEvents({
-                                caseId,
-                                batchEvents
-                            })
-                        ));
+                        await Promise.all(
+                            Object.entries(eventsByCaseId).map(([caseId, batchEvents]) =>
+                                handleBatchEvents({ caseId, batchEvents })
+                            )
+                        );
                     }
                 }
             }
