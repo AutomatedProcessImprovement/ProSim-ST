@@ -19,12 +19,56 @@ const simulateToken = (simulationData: SimulationData) => {
         tokenSimulation: ['type', function(canvas: Canvas, elementRegistry: ElementRegistry) {
             const delta = 2000; // milliseconds
             const tokens: Tokens = {};
+            const coordinateMap: Record<string, Record<string, Array<Token>>> = {};
             let viewport: HTMLDivElement;
             let batches: Batch[];
 
-            function placeToken(token: Token, x: string, y: string) {
-                token.setAttribute("cx", x);
-                token.setAttribute("cy", y);
+            function placeToken(point: Waypoint, caseId: string, tokenId: string) {
+                let { x, y } = point;
+                const token = tokens[caseId][tokenId];
+                updateCoordinateMap(`${x}_${y}`, caseId, tokenId);
+                token.setAttribute("cx", x.toString());
+                token.setAttribute("cy", y.toString());
+            }
+
+            function updateCoordinateMap(coordinatesKey: string, caseId: string, tokenId: string) {
+                const oldCoordinatesKey = deleteCoordinates(caseId, tokenId);
+                if (!coordinateMap[coordinatesKey]) coordinateMap[coordinatesKey] = {};
+                if (!coordinateMap[coordinatesKey][caseId]) coordinateMap[coordinatesKey][caseId] = [];
+                coordinateMap[coordinatesKey][caseId].push(tokens[caseId][tokenId]);
+                updateTokenSizes(coordinatesKey);
+                updateTokenSizes(oldCoordinatesKey);
+            }
+
+            function deleteCoordinates(caseId: string, tokenId: string): string {
+                const token = tokens[caseId][tokenId];
+                const oldCoordinates = getTokenCoordinates(token);
+                const oldCoordinatesKey = `${oldCoordinates.x}_${oldCoordinates.y}`;
+                if (coordinateMap[oldCoordinatesKey]?.[caseId]) {
+                    const index = coordinateMap[oldCoordinatesKey][caseId].indexOf(token);
+                    if (index !== -1) {
+                        coordinateMap[oldCoordinatesKey][caseId].splice(index, 1);
+                        if (coordinateMap[oldCoordinatesKey][caseId].length === 0) {
+                            delete coordinateMap[oldCoordinatesKey][caseId];
+                        }
+                        if (Object.keys(coordinateMap[oldCoordinatesKey]).length === 0) {
+                            delete coordinateMap[oldCoordinatesKey];
+                        }
+                    }
+                }
+
+                return oldCoordinatesKey;
+            }
+
+            function updateTokenSizes(newCoordinatesKey: string) {
+                if (coordinateMap[newCoordinatesKey]) {
+                    const newSize = Object.keys(coordinateMap[newCoordinatesKey]).length * 10;
+                    Object.values(coordinateMap[newCoordinatesKey]).forEach((caseTokens) => {
+                        caseTokens.forEach((token) => {
+                            token.setAttribute("r", newSize.toString());
+                        });
+                    });
+                }
             }
 
             function calculateCenterPoint(shape: Node): Waypoint {
@@ -60,9 +104,9 @@ const simulateToken = (simulationData: SimulationData) => {
                 const activeElement = elementRegistry.get(activeElementId);
 
                 function addTokenToList(token: Token, point: Waypoint, show: boolean) {
-                    placeToken(token, point.x.toString(), point.y.toString());
-                    if (show) viewport.appendChild(token);
                     tokens[caseId][tokenId] = token;
+                    placeToken(point, caseId, tokenId);
+                    if (show) viewport.appendChild(token);
                 }
 
                 if (activeElement?.type === FlowTypes.FLOW) {
@@ -76,6 +120,7 @@ const simulateToken = (simulationData: SimulationData) => {
             }
 
             function deleteToken(caseId: string, tokenId: string) {
+                deleteCoordinates(caseId, tokenId);
                 viewport.removeChild(tokens[caseId][tokenId]);
                 delete tokens[caseId][tokenId];
             }
@@ -147,14 +192,10 @@ const simulateToken = (simulationData: SimulationData) => {
                 }
 
                 function fillOnCompleteEventOfToken(batchEvent: BatchEvent, animationData: AnimationData, tokenId: string, resolve: () => void) {
-                    if (batchEvent.lifecycle === LifecycleTypes.CASE_END) {
-                        animationData[tokenId].onComplete = () => {
-                            resolve();
-                            setTimeout(() => deleteToken(caseId, tokenId), delta);
-                        };
-                    } else {
-                        animationData[tokenId].onComplete = resolve;
-                    }
+                    animationData[tokenId].onComplete = () => {
+                        if (batchEvent.lifecycle === LifecycleTypes.CASE_END) setTimeout(() => deleteToken(caseId, tokenId), delta);
+                        resolve();
+                    };
                 }
 
                 function buildAnimationDataOfToken(animationData: AnimationData, tokenId: string, elements: Array<string>, batchEventPathEntries: [string, Array<string>][], batchEvent: BatchEvent, resolve: () => void) {
@@ -195,7 +236,7 @@ const simulateToken = (simulationData: SimulationData) => {
                         if (Object.keys(animationData).length === 0) setTimeout(resolve, delta);
                         else Object.entries(animationData).forEach(animationEntry => {
                             const [tokenId, {path, onComplete}] = animationEntry;
-                            animateToken(tokens[caseId][tokenId], path, onComplete);
+                            animateToken(path, onComplete, caseId, tokenId);
                         });
                     }
                 });
@@ -284,11 +325,11 @@ const simulateToken = (simulationData: SimulationData) => {
                         }
                     }
                     animatedTokens.add(tokenId);
-                    animateToken(token, tokenData.path, onComplete, duration);
+                    animateToken(tokenData.path, onComplete, caseId, tokenId, duration);
                 });
             }
 
-            function animateToken(token: Token, path: Waypoint[], onComplete: () => void, duration: number = delta) {
+            function animateToken(path: Waypoint[], onComplete: () => void, caseId: string, tokenId: string, duration: number = delta) {
                 const startTime = performance.now();
                 let pathLength = calculatePathLength(path);
 
@@ -309,7 +350,7 @@ const simulateToken = (simulationData: SimulationData) => {
                             const segmentProgress = (currentDistance - accumulatedDistance) / segmentLength;
                             const x = segmentStart.x + dx * segmentProgress;
                             const y = segmentStart.y + dy * segmentProgress;
-                            placeToken(token, x.toString(), y.toString());
+                            placeToken({ x, y }, caseId, tokenId);
                             break;
                         }
                         accumulatedDistance += segmentLength;
