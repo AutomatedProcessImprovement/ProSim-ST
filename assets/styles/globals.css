@@ -28,3 +28,16 @@ h1 {
     text-wrap: balance;
   }
 }
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.token.fade-out {
+  animation: fadeOut forwards; /* No duration specified here as the duration will be assigned dynamically in the logic */
+}

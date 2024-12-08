@@ -137,10 +137,20 @@ const simulateToken = (simulationData: SimulationData) => {
                 return token;
             }
 
-            function deleteToken(caseId: string, tokenId: string) {
-                deleteCoordinates(caseId, tokenId);
-                viewport.removeChild(tokens[caseId][tokenId]);
-                delete tokens[caseId][tokenId];
+            function deleteToken(caseId: string, tokenId: string, fadeOut: boolean = false) {
+                const token = tokens[caseId][tokenId];
+
+                function processDeletion() {
+                    deleteCoordinates(caseId, tokenId);
+                    viewport.removeChild(token);
+                    delete tokens[caseId][tokenId];
+                }
+
+                if (fadeOut) {
+                    token.style.animationDuration = `${delta / 1000}s`;
+                    token.classList.add("fade-out");
+                    token.addEventListener("animationend", processDeletion);
+                } else processDeletion();
             }
 
             function calculatePathLength(path: Waypoint[]): number {
@@ -211,7 +221,7 @@ const simulateToken = (simulationData: SimulationData) => {
 
                 function fillOnCompleteEventOfToken(batchEvent: BatchEvent, animationData: AnimationData, tokenId: string, resolve: () => void) {
                     animationData[tokenId].onComplete = () => {
-                        if (batchEvent.lifecycle === LifecycleTypes.CASE_END) setTimeout(() => deleteToken(caseId, tokenId), delta);
+                        if (batchEvent.lifecycle === LifecycleTypes.CASE_END) deleteToken(caseId, tokenId, true);
                         resolve();
                     };
                 }
