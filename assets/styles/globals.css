@@ -23,6 +23,14 @@ h1 {
   transition: transform 0.1s linear;
 }
 
+.token.fade-out {
+  animation: fadeOut forwards; /* No duration specified here as the duration will be assigned dynamically in the logic */
+}
+
+.token.fade-in {
+  animation: fadeIn forwards; /* No duration specified here as the duration will be assigned dynamically in the logic */
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;
@@ -38,6 +46,11 @@ h1 {
   }
 }
 
-.token.fade-out {
-  animation: fadeOut forwards; /* No duration specified here as the duration will be assigned dynamically in the logic */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }

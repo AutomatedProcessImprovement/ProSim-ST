@@ -112,27 +112,33 @@ const simulateToken = (simulationData: SimulationData) => {
                 });
             }
 
-            function createToken(activeElementId: string, caseId: string, tokenId: string, color: string, show: boolean = true): Token {
+            function createToken(activeElementId: string, caseId: string, tokenId: string, color: string, fadeIn: boolean = false, show: boolean = true): Token {
                 if (!tokens[caseId]) tokens[caseId] = {};
-
                 const token = document.createElementNS("http://www.w3.org/2000/svg", "circle"); // this should be installed locally
                 token.setAttribute("r", "10");
                 token.setAttribute("fill", color);
                 token.classList.add("token");
                 const activeElement = elementRegistry.get(activeElementId);
 
-                function addTokenToList(token: Token, point: Waypoint, show: boolean) {
+                function processCreation(point: Waypoint) {
                     tokens[caseId][tokenId] = token;
                     placeToken(point, caseId, tokenId);
-                    if (show) viewport.appendChild(token);
+                    if (show) {
+                        if (fadeIn) {
+                            token.style.animationDuration = `${delta / 1000}s`;
+                            token.classList.add("fade-in");
+                            token.addEventListener("animationend", () => {
+                                token.classList.remove("fade-in");
+                            });
+                        }
+                        viewport.appendChild(token);
+                    }
                 }
 
                 if (activeElement?.type === FlowTypes.FLOW) {
                     const waypoints = activeElement.waypoints;
-                    if (waypoints && waypoints.length) addTokenToList(token, waypoints[waypoints.length - 1], show);
-                } else {
-                    addTokenToList(token, calculateCenterPoint(activeElement), show)
-                }
+                    if (waypoints && waypoints.length) processCreation(waypoints[waypoints.length - 1]);
+                } else processCreation(calculateCenterPoint(activeElement));
 
                 return token;
             }
@@ -245,16 +251,16 @@ const simulateToken = (simulationData: SimulationData) => {
                             batchEventPathEntries.forEach(([tokenId, elements]) => {
                                 const tokensOfCurrentCase = tokens[caseId];
                                 if (!tokensOfCurrentCase?.[tokenId]) {
-                                    const [color, show]: [string, boolean] = tokensOfCurrentCase
+                                    const [color, fadeIn]: [string, boolean] = tokensOfCurrentCase
                                         ? [Object.values(tokensOfCurrentCase)[0].getAttribute("fill"), false]
                                         : [getRandomColor(), true];
-                                    createToken(elements[0], caseId, tokenId, color, show);
+                                    createToken(elements[0], caseId, tokenId, color, fadeIn, fadeIn);
                                 }
                                 buildAnimationDataOfToken(animationData, tokenId, elements, batchEventPathEntries, batchEvent, resolve);
                             });
                         } else if (batchEventPathEntries.length) {
                             const [tokenId, elements] = batchEventPathEntries[0];
-                            if (!tokens[caseId]) createToken(elements[0], caseId, tokenId, getRandomColor());
+                            if (!tokens[caseId]) createToken(elements[0], caseId, tokenId, getRandomColor(), true);
                             buildAnimationDataOfToken(animationData, tokenId, elements, batchEventPathEntries, batchEvent, resolve);
                         }
                     });
