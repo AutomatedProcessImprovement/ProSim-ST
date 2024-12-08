@@ -26,21 +26,22 @@ const simulateToken = (simulationData: SimulationData) => {
             function placeToken(point: Waypoint, caseId: string, tokenId: string) {
                 let { x, y } = point;
                 const token = tokens[caseId][tokenId];
-                updateCoordinateMap(`${x}_${y}`, caseId, tokenId);
+                updateCoordinateMap(point, caseId, tokenId);
                 token.setAttribute("cx", x.toString());
                 token.setAttribute("cy", y.toString());
             }
 
-            function updateCoordinateMap(coordinatesKey: string, caseId: string, tokenId: string) {
-                const oldCoordinatesKey = deleteCoordinates(caseId, tokenId);
-                if (!coordinateMap[coordinatesKey]) coordinateMap[coordinatesKey] = {};
-                if (!coordinateMap[coordinatesKey][caseId]) coordinateMap[coordinatesKey][caseId] = [];
-                coordinateMap[coordinatesKey][caseId].push(tokens[caseId][tokenId]);
-                updateTokenSizes(coordinatesKey);
-                updateTokenSizes(oldCoordinatesKey);
+            function updateCoordinateMap(newPoint: Waypoint, caseId: string, tokenId: string) {
+                const oldPoint = deleteCoordinates(caseId, tokenId);
+                const newCoordinatesKey = `${newPoint.x}_${newPoint.y}`;
+                if (!coordinateMap[newCoordinatesKey]) coordinateMap[newCoordinatesKey] = {};
+                if (!coordinateMap[newCoordinatesKey][caseId]) coordinateMap[newCoordinatesKey][caseId] = [];
+                coordinateMap[newCoordinatesKey][caseId].push(tokens[caseId][tokenId]);
+                updateTokenSizes(newPoint);
+                updateTokenSizes(oldPoint);
             }
 
-            function deleteCoordinates(caseId: string, tokenId: string): string {
+            function deleteCoordinates(caseId: string, tokenId: string): Waypoint {
                 const token = tokens[caseId][tokenId];
                 const oldCoordinates = getTokenCoordinates(token);
                 const oldCoordinatesKey = `${oldCoordinates.x}_${oldCoordinates.y}`;
@@ -57,18 +58,35 @@ const simulateToken = (simulationData: SimulationData) => {
                     }
                 }
 
-                return oldCoordinatesKey;
+                return oldCoordinates;
             }
 
-            function updateTokenSizes(newCoordinatesKey: string) {
-                if (coordinateMap[newCoordinatesKey]) {
-                    const newSize = Object.keys(coordinateMap[newCoordinatesKey]).length * 10;
-                    Object.values(coordinateMap[newCoordinatesKey]).forEach((caseTokens) => {
+            function updateTokenSizes(point: Waypoint, threshold: number = 0.3) {
+                let totalTokens = 0;
+                const affectedCoordinateKeys: Array<string> = [];
+                const affectedCases: Array<string> = [];
+
+                Object.keys(coordinateMap).forEach((key) => {
+                    const [coordinateX, coordinateY] = key.split('_').map(Number);
+                    if (Math.abs(coordinateX - point.x) <= threshold && Math.abs(coordinateY - point.y) <= threshold) {
+                        Object.keys(coordinateMap[key]).forEach(caseId => {
+                           if (!affectedCases.includes(caseId)) {
+                               totalTokens++;
+                               affectedCases.push(caseId);
+                           }
+                        });
+                        affectedCoordinateKeys.push(key);
+                    }
+                });
+
+                const newSize = 10 + (totalTokens - 1) * 5;
+                affectedCoordinateKeys.forEach((coordinatesKey) => {
+                    Object.values(coordinateMap[coordinatesKey]).forEach((caseTokens) => {
                         caseTokens.forEach((token) => {
                             token.setAttribute("r", newSize.toString());
                         });
                     });
-                }
+                });
             }
 
             function calculateCenterPoint(shape: Node): Waypoint {
