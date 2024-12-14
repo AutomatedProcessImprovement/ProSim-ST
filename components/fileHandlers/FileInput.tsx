@@ -3,15 +3,17 @@ import {clsx} from "clsx/lite";
 import {ArrowDownTrayIcon, ArrowUpTrayIcon, NoSymbolIcon} from "@heroicons/react/24/outline";
 import {filesize} from "filesize";
 import {toast} from "sonner";
+import {FileType} from "@definitions/config";
 
 interface Props {
     onChange: (files: File[]) => void,
     accepts: Accept,
     maxSize: number,
     message?: string,
+    type?: FileType,
 }
 
-const FileInput = ({ onChange, accepts, maxSize, message }: Props) => {
+const FileInput = ({ onChange, accepts, maxSize, message, type = 'CSV' }: Props) => {
     const {
         getRootProps,
         getInputProps,
@@ -64,7 +66,7 @@ const FileInput = ({ onChange, accepts, maxSize, message }: Props) => {
             isDragReject && <>
                 <NoSymbolIcon className='size-24 stroke-red-700 stroke-1'/>
                 <p className='mt-12 text-center font-black text-red-700'>
-                    Only CSV files allowed!
+                    Only {type} files allowed!
                 </p>
             </>
         }

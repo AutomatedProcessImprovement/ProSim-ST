@@ -12,7 +12,7 @@ import {
 } from "@heroicons/react/24/outline";
 import {AlgorithmConfiguration, LogMapping} from "@definitions/config.d.ts";
 import {toast} from "sonner";
-import { MappingInput, Stepper, Step, BpmnInput, Preview } from "@components/simulationSetup";
+import { MappingInput, Stepper, Step, ConfigFileInput, Preview } from "@components/simulationSetup";
 import { ConfigInput, WindowSizeInput, StartingPointInput } from "@components/simulationSetup/configInput";
 import { CsvContext } from "@context/CsvContext";
 import {clsx} from "clsx/lite";
@@ -136,14 +136,24 @@ const Setup = () => {
                     </ConfigInput>
                 </div>
             </Step>
-            <Step label='Upload the BPMN model'
+            <Step label='Upload the BPMN model and JSON file'
                   icon={<WindowIcon />}
                   onNext={onBpmnCompleted}
             >
-                <p className = 'mb-4 px-4 text-justify text-sm font-medium italic text-slate-400'>
-                    Only the files with the <code>.bpmn</code> extension are accepted
-                </p>
-                <BpmnInput />
+                <div className = 'flex'>
+                    <div className = 'w-1/2'>
+                        <p className = 'mb-4 px-4 text-justify text-sm font-medium italic text-slate-400'>
+                            Only the files with the <code>.bpmn</code> extension are accepted
+                        </p>
+                        <ConfigFileInput type="BPMN" />
+                    </div>
+                    <div className = 'w-1/2'>
+                        <p className = 'mb-4 px-4 text-justify text-sm font-medium italic text-slate-400'>
+                            Only the files with the <code>.json</code> extension are accepted
+                        </p>
+                        <ConfigFileInput type="JSON" />
+                    </div>
+                </div>
             </Step>
             <Step label='Validate configuration'
                   icon={<ShieldCheckIcon />}
@@ -157,9 +167,13 @@ const Setup = () => {
                     <div className='mb-4 grid grid-cols-3 gap-2'>
                         <Preview label='Files'>
                             <ul>
+                                <li className='flex items-center gap-2 font-mono mb-2'>
+                                    <DocumentTextIcon className='size-3'/>
+                                    <span className='w-11/12 break-words'>{(data.bpmnFile as File)?.name}</span>
+                                </li>
                                 <li className='flex items-center gap-2 font-mono'>
                                     <DocumentTextIcon className='size-3'/>
-                                    {(data.bpmnFile as File)?.name}
+                                    <span className='w-11/12 break-words'>{(data.jsonFile as File)?.name}</span>
                                 </li>
                             </ul>
                         </Preview>

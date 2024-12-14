@@ -12,6 +12,7 @@ export const DataContext = createContext({
             starting_point: '',
         },
         bpmnFile: null,
+        jsonFile: null,
     },
     setData: (value:any) => value,
 });
@@ -26,6 +27,7 @@ export const DataProvider = ({ children }) => {
             starting_point: '',
         },
         bpmnFile: null,
+        jsonFile: null,
     });
 
     return (
