@@ -1,6 +1,6 @@
 "use client";
 
-import {useContext, useEffect} from "react";
+import {useContext, useEffect, useState} from "react";
 import {DataContext} from "@context/DataContext";
 import {useRouter} from "next/navigation";
 import {
@@ -12,7 +12,7 @@ import {
     WindowIcon
 } from "@heroicons/react/24/outline";
 import {AlgorithmConfiguration, LogMapping} from "@definitions/config/interfaces";
-import {FileTypes} from "@definitions/config/enums";
+import {FileTypes, TimeUnits} from "@definitions/config/enums";
 import {toast} from "sonner";
 import {ConfigFileInput, MappingInput, Preview, Step, Stepper} from "@components/simulationSetup";
 import {ConfigInput, SimulationHorizonInput, StartingPointInput} from "@components/simulationSetup/configInput";
@@ -23,6 +23,7 @@ import axios, {AxiosError} from "axios";
 const Setup = () => {
     const { data, setData } = useContext(DataContext);
     const { csvData: { headers, logStartDate, logEndDate } } = useContext(CsvContext);
+    const [ endDate, setEndDate ] = useState<Date>(new Date());
     const router = useRouter();
 
     useEffect(() => {
@@ -30,6 +31,32 @@ const Setup = () => {
             router.replace('/');
         }
     }, [data.id, router]);
+
+    useEffect(() => {
+        if (data.config.starting_point) {
+            const currentDate = new Date(data.config.starting_point);
+            const horizon = data.config.simulation_horizon_value;
+            const newEndDate = new Date(currentDate);
+
+            switch (data.config.simulation_horizon_unit) {
+                case TimeUnits.DAYS:
+                    newEndDate.setDate(currentDate.getDate() + horizon);
+                    break;
+                case TimeUnits.WEEKS:
+                    newEndDate.setDate(currentDate.getDate() + horizon * 7);
+                    break;
+                case TimeUnits.MONTHS:
+                    newEndDate.setMonth(currentDate.getMonth() + horizon);
+                    break;
+            }
+
+            setEndDate(newEndDate);
+        }
+    }, [
+        data.config.starting_point,
+        data.config.simulation_horizon_unit,
+        data.config.simulation_horizon_value,
+    ]);
 
     const onMappingCompleted = (data: FormData) => {
         const logMapping: LogMapping = {
@@ -79,10 +106,16 @@ const Setup = () => {
     }
 
     const onBpmnCompleted = () => {
-        if (data.bpmnFile) return true;
+        if (data.bpmnFile && data.jsonFile) return true;
         else {
-            toast.error('Invalid BPMN', {description: 'You have to upload a BPMN model!'});
-            return false;
+            if (!data.bpmnFile) {
+                toast.error('Invalid BPMN', {description: 'You have to upload a BPMN model!'});
+                return false;
+            }
+            if (!data.jsonFile) {
+                toast.error('Invalid JSON', {description: 'You have to upload a JSON file!'});
+                return false;
+            }
         }
     }
 
@@ -130,12 +163,17 @@ const Setup = () => {
                   onNext={onConfigCompleted}
             >
                 <div className = 'flex flex-col gap-4 p-4'>
+                    <ConfigInput label='Starting Point' description='The time at which the short-term simulation begins (by default, the end of the uploaded event log).'>
+                        <StartingPointInput minDate={logStartDate} maxDate={logEndDate} />
+                    </ConfigInput>
                     <ConfigInput label='Simulation Horizon' description='The duration (in time) to simulate, starting from the specified starting point.'>
                         <SimulationHorizonInput />
                     </ConfigInput>
-                    <ConfigInput label='Starting Point' description='This is a point in time between the start and end of the log.'>
-                        <StartingPointInput minDate={logStartDate} maxDate={logEndDate} />
-                    </ConfigInput>
+                    <small>
+                        With the current configuration, ProST will compute the state of the process
+                        at {new Date(data.config.starting_point).toLocaleString()} and
+                        simulate the execution of the process until {endDate.toLocaleString()}
+                    </small>
                 </div>
             </Step>
             <Step label='Upload the BPMN model and JSON file'

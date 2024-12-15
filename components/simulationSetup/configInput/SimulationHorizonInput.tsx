@@ -1,6 +1,6 @@
 "use client";
 
-import {ChangeEvent, useContext, useState} from "react";
+import {ChangeEvent, useContext, useEffect, useState} from "react";
 import {DataContext} from "@context/DataContext";
 import {Listbox, ListboxButton, ListboxOption, ListboxOptions} from "@headlessui/react";
 import {CheckIcon, ChevronDownIcon} from "@heroicons/react/24/outline";
@@ -8,17 +8,49 @@ import {floor} from "@floating-ui/utils";
 import {TimeUnits} from "@definitions/config/enums";
 
 const SimulationHorizonInput = () => {
-    const { data: { config: { simulation_horizon_value, simulation_horizon_unit } } } = useContext(DataContext);
+    const { data: { config: { simulation_horizon_value, simulation_horizon_unit } }, setData } = useContext(DataContext);
     const [value, setValue] = useState(simulation_horizon_value || 8);
     const [unit, setUnit] = useState(simulation_horizon_unit || TimeUnits.WEEKS);
     const units: Array<TimeUnits> = [TimeUnits.DAYS, TimeUnits.WEEKS, TimeUnits.MONTHS];
 
+    useEffect(() => {
+        setValueToContext(value);
+    }, [value]);
+
+    useEffect(() => {
+       setUnitToContext(unit);
+    }, [unit]);
+
     const handleValueChange = (e: ChangeEvent<HTMLInputElement>) => {
-        setValue(Math.max(1, floor(Number(e.target.value))));
+        const newValue = Math.max(1, floor(Number(e.target.value)))
+        setValue(newValue);
+        setValueToContext(newValue);
     };
 
     const handleUnitChange = (val: TimeUnits) => {
-        setUnit(units.includes(val) ? val : TimeUnits.WEEKS);
+        const newUnit = units.includes(val) ? val : TimeUnits.WEEKS
+        setUnit(newUnit);
+        setUnitToContext(newUnit);
+    }
+
+    function setUnitToContext(newUnit: TimeUnits) {
+        setData((prev) => ({
+            ...prev,
+            config: {
+                ...prev.config,
+                simulation_horizon_unit: newUnit,
+            },
+        }));
+    }
+
+    function setValueToContext(newValue: number) {
+        setData((prev) => ({
+            ...prev,
+            config: {
+                ...prev.config,
+                simulation_horizon_value: newValue,
+            },
+        }));
     }
 
     return <>
