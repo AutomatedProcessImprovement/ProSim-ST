@@ -3,17 +3,17 @@ import {clsx} from "clsx/lite";
 import {ArrowDownTrayIcon, ArrowUpTrayIcon, NoSymbolIcon} from "@heroicons/react/24/outline";
 import {filesize} from "filesize";
 import {toast} from "sonner";
-import {FileType} from "@definitions/config";
+import {FileTypes} from "@definitions/config/enums";
 
 interface Props {
     onChange: (files: File[]) => void,
     accepts: Accept,
     maxSize: number,
     message?: string,
-    type?: FileType,
+    type?: FileTypes,
 }
 
-const FileInput = ({ onChange, accepts, maxSize, message, type = 'CSV' }: Props) => {
+const FileInput = ({ onChange, accepts, maxSize, message, type = FileTypes.CSV }: Props) => {
     const {
         getRootProps,
         getInputProps,

@@ -1,29 +1,30 @@
 "use client";
 
-import {useContext, useState, ChangeEvent} from "react";
+import {ChangeEvent, useContext, useState} from "react";
 import {DataContext} from "@context/DataContext";
-import {Listbox, ListboxOptions, ListboxOption, ListboxButton} from "@headlessui/react";
+import {Listbox, ListboxButton, ListboxOption, ListboxOptions} from "@headlessui/react";
 import {CheckIcon, ChevronDownIcon} from "@heroicons/react/24/outline";
 import {floor} from "@floating-ui/utils";
+import {TimeUnits} from "@definitions/config/enums";
 
-const WindowSizeInput = () => {
-    const { data: { config: { window_size_value, window_size_unit } } } = useContext(DataContext);
-    const [value, setValue] = useState(window_size_value || 1);
-    const [unit, setUnit] = useState(window_size_unit || 'days');
-    const units = ['days', 'weeks', 'months'];
+const SimulationHorizonInput = () => {
+    const { data: { config: { simulation_horizon_value, simulation_horizon_unit } } } = useContext(DataContext);
+    const [value, setValue] = useState(simulation_horizon_value || 8);
+    const [unit, setUnit] = useState(simulation_horizon_unit || TimeUnits.WEEKS);
+    const units: Array<TimeUnits> = [TimeUnits.DAYS, TimeUnits.WEEKS, TimeUnits.MONTHS];
 
     const handleValueChange = (e: ChangeEvent<HTMLInputElement>) => {
         setValue(Math.max(1, floor(Number(e.target.value))));
     };
 
-    const handleUnitChange = (val: string) => {
-        setUnit(units.includes(val) ? val : 'days');
+    const handleUnitChange = (val: TimeUnits) => {
+        setUnit(units.includes(val) ? val : TimeUnits.WEEKS);
     }
 
     return <>
-        <input type="number" name="window_size_value" value={value} onChange={handleValueChange} min={1}
+        <input type="number" name="simulation_horizon_value" value={value} onChange={handleValueChange} min={1}
                className='w-1/2 rounded-2xl bg-white px-4 py-1 me-0.5 text-left data-[invalid]:border-2 data-[invalid]:border-red-500 data-[focused]:bg-slate-200'/>
-        <Listbox name="window_size_unit" value={unit as any} onChange={handleUnitChange}>
+        <Listbox name="simulation_horizon_unit" value={unit as any} onChange={handleUnitChange}>
             <ListboxButton className = {`group flex w-1/2 flex-row items-center 
                     justify-between rounded-2xl bg-white px-4 py-1 text-left
                     data-[invalid]:border-2 data-[invalid]:border-red-500 
@@ -45,4 +46,4 @@ const WindowSizeInput = () => {
     </>
 }
 
-export default WindowSizeInput;
+export default SimulationHorizonInput;

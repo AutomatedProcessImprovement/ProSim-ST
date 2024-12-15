@@ -1,9 +1,9 @@
 import ConfigInput from "./ConfigInput";
-import WindowSizeInput from './WindowSizeInput';
+import SimulationHorizonInput from './SimulationHorizonInput';
 import StartingPointInput from './StartingPointInput';
 
 export {
     ConfigInput,
-    WindowSizeInput,
+    SimulationHorizonInput,
     StartingPointInput,
 }

@@ -4,17 +4,19 @@ import {useContext, useEffect} from "react";
 import {DataContext} from "@context/DataContext";
 import {useRouter} from "next/navigation";
 import {
-    AdjustmentsHorizontalIcon, ArrowRightIcon,
+    AdjustmentsHorizontalIcon,
+    ArrowRightIcon,
     ArrowsRightLeftIcon,
     DocumentTextIcon,
     ShieldCheckIcon,
     WindowIcon
 } from "@heroicons/react/24/outline";
-import {AlgorithmConfiguration, LogMapping} from "@definitions/config.d.ts";
+import {AlgorithmConfiguration, LogMapping} from "@definitions/config/interfaces";
+import {FileTypes} from "@definitions/config/enums";
 import {toast} from "sonner";
-import { MappingInput, Stepper, Step, ConfigFileInput, Preview } from "@components/simulationSetup";
-import { ConfigInput, WindowSizeInput, StartingPointInput } from "@components/simulationSetup/configInput";
-import { CsvContext } from "@context/CsvContext";
+import {ConfigFileInput, MappingInput, Preview, Step, Stepper} from "@components/simulationSetup";
+import {ConfigInput, SimulationHorizonInput, StartingPointInput} from "@components/simulationSetup/configInput";
+import {CsvContext} from "@context/CsvContext";
 import {clsx} from "clsx/lite";
 import axios, {AxiosError} from "axios";
 
@@ -58,8 +60,8 @@ const Setup = () => {
 
     const onConfigCompleted = (data: FormData) => {
         const algorithmConfiguration: AlgorithmConfiguration = {
-            window_size_value: data.has('window_size_value') ? data.get('window_size_value') as number : undefined,
-            window_size_unit: data.has('window_size_unit') ? data.get('window_size_unit') as string : undefined,
+            simulation_horizon_value: data.has('simulation_horizon_value') ? data.get('simulation_horizon_value') as number : undefined,
+            simulation_horizon_unit: data.has('simulation_horizon_unit') ? data.get('simulation_horizon_unit') as string : undefined,
             starting_point: data.has('starting_point') ? data.get('starting_point') as string : undefined,
         }
 
@@ -128,8 +130,8 @@ const Setup = () => {
                   onNext={onConfigCompleted}
             >
                 <div className = 'flex flex-col gap-4 p-4'>
-                    <ConfigInput label='Window Size' description='The window size determines the amount of time represented by each of the windows.'>
-                        <WindowSizeInput />
+                    <ConfigInput label='Simulation Horizon' description='The duration (in time) to simulate, starting from the specified starting point.'>
+                        <SimulationHorizonInput />
                     </ConfigInput>
                     <ConfigInput label='Starting Point' description='This is a point in time between the start and end of the log.'>
                         <StartingPointInput minDate={logStartDate} maxDate={logEndDate} />
@@ -145,13 +147,13 @@ const Setup = () => {
                         <p className = 'mb-4 px-4 text-justify text-sm font-medium italic text-slate-400'>
                             Only the files with the <code>.bpmn</code> extension are accepted
                         </p>
-                        <ConfigFileInput type="BPMN" />
+                        <ConfigFileInput type={FileTypes.BPMN} />
                     </div>
                     <div className = 'w-1/2'>
                         <p className = 'mb-4 px-4 text-justify text-sm font-medium italic text-slate-400'>
                             Only the files with the <code>.json</code> extension are accepted
                         </p>
-                        <ConfigFileInput type="JSON" />
+                        <ConfigFileInput type={FileTypes.JSON} />
                     </div>
                 </div>
             </Step>

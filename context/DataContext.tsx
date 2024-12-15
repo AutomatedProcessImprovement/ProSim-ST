@@ -1,14 +1,15 @@
 "use client";
 
 import {createContext, useState} from "react";
+import {TimeUnits} from "@definitions/config/enums";
 
 export const DataContext = createContext({
     data: {
         id: '',
         mapping: {},
         config: {
-            window_size_value: 1,
-            window_size_unit: 'days',
+            simulation_horizon_value: 8,
+            simulation_horizon_unit: TimeUnits.WEEKS,
             starting_point: '',
         },
         bpmnFile: null,
@@ -22,8 +23,8 @@ export const DataProvider = ({ children }) => {
         id: '',
         mapping: {},
         config: {
-            window_size_value: 1,
-            window_size_unit: 'days',
+            simulation_horizon_value: 8,
+            simulation_horizon_unit: TimeUnits.WEEKS,
             starting_point: '',
         },
         bpmnFile: null,

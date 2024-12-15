@@ -12,9 +12,7 @@ export interface LogMapping {
 }
 
 export interface AlgorithmConfiguration {
-    window_size_value?: number,
-    window_size_unit?: string,
+    simulation_horizon_value?: number,
+    simulation_horizon_unit?: string,
     starting_point?: string,
 }
-
-export type FileType = 'BPMN' | 'JSON' | 'CSV';

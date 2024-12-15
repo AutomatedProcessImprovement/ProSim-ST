@@ -4,16 +4,16 @@ import FileItem from "@components/fileHandlers/FileItem";
 import FileInput from "@components/fileHandlers/FileInput";
 import {useContext, useState} from "react";
 import {DataContext} from "@context/DataContext";
-import {FileType} from "@definitions/config";
+import {FileTypes} from "@definitions/config/enums";
 
-const ConfigFileInput = ({ type }: { type: FileType }) => {
+const ConfigFileInput = ({ type }: { type: FileTypes }) => {
     const { data: { bpmnFile, jsonFile }, setData } = useContext(DataContext);
     let initialState: Array<File>;
     switch (type) {
-        case "BPMN":
+        case FileTypes.BPMN:
             initialState = bpmnFile ? [bpmnFile] : [];
             break;
-        case "JSON":
+        case FileTypes.JSON:
             initialState = jsonFile ? [jsonFile] : [];
             break;
     }
@@ -36,10 +36,10 @@ const ConfigFileInput = ({ type }: { type: FileType }) => {
         const resultData = { ...prev };
 
         switch (type) {
-            case "BPMN":
+            case FileTypes.BPMN:
                 resultData.bpmnFile = newFiles[0] ?? null;
                 break;
-            case "JSON":
+            case FileTypes.JSON:
                 resultData.jsonFile = newFiles[0] ?? null;
                 break;
         }
@@ -49,9 +49,9 @@ const ConfigFileInput = ({ type }: { type: FileType }) => {
 
     const getAcceptableFileTypes = () => {
         switch (type) {
-            case "BPMN":
+            case FileTypes.BPMN:
                 return { 'text/bpmn': ['.bpmn'] };
-            case "JSON":
+            case FileTypes.JSON:
                 return { 'application/json': ['.json'] }
         }
     }

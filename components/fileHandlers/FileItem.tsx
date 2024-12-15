@@ -1,7 +1,7 @@
 import FileIcon from "./FileIcon";
 import { filesize } from 'filesize';
 import {ArchiveBoxXMarkIcon, EyeIcon} from "@heroicons/react/24/outline";
-import {FileType} from "@definitions/config";
+import {FileTypes} from "@definitions/config/enums";
 
 interface Props {
     file: File,
@@ -9,10 +9,10 @@ interface Props {
     onOpen?: (file: File) => void,
     showPreview?: boolean,
     isSingle?: boolean,
-    type?: FileType,
+    type?: FileTypes,
 }
 
-const FileItem = ({file, onRemove, onOpen, showPreview = true, isSingle = true, type = "CSV"}: Props) => {
+const FileItem = ({file, onRemove, onOpen, showPreview = true, isSingle = true, type = FileTypes.CSV}: Props) => {
     return <div className={`flex flex-row items-center ${isSingle ? 'justify-center' : 'w-full'}`}>
         <FileIcon type = {type} />
         <span className={`flex flex-col ${isSingle ? '' : 'w-2/3'}`}>
