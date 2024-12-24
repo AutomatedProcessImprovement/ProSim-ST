@@ -7,11 +7,13 @@ import NavigatedViewer from 'bpmn-js/lib/NavigatedViewer';
 import simulateToken from "@modules/simulation";
 import axios from "axios";
 import {SimulationData} from "@definitions/simulation/types";
+import {ConfigData} from "@definitions/config/types";
 
 const Simulation = () => {
     const viewerRef = useRef(null);
     const [xml, setXml] = useState<string>(null);
     const [simulationData, setSimulationData] = useState<SimulationData>();
+    const [configData, setConfigData] = useState<ConfigData>();
     const router = useRouter();
     const { id } = useParams();
 
@@ -29,6 +31,10 @@ const Simulation = () => {
         fetchSimulationData()
             .then(data => {
                 setSimulationData(data.simulationData);
+                setConfigData({
+                    startDate: new Date(data.configData.startDate),
+                    endDate: new Date(data.configData.endDate),
+                });
 
                 const buffer = Buffer.from(data.file);
                 const blob = new Blob([buffer], { type: 'application/octet-stream' });
@@ -47,7 +53,7 @@ const Simulation = () => {
         if (xml !== null && typeof window !== "undefined") {
             const viewer = new NavigatedViewer({
                 container: viewerRef.current,
-                additionalModules: [simulateToken(simulationData)]
+                additionalModules: [simulateToken(simulationData, configData)]
             });
 
             viewer.importXML(xml).then(() => {

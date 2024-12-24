@@ -3,6 +3,8 @@ import {NextResponse} from "next/server";
 import {writeFile} from "fs/promises";
 import path from "path";
 import {existsSync, mkdirSync} from "fs";
+import {AlgorithmConfiguration} from "@definitions/config/interfaces";
+import {calculateEndDate} from "@utils/dateHelpers";
 
 export const POST = async (request) => {
     try {
@@ -40,10 +42,14 @@ export const POST = async (request) => {
 
 const getSimulationData = async (body: FormData) => {
     // Send request to the Python service
+    const configData: AlgorithmConfiguration = JSON.parse(body.get('config') as string);
+
     return {
         id: body.get('id'),
         data: {
-            // return the simulation data here
+            startDate: new Date(configData.starting_point),
+            endDate: calculateEndDate(configData),
+            // TODO: return the simulation data here
         },
     };
 }

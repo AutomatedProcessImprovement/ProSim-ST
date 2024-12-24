@@ -12,13 +12,14 @@ import {
     WindowIcon
 } from "@heroicons/react/24/outline";
 import {AlgorithmConfiguration, LogMapping} from "@definitions/config/interfaces";
-import {FileTypes, TimeUnits} from "@definitions/config/enums";
+import {FileTypes} from "@definitions/config/enums";
 import {toast} from "sonner";
 import {ConfigFileInput, MappingInput, Preview, Step, Stepper} from "@components/simulationSetup";
 import {ConfigInput, SimulationHorizonInput, StartingPointInput} from "@components/simulationSetup/configInput";
 import {CsvContext} from "@context/CsvContext";
 import {clsx} from "clsx/lite";
 import axios, {AxiosError} from "axios";
+import {calculateEndDate} from "@utils/dateHelpers";
 
 const Setup = () => {
     const { data, setData } = useContext(DataContext);
@@ -34,23 +35,7 @@ const Setup = () => {
 
     useEffect(() => {
         if (data.config.starting_point) {
-            const currentDate = new Date(data.config.starting_point);
-            const horizon = data.config.simulation_horizon_value;
-            const newEndDate = new Date(currentDate);
-
-            switch (data.config.simulation_horizon_unit) {
-                case TimeUnits.DAYS:
-                    newEndDate.setDate(currentDate.getDate() + horizon);
-                    break;
-                case TimeUnits.WEEKS:
-                    newEndDate.setDate(currentDate.getDate() + horizon * 7);
-                    break;
-                case TimeUnits.MONTHS:
-                    newEndDate.setMonth(currentDate.getMonth() + horizon);
-                    break;
-            }
-
-            setEndDate(newEndDate);
+            setEndDate(calculateEndDate(data.config));
         }
     }, [
         data.config.starting_point,

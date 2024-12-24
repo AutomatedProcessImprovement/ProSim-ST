@@ -12,8 +12,9 @@ import {
     Tokens
 } from "@definitions/simulation/types";
 import { FlowTypes, LifecycleTypes, NodeTypes } from "@definitions/simulation/enums";
+import {ConfigData} from "@definitions/config/types";
 
-const simulateToken = (simulationData: SimulationData) => {
+const simulateToken = (simulationData: SimulationData, configData: ConfigData) => {
     return {
         __init__: ['tokenSimulation'],
         tokenSimulation: ['type', function(canvas: Canvas, elementRegistry: ElementRegistry) {
@@ -407,8 +408,18 @@ const simulateToken = (simulationData: SimulationData) => {
                 const pointer = document.createElement("div");
                 pointer.classList.add("pointer");
 
+                const startDate = document.createElement("small");
+                startDate.textContent = configData.startDate.toLocaleString();
+                startDate.classList.add("start-date");
+
+                const endDate = document.createElement("small");
+                endDate.textContent = configData.endDate.toLocaleString();
+                endDate.classList.add("end-date");
+
                 timeline.appendChild(progressBar);
                 timeline.appendChild(pointer);
+                timeline.appendChild(startDate)
+                timeline.appendChild(endDate)
                 container.appendChild(timeline);
 
                 return { timeline, progressBar, pointer };
