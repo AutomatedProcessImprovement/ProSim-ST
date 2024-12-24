@@ -31,6 +31,35 @@ h1 {
   animation: fadeIn forwards; /* No duration specified here as the duration will be assigned dynamically in the logic */
 }
 
+.timeline {
+  position: fixed;
+  top: 700px;
+  left: 10px;
+  width: calc(100% - 20px);
+  height: 10px;
+  background: #aaaaaa;
+  border-radius: 5px;
+}
+
+.progress-bar {
+  height: 100%;
+  background: #76c7c0;
+  width: 0;
+  transition: width 0.1s ease-out;
+}
+
+.pointer {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 20px;
+  height: 30px;
+  background: #76c7c0;
+  clip-path: polygon(50% 0%, 0% 50%, 0% 100%, 100% 100%, 100% 50%);
+  transform: translate(-50%, -2px);
+  transition: width 0.1s ease-out;
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;

@@ -397,17 +397,50 @@ const simulateToken = (simulationData: SimulationData) => {
                 requestAnimationFrame(animate);
             }
 
+            function createTimeline(container: HTMLElement) {
+                const timeline = document.createElement("div");
+                timeline.classList.add("timeline");
+
+                const progressBar = document.createElement("div");
+                progressBar.classList.add("progress-bar");
+
+                const pointer = document.createElement("div");
+                pointer.classList.add("pointer");
+
+                timeline.appendChild(progressBar);
+                timeline.appendChild(pointer);
+                container.appendChild(timeline);
+
+                return { timeline, progressBar, pointer };
+            }
+
+            function updateTimeline(progressBar: HTMLElement, pointer: HTMLElement, currentTime: number, totalDuration: number) {
+                const progress = Math.min(currentTime / totalDuration, 1) * 100;
+                progressBar.style.width = `${progress}%`;
+                pointer.style.left = `${progress}%`;
+            }
+
             this.start = async () => {
                 viewport = canvas.getContainer().querySelector('svg g[data-element-id]');
                 batches = simulationData.deltas_mockup;
+
+                const { progressBar, pointer } = createTimeline(document.body);
 
                 simulationData.frame_mockup.forEach(frameCase => {
                     createTokensForFrame(frameCase);
                 });
 
+                let elapsedTime = 0;
+                let totalDuration = delta * batches.length;
+
                 for (const batch of batches) {
-                    if (batch.length === 0) await new Promise(resolve => setTimeout(resolve, delta));
-                    else {
+                    if (batch.length === 0) {
+                        await new Promise(resolve => setTimeout(() => {
+                            elapsedTime += delta;
+                            updateTimeline(progressBar, pointer, elapsedTime, totalDuration);
+                            resolve();
+                        }, delta));
+                    } else {
                         const eventsByCaseId: EventsByCaseId = {};
                         batch.forEach((event) => {
                             if (!eventsByCaseId[event.case_id]) eventsByCaseId[event.case_id] = [];
@@ -418,7 +451,10 @@ const simulateToken = (simulationData: SimulationData) => {
                             Object.entries(eventsByCaseId).map(([caseId, batchEvents]) =>
                                 handleBatchEvents({ caseId, batchEvents })
                             )
-                        );
+                        ).then(() => {
+                            elapsedTime += delta;
+                            updateTimeline(progressBar, pointer, elapsedTime, totalDuration);
+                        });
                     }
                 }
             }
