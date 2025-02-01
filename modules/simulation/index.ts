@@ -20,6 +20,7 @@ const simulateToken = (simulationData: SimulationData) => {
             const delta = 2000; // milliseconds
             const tokens: Tokens = {};
             const coordinateMap: Record<string, Record<string, Array<Token>>> = {};
+            let totalDuration: number;
             let viewport: HTMLDivElement;
             let batches: Batch[];
 
@@ -424,36 +425,38 @@ const simulateToken = (simulationData: SimulationData) => {
                 return { timeline, progressBar, pointer };
             }
 
-            function updateTimeline(progressBar: HTMLElement, pointer: HTMLElement, currentTime: number, totalDuration: number) {
-                const progress = Math.min(currentTime / totalDuration, 1) * 100;
-                progressBar.style.width = `${progress}%`;
-                pointer.style.left = `${progress}%`;
+            function animateTimeline(progressBar: HTMLElement, pointer: HTMLElement) {
+                const startTime = performance.now();
+                const currentProgress = (parseFloat(progressBar.style.width) || 0) / 100;
+
+                function animate() {
+                    const elapsedTime = (performance.now() - startTime) / 2 * 3600; // delta = 2s, 1hr = 3600s
+                    const progress = Math.min(currentProgress + elapsedTime / totalDuration, 1) * 100;
+
+                    progressBar.style.width = `${progress}%`;
+                    pointer.style.left = `${progress}%`;
+
+                    if (progress < 100) requestAnimationFrame(animate);
+                }
+
+                requestAnimationFrame(animate);
             }
 
             this.start = async () => {
                 viewport = canvas.getContainer().querySelector('svg g[data-element-id]');
                 batches = simulationData.deltas_mockup;
-
-                const { progressBar, pointer } = createTimeline(document.body);
+                totalDuration = new Date(batches[batches.length - 1].end_date).getTime() - new Date(batches[0].start_date).getTime();
 
                 simulationData.frame_mockup.forEach(frameCase => {
                     createTokensForFrame(frameCase);
                 });
 
-                const startTimestamp = new Date(batches[0].start_date).getTime();
-                const endTimestamp = new Date(batches[batches.length - 1].end_date).getTime();
-                let totalDuration = endTimestamp - startTimestamp;
-                let elapsedTime = 0;
+                const { progressBar, pointer } = createTimeline(document.body);
 
                 for (const batch of batches) {
-                    const batchEndTimestamp = new Date(batch.end_date).getTime();
-                    elapsedTime = batchEndTimestamp - startTimestamp;
-
                     if (batch.events.length === 0) {
-                        await new Promise(resolve => setTimeout(() => {
-                            updateTimeline(progressBar, pointer, elapsedTime, totalDuration);
-                            resolve();
-                        }, delta));
+                        animateTimeline(progressBar, pointer);
+                        await new Promise(resolve => setTimeout(resolve, delta));
                     } else {
                         const eventsByCaseId: EventsByCaseId = {};
                         batch.events.forEach((event) => {
@@ -461,13 +464,12 @@ const simulateToken = (simulationData: SimulationData) => {
                             eventsByCaseId[event.case_id].push(event);
                         });
 
+                        animateTimeline(progressBar, pointer);
                         await Promise.all(
                             Object.entries(eventsByCaseId).map(([caseId, batchEvents]) =>
                                 handleBatchEvents({ caseId, batchEvents })
                             )
-                        ).then(() => {
-                            updateTimeline(progressBar, pointer, elapsedTime, totalDuration);
-                        });
+                        );
                     }
                 }
             }
