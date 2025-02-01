@@ -42,13 +42,10 @@ export const POST = async (request) => {
 
 const getSimulationData = async (body: FormData) => {
     // Send request to the Python service
-    const configData: AlgorithmConfiguration = JSON.parse(body.get('config') as string);
 
     return {
         id: body.get('id'),
         data: {
-            startDate: new Date(configData.starting_point),
-            endDate: calculateEndDate(configData),
             // TODO: return the simulation data here
         },
     };

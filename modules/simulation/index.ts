@@ -12,9 +12,8 @@ import {
     Tokens
 } from "@definitions/simulation/types";
 import { FlowTypes, LifecycleTypes, NodeTypes } from "@definitions/simulation/enums";
-import {ConfigData} from "@definitions/config/types";
 
-const simulateToken = (simulationData: SimulationData, configData: ConfigData) => {
+const simulateToken = (simulationData: SimulationData) => {
     return {
         __init__: ['tokenSimulation'],
         tokenSimulation: ['type', function(canvas: Canvas, elementRegistry: ElementRegistry) {
@@ -409,11 +408,11 @@ const simulateToken = (simulationData: SimulationData, configData: ConfigData) =
                 pointer.classList.add("pointer");
 
                 const startDate = document.createElement("small");
-                startDate.textContent = configData.startDate.toLocaleString();
+                startDate.textContent = new Date(batches[0].start_date).toLocaleString();
                 startDate.classList.add("start-date");
 
                 const endDate = document.createElement("small");
-                endDate.textContent = configData.endDate.toLocaleString();
+                endDate.textContent = new Date(batches[batches.length - 1].end_date).toLocaleString();
                 endDate.classList.add("end-date");
 
                 timeline.appendChild(progressBar);
@@ -441,19 +440,23 @@ const simulateToken = (simulationData: SimulationData, configData: ConfigData) =
                     createTokensForFrame(frameCase);
                 });
 
+                const startTimestamp = new Date(batches[0].start_date).getTime();
+                const endTimestamp = new Date(batches[batches.length - 1].end_date).getTime();
+                let totalDuration = endTimestamp - startTimestamp;
                 let elapsedTime = 0;
-                let totalDuration = delta * batches.length;
 
                 for (const batch of batches) {
-                    if (batch.length === 0) {
+                    const batchEndTimestamp = new Date(batch.end_date).getTime();
+                    elapsedTime = batchEndTimestamp - startTimestamp;
+
+                    if (batch.events.length === 0) {
                         await new Promise(resolve => setTimeout(() => {
-                            elapsedTime += delta;
                             updateTimeline(progressBar, pointer, elapsedTime, totalDuration);
                             resolve();
                         }, delta));
                     } else {
                         const eventsByCaseId: EventsByCaseId = {};
-                        batch.forEach((event) => {
+                        batch.events.forEach((event) => {
                             if (!eventsByCaseId[event.case_id]) eventsByCaseId[event.case_id] = [];
                             eventsByCaseId[event.case_id].push(event);
                         });
@@ -463,7 +466,6 @@ const simulateToken = (simulationData: SimulationData, configData: ConfigData) =
                                 handleBatchEvents({ caseId, batchEvents })
                             )
                         ).then(() => {
-                            elapsedTime += delta;
                             updateTimeline(progressBar, pointer, elapsedTime, totalDuration);
                         });
                     }

@@ -31,7 +31,11 @@ export type BatchEvent = {
     },
 }
 
-export type Batch = Array<BatchEvent>;
+export type Batch = {
+    start_date: string
+    end_date: string
+    events: Array<BatchEvent>
+};
 
 export type EventsByCaseId = {
     [caseId: string]: Array<BatchEvent>,

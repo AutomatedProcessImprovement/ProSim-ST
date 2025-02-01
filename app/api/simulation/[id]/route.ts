@@ -21,7 +21,6 @@ export const GET = async (request, {params}) => {
 
         return NextResponse.json({
             simulationData: mockData, // ToDo: simulation.data,
-            configData: { ...simulation.data },
             file
         }, { status: 200 });
     } catch (e) {
