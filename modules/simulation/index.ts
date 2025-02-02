@@ -176,7 +176,7 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
                 return pathLength;
             }
 
-            function handleBatchEvents({caseId, batchEvents}: { caseId: string; batchEvents: Array<BatchEvent> }): Promise<void> {
+            function handleBatchEvents({caseId, batchEvents, batchDuration}: { caseId: string; batchEvents: Array<BatchEvent>; batchDuration: number }): Promise<void> {
                 function addCentralPointToPath(element: Node, path: Array<Waypoint>, animationData: AnimationData, tokenId: string) {
                     const centerPoint = calculateCenterPoint(element);
                     const lastPoint = path.length ?
@@ -276,12 +276,12 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
                         }
                     });
 
-                    if (isAsyncAnimation) animateAsyncData(buildPathMap(animationData), caseId);
+                    if (isAsyncAnimation) animateAsyncData(buildPathMap(animationData), caseId, batchDuration);
                     else {
-                        if (Object.keys(animationData).length === 0) setTimeout(resolve, delta);
+                        if (Object.keys(animationData).length === 0) setTimeout(resolve, batchDuration);
                         else Object.entries(animationData).forEach(animationEntry => {
                             const [tokenId, {path, onComplete}] = animationEntry;
-                            animateToken(path, onComplete, caseId, tokenId);
+                            animateToken(path, onComplete, caseId, tokenId, batchDuration);
                         });
                     }
                 });
@@ -465,11 +465,12 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
                     if (abortController.signal.aborted) return;
 
                     const batchDuration = new Date(batch.end_date).getTime() - new Date(batch.start_date).getTime();
+                    const proportionalDelta = delta * batchDuration / 3600000; // 1hr = 3600000ms
 
                     if (batch.events.length === 0) {
                         animateTimeline(batchDuration);
                         await new Promise((resolve, reject) => {
-                            const timeout = setTimeout(resolve, delta);
+                            const timeout = setTimeout(resolve, proportionalDelta);
                             abortController.signal.addEventListener("abort", () => {
                                 clearTimeout(timeout);
                                 reject("Simulation aborted");
@@ -486,7 +487,7 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
                         try {
                             await Promise.all(
                                 Object.entries(eventsByCaseId).map(([caseId, batchEvents]) =>
-                                    handleBatchEvents({ caseId, batchEvents })
+                                    handleBatchEvents({ caseId, batchEvents, batchDuration: proportionalDelta })
                                 )
                             );
                         } catch (error) {
@@ -505,7 +506,7 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
                     abortController.abort();
                     Object.values(tokens).forEach(tokensByCaseId => {
                         Object.values(tokensByCaseId).forEach(token => {
-                            viewport.removeChild(token);
+                            try { viewport.removeChild(token); } catch (e) {}
                         });
                     });
                     tokens = {};
