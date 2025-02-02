@@ -437,6 +437,8 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
                 timeline.appendChild(startDate)
                 timeline.appendChild(endDate)
                 container.appendChild(timeline);
+
+                enableTimelineDragging();
             }
 
             function animateTimeline(batchDuration: number) {
@@ -457,6 +459,45 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
                 }
 
                 requestAnimationFrame(animate);
+            }
+
+            function enableTimelineDragging() {
+                let isDragging = false;
+
+                function updateProgress(event: MouseEvent | TouchEvent) {
+                    if (!isDragging) return;
+
+                    const rect = timeline.getBoundingClientRect();
+                    const clientX = event instanceof MouseEvent ? event.clientX : event.touches[0].clientX;
+                    const progress = Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100));
+
+                    progressBar.style.width = `${progress}%`;
+                    pointer.style.left = `${progress}%`;
+                }
+
+                function handleDragStart(event: MouseEvent | TouchEvent) {
+                    isDragging = true;
+                    abortController.abort();
+                    updateProgress(event);
+                }
+
+                async function handleDragEnd(event: MouseEvent | TouchEvent) {
+                    if (!isDragging) return;
+                    isDragging = false;
+
+                    const rect = timeline.getBoundingClientRect();
+                    const clientX = event instanceof MouseEvent ? event.clientX : event.changedTouches[0].clientX;
+                    const progress = Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100));
+
+                    await handleTimelineRequest(progress);
+                }
+
+                timeline.addEventListener("mousedown", handleDragStart);
+                timeline.addEventListener("touchstart", handleDragStart);
+                document.addEventListener("mousemove", updateProgress);
+                document.addEventListener("touchmove", updateProgress);
+                document.addEventListener("mouseup", handleDragEnd);
+                document.addEventListener("touchend", handleDragEnd);
             }
 
             async function runSimulation() {
@@ -501,7 +542,7 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
                 }
             }
 
-            async function handleTimelineClick(progress: number) {
+            async function handleTimelineRequest(progress: number) {
                 const clickTimestamp = new Date(initialBatches[0].start_date).getTime() + (progress / 100) * totalDuration;
 
                 try {
@@ -538,7 +579,7 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
                     const timelineRect = timeline.getBoundingClientRect();
                     const clickX = event.clientX - timelineRect.left;
                     const progress = (clickX / timelineRect.width) * 100;
-                    handleTimelineClick(progress);
+                    handleTimelineRequest(progress);
                 });
 
                 await runSimulation();
