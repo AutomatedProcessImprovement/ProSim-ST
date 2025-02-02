@@ -47,7 +47,7 @@ const Simulation = () => {
         if (xml !== null && typeof window !== "undefined") {
             const viewer = new NavigatedViewer({
                 container: viewerRef.current,
-                additionalModules: [simulateToken(simulationData)]
+                additionalModules: [simulateToken(simulationData, id)]
             });
 
             viewer.importXML(xml).then(() => {

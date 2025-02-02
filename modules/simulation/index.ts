@@ -12,17 +12,23 @@ import {
     Tokens
 } from "@definitions/simulation/types";
 import { FlowTypes, LifecycleTypes, NodeTypes } from "@definitions/simulation/enums";
+import axios from "@node_modules/axios";
 
-const simulateToken = (simulationData: SimulationData) => {
+const simulateToken = (simulationData: SimulationData, id: string) => {
     return {
         __init__: ['tokenSimulation'],
         tokenSimulation: ['type', function(canvas: Canvas, elementRegistry: ElementRegistry) {
             const delta = 2000; // milliseconds
-            const tokens: Tokens = {};
-            const coordinateMap: Record<string, Record<string, Array<Token>>> = {};
+            let tokens: Tokens = {};
+            let coordinateMap: Record<string, Record<string, Array<Token>>> = {};
             let totalDuration: number;
             let viewport: HTMLDivElement;
+            let timeline: HTMLDivElement;
+            let progressBar: HTMLDivElement;
+            let pointer: HTMLDivElement;
             let batches: Batch[];
+            let initialBatches: Batch[];
+            let abortController: AbortController = new AbortController();
 
             function placeToken(point: Waypoint, caseId: string, tokenId: string) {
                 let { x, y } = point;
@@ -170,7 +176,7 @@ const simulateToken = (simulationData: SimulationData) => {
                 return pathLength;
             }
 
-            function handleBatchEvents({caseId, batchEvents}: { caseId: string; batchEvents: Array<BatchEvent>; }): Promise<void> {
+            function handleBatchEvents({caseId, batchEvents}: { caseId: string; batchEvents: Array<BatchEvent> }): Promise<void> {
                 function addCentralPointToPath(element: Node, path: Array<Waypoint>, animationData: AnimationData, tokenId: string) {
                     const centerPoint = calculateCenterPoint(element);
                     const lastPoint = path.length ?
@@ -242,7 +248,11 @@ const simulateToken = (simulationData: SimulationData) => {
                     fillOnCompleteEventOfToken(batchEvent, animationData, tokenId, resolve);
                 }
 
-                return new Promise((resolve: () => void) => {
+                return new Promise((resolve: () => void, reject) => {
+                    abortController.signal.addEventListener("abort", () => {
+                        reject("Simulation aborted");
+                    });
+
                     let animationData: AnimationData = {};
                     let isAsyncAnimation = batchEvents.some(batchEvent => Object.keys(batchEvent.paths).length > 1)
 
@@ -369,6 +379,8 @@ const simulateToken = (simulationData: SimulationData) => {
                 let pathLength = calculatePathLength(path);
 
                 function animate(time: number) {
+                    if (abortController.signal.aborted) return;
+
                     const elapsedTime = time - startTime;
                     const progress = Math.min(elapsedTime / duration, 1);
                     const currentDistance = progress * pathLength;
@@ -399,21 +411,21 @@ const simulateToken = (simulationData: SimulationData) => {
             }
 
             function createTimeline(container: HTMLElement) {
-                const timeline = document.createElement("div");
+                timeline = document.createElement("div");
                 timeline.classList.add("timeline");
 
-                const progressBar = document.createElement("div");
+                progressBar = document.createElement("div");
                 progressBar.classList.add("progress-bar");
 
-                const pointer = document.createElement("div");
+                pointer = document.createElement("div");
                 pointer.classList.add("pointer");
 
                 const startDate = document.createElement("small");
-                startDate.textContent = new Date(batches[0].start_date).toLocaleString();
+                startDate.textContent = new Date(initialBatches[0].start_date).toLocaleString();
                 startDate.classList.add("start-date");
 
                 const endDate = document.createElement("small");
-                endDate.textContent = new Date(batches[batches.length - 1].end_date).toLocaleString();
+                endDate.textContent = new Date(initialBatches[initialBatches.length - 1].end_date).toLocaleString();
                 endDate.classList.add("end-date");
 
                 timeline.appendChild(progressBar);
@@ -421,42 +433,48 @@ const simulateToken = (simulationData: SimulationData) => {
                 timeline.appendChild(startDate)
                 timeline.appendChild(endDate)
                 container.appendChild(timeline);
-
-                return { timeline, progressBar, pointer };
             }
 
-            function animateTimeline(progressBar: HTMLElement, pointer: HTMLElement) {
+            function animateTimeline(batchDuration: number) {
                 const startTime = performance.now();
                 const currentProgress = (parseFloat(progressBar.style.width) || 0) / 100;
 
                 function animate() {
+                    if (abortController.signal.aborted) return;
+
                     const elapsedTime = (performance.now() - startTime) / 2 * 3600; // delta = 2s, 1hr = 3600s
                     const progress = Math.min(currentProgress + elapsedTime / totalDuration, 1) * 100;
+                    const localProgress = Math.min(elapsedTime / batchDuration, 1);
 
                     progressBar.style.width = `${progress}%`;
                     pointer.style.left = `${progress}%`;
 
-                    if (progress < 100) requestAnimationFrame(animate);
+                    if (localProgress < 1) requestAnimationFrame(animate);
                 }
 
                 requestAnimationFrame(animate);
             }
 
-            this.start = async () => {
-                viewport = canvas.getContainer().querySelector('svg g[data-element-id]');
+            async function runSimulation() {
                 batches = simulationData.deltas_mockup;
-                totalDuration = new Date(batches[batches.length - 1].end_date).getTime() - new Date(batches[0].start_date).getTime();
-
                 simulationData.frame_mockup.forEach(frameCase => {
                     createTokensForFrame(frameCase);
                 });
 
-                const { progressBar, pointer } = createTimeline(document.body);
-
                 for (const batch of batches) {
+                    if (abortController.signal.aborted) return;
+
+                    const batchDuration = new Date(batch.end_date).getTime() - new Date(batch.start_date).getTime();
+
                     if (batch.events.length === 0) {
-                        animateTimeline(progressBar, pointer);
-                        await new Promise(resolve => setTimeout(resolve, delta));
+                        animateTimeline(batchDuration);
+                        await new Promise((resolve, reject) => {
+                            const timeout = setTimeout(resolve, delta);
+                            abortController.signal.addEventListener("abort", () => {
+                                clearTimeout(timeout);
+                                reject("Simulation aborted");
+                            });
+                        });
                     } else {
                         const eventsByCaseId: EventsByCaseId = {};
                         batch.events.forEach((event) => {
@@ -464,14 +482,61 @@ const simulateToken = (simulationData: SimulationData) => {
                             eventsByCaseId[event.case_id].push(event);
                         });
 
-                        animateTimeline(progressBar, pointer);
-                        await Promise.all(
-                            Object.entries(eventsByCaseId).map(([caseId, batchEvents]) =>
-                                handleBatchEvents({ caseId, batchEvents })
-                            )
-                        );
+                        animateTimeline(batchDuration);
+                        try {
+                            await Promise.all(
+                                Object.entries(eventsByCaseId).map(([caseId, batchEvents]) =>
+                                    handleBatchEvents({ caseId, batchEvents })
+                                )
+                            );
+                        } catch (error) {
+                            if (abortController.signal.aborted) return;
+                        }
                     }
                 }
+            }
+
+            async function handleTimelineClick(progress: number) {
+                const clickTimestamp = new Date(initialBatches[0].start_date).getTime() + (progress / 100) * totalDuration;
+
+                try {
+                    const res = await axios.get(`/api/simulation/${id}`);
+
+                    abortController.abort();
+                    Object.values(tokens).forEach(tokensByCaseId => {
+                        Object.values(tokensByCaseId).forEach(token => {
+                            viewport.removeChild(token);
+                        });
+                    });
+                    tokens = {};
+                    coordinateMap = {};
+                    simulationData = res.data.simulationData;
+                    batches = [];
+                    progressBar.style.width = `${progress}%`;
+                    pointer.style.left = `${progress}%`;
+
+                    setTimeout(() => {
+                        abortController = new AbortController();
+                        runSimulation();
+                    }, 10);
+                } catch (error) {
+                    console.log(error);
+                }
+            }
+
+            this.start = async () => {
+                viewport = canvas.getContainer().querySelector('svg g[data-element-id]');
+                initialBatches = simulationData.deltas_mockup;
+                totalDuration = new Date(initialBatches[initialBatches.length - 1].end_date).getTime() - new Date(initialBatches[0].start_date).getTime();
+                createTimeline(document.body);
+                timeline.addEventListener("click", (event) => {
+                    const timelineRect = timeline.getBoundingClientRect();
+                    const clickX = event.clientX - timelineRect.left;
+                    const progress = (clickX / timelineRect.width) * 100;
+                    handleTimelineClick(progress);
+                });
+
+                await runSimulation();
             }
         }],
     }
