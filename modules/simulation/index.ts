@@ -8,7 +8,7 @@ import {
     FrameCase,
     PathMap,
     SimulationData,
-    Token,
+    Token, TokenColors,
     Tokens
 } from "@definitions/simulation/types";
 import { FlowTypes, LifecycleTypes, NodeTypes } from "@definitions/simulation/enums";
@@ -20,6 +20,7 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
         tokenSimulation: ['type', function(canvas: Canvas, elementRegistry: ElementRegistry) {
             const delta = 2000; // milliseconds
             let tokens: Tokens = {};
+            const tokenColors: TokenColors = {};
             let coordinateMap: Record<string, Record<string, Array<Token>>> = {};
             let totalDuration: number;
             let viewport: HTMLDivElement;
@@ -115,7 +116,7 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
             function createTokensForFrame(frameCase: FrameCase) {
                 const color = getRandomColor();
                 Object.entries(frameCase.active_elements).forEach(([tokenId, activeElementId]) => {
-                    createToken(activeElementId, frameCase.case_id, tokenId, color);
+                    createToken(activeElementId, frameCase.case_id, tokenId, tokenColors[frameCase.case_id]?.[tokenId] ?? color);
                 });
             }
 
@@ -125,6 +126,8 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
                 token.setAttribute("r", "10");
                 token.setAttribute("fill", color);
                 token.classList.add("token");
+                if (!tokenColors[caseId]) tokenColors[caseId] = {};
+                tokenColors[caseId][tokenId] = color;
                 const activeElement = elementRegistry.get(activeElementId);
 
                 function processCreation(point: Waypoint) {
@@ -262,16 +265,17 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
                             batchEventPathEntries.forEach(([tokenId, elements]) => {
                                 const tokensOfCurrentCase = tokens[caseId];
                                 if (!tokensOfCurrentCase?.[tokenId]) {
-                                    const [color, fadeIn]: [string, boolean] = tokensOfCurrentCase
-                                        ? [Object.values(tokensOfCurrentCase)[0].getAttribute("fill"), false]
-                                        : [getRandomColor(), true];
+                                    const [color, fadeIn]: [string, boolean] = tokenColors[caseId]?.[tokenId] ??
+                                        tokensOfCurrentCase ?
+                                        [Object.values(tokensOfCurrentCase)[0].getAttribute("fill"), false] :
+                                        [getRandomColor(), true];
                                     createToken(elements[0], caseId, tokenId, color, fadeIn, fadeIn);
                                 }
                                 buildAnimationDataOfToken(animationData, tokenId, elements, batchEventPathEntries, batchEvent, resolve);
                             });
                         } else if (batchEventPathEntries.length) {
                             const [tokenId, elements] = batchEventPathEntries[0];
-                            if (!tokens[caseId]) createToken(elements[0], caseId, tokenId, getRandomColor(), true);
+                            if (!tokens[caseId]) createToken(elements[0], caseId, tokenId, tokenColors[caseId]?.[tokenId] ?? getRandomColor(), true);
                             buildAnimationDataOfToken(animationData, tokenId, elements, batchEventPathEntries, batchEvent, resolve);
                         }
                     });

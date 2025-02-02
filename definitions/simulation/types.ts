@@ -9,6 +9,12 @@ export type Tokens = {
     },
 }
 
+export type TokenColors = {
+    [caseId: string]: {
+        [tokenId: string]: string,
+    },
+}
+
 export type SimulationData = {
     frame_mockup: Array<FrameCase>,
     deltas_mockup: Array<Batch>
