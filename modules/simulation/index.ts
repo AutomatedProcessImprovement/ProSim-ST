@@ -570,17 +570,13 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
             }
 
             async function handleTimelineRequest(progress: number) {
-                const clickTimestamp = new Date(initialBatches[0].start_date).getTime() + (progress / 100) * totalDuration;
+                const requestTimestamp = new Date(initialBatches[0].start_date).getTime() + (progress / 100) * totalDuration;
 
                 try {
                     const res = await axios.get(`/api/simulation/${id}`);
 
                     abortController.abort();
-                    Object.values(tokens).forEach(tokensByCaseId => {
-                        Object.values(tokensByCaseId).forEach(token => {
-                            try { viewport.removeChild(token); } catch (e) {}
-                        });
-                    });
+                    document.querySelectorAll(".token").forEach(token => token.remove());
                     tokens = {};
                     coordinateMap = {};
                     simulationData = res.data.simulationData;
@@ -602,12 +598,6 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
                 initialBatches = simulationData.deltas_mockup;
                 totalDuration = new Date(initialBatches[initialBatches.length - 1].end_date).getTime() - new Date(initialBatches[0].start_date).getTime();
                 createTimeline(document.body);
-                timeline.addEventListener("click", (event) => {
-                    const timelineRect = timeline.getBoundingClientRect();
-                    const clickX = event.clientX - timelineRect.left;
-                    const progress = (clickX / timelineRect.width) * 100;
-                    handleTimelineRequest(progress);
-                });
 
                 await runSimulation();
             }
