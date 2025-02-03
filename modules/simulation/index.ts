@@ -8,10 +8,11 @@ import {
     FrameCase,
     PathMap,
     SimulationData,
-    Token, TokenColors,
+    Token,
+    TokenColors,
     Tokens
 } from "@definitions/simulation/types";
-import { FlowTypes, LifecycleTypes, NodeTypes } from "@definitions/simulation/enums";
+import {FlowTypes, LifecycleTypes, NodeTypes} from "@definitions/simulation/enums";
 import axios from "@node_modules/axios";
 
 const simulateToken = (simulationData: SimulationData, id: string) => {
@@ -27,6 +28,7 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
             let timeline: HTMLDivElement;
             let progressBar: HTMLDivElement;
             let pointer: HTMLDivElement;
+            let tooltip: HTMLDivElement;
             let batches: Batch[];
             let initialBatches: Batch[];
             let abortController: AbortController = new AbortController();
@@ -432,13 +434,18 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
                 endDate.textContent = new Date(initialBatches[initialBatches.length - 1].end_date).toLocaleString();
                 endDate.classList.add("end-date");
 
+                tooltip = document.createElement("div");
+                tooltip.classList.add("timeline-tooltip");
+
                 timeline.appendChild(progressBar);
                 timeline.appendChild(pointer);
                 timeline.appendChild(startDate)
                 timeline.appendChild(endDate)
                 container.appendChild(timeline);
+                document.body.appendChild(tooltip);
 
                 enableTimelineDragging();
+                enableTimelineHover();
             }
 
             function animateTimeline(batchDuration: number) {
@@ -498,6 +505,26 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
                 document.addEventListener("touchmove", updateProgress);
                 document.addEventListener("mouseup", handleDragEnd);
                 document.addEventListener("touchend", handleDragEnd);
+            }
+
+            function enableTimelineHover() {
+                function updateTooltip(event: MouseEvent) {
+                    const rect = timeline.getBoundingClientRect();
+                    const progress = Math.max(0, Math.min(100, ((event.clientX - rect.left) / rect.width) * 100));
+
+                    const hoveredTimestamp = new Date(initialBatches[0].start_date).getTime() + (progress / 100) * totalDuration;
+                    tooltip.textContent = new Date(hoveredTimestamp).toLocaleString();
+                    tooltip.style.left = `${event.clientX + 10}px`;
+                    tooltip.style.top = `${event.clientY - 30}px`;
+                    tooltip.style.display = "block";
+                }
+
+                function hideTooltip() {
+                    tooltip.style.display = "none";
+                }
+
+                timeline.addEventListener("mousemove", updateTooltip);
+                timeline.addEventListener("mouseleave", hideTooltip);
             }
 
             async function runSimulation() {

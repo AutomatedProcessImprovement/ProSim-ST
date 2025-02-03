@@ -74,6 +74,17 @@ h1 {
   right: 0;
 }
 
+.timeline-tooltip {
+  position: absolute;
+  display: none;
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #ffffff;
+  font-size: 12px;
+  border-radius: 4px;
+  pointer-events: none;
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;
