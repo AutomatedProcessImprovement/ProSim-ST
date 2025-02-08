@@ -29,12 +29,14 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
             let progressBar: HTMLDivElement;
             let pointer: HTMLDivElement;
             let tooltip: HTMLDivElement;
+            let currentDateTimeBox: HTMLDivElement;
             let batches: Batch[];
             let initialBatches: Batch[];
+            let initialDate: Date;
             let abortController: AbortController = new AbortController();
 
             function placeToken(point: Waypoint, caseId: string, tokenId: string) {
-                let { x, y } = point;
+                const { x, y } = point;
                 const token = tokens[caseId][tokenId];
                 updateCoordinateMap(point, caseId, tokenId);
                 token.setAttribute("cx", x.toString());
@@ -416,7 +418,7 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
                 requestAnimationFrame(animate);
             }
 
-            function createTimeline(container: HTMLElement) {
+            function createTimeline() {
                 timeline = document.createElement("div");
                 timeline.classList.add("timeline");
 
@@ -427,7 +429,7 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
                 pointer.classList.add("pointer");
 
                 const startDate = document.createElement("small");
-                startDate.textContent = new Date(initialBatches[0].start_date).toLocaleString();
+                startDate.textContent = initialDate.toLocaleString();
                 startDate.classList.add("start-date");
 
                 const endDate = document.createElement("small");
@@ -437,15 +439,26 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
                 tooltip = document.createElement("div");
                 tooltip.classList.add("timeline-tooltip");
 
+                const playPauseButton = document.createElement("button");
+                playPauseButton.classList.add("play-pause-btn");
+                playPauseButton.innerHTML = "⏸";
+
+                currentDateTimeBox = document.createElement("div");
+                currentDateTimeBox.classList.add("simulated-time-box");
+                currentDateTimeBox.textContent = "--";
+
                 timeline.appendChild(progressBar);
                 timeline.appendChild(pointer);
                 timeline.appendChild(startDate)
                 timeline.appendChild(endDate)
-                container.appendChild(timeline);
+                document.body.appendChild(timeline);
                 document.body.appendChild(tooltip);
+                document.body.appendChild(playPauseButton);
+                document.body.appendChild(currentDateTimeBox);
 
                 enableTimelineDragging();
                 enableTimelineHover();
+                enablePlayPause(playPauseButton);
             }
 
             function animateTimeline(batchDuration: number) {
@@ -455,12 +468,16 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
                 function animate() {
                     if (abortController.signal.aborted) return;
 
-                    const elapsedTime = (performance.now() - startTime) / 2 * 3600; // delta = 2s, 1hr = 3600s
-                    const progress = Math.min(currentProgress + elapsedTime / totalDuration, 1) * 100;
+                    const elapsedTime = (performance.now() - startTime) / delta * 3600000; // 1hr = 3600000ms
+                    const progress = Math.min(currentProgress + elapsedTime / totalDuration, 1);
                     const localProgress = Math.min(elapsedTime / batchDuration, 1);
 
-                    progressBar.style.width = `${progress}%`;
-                    pointer.style.left = `${progress}%`;
+                    progressBar.style.width = `${progress * 100}%`;
+                    pointer.style.left = `${progress * 100}%`;
+
+                    const totalElapsedTime = progress * totalDuration;
+                    const currentDateTime = new Date(initialDate.getTime() + totalElapsedTime);
+                    currentDateTimeBox.textContent = currentDateTime.toLocaleString();
 
                     if (localProgress < 1) requestAnimationFrame(animate);
                 }
@@ -512,7 +529,7 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
                     const rect = timeline.getBoundingClientRect();
                     const progress = Math.max(0, Math.min(100, ((event.clientX - rect.left) / rect.width) * 100));
 
-                    const hoveredTimestamp = new Date(initialBatches[0].start_date).getTime() + (progress / 100) * totalDuration;
+                    const hoveredTimestamp = initialDate.getTime() + (progress / 100) * totalDuration;
                     tooltip.textContent = new Date(hoveredTimestamp).toLocaleString();
                     tooltip.style.left = `${event.clientX + 10}px`;
                     tooltip.style.top = `${event.clientY - 30}px`;
@@ -525,6 +542,21 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
 
                 timeline.addEventListener("mousemove", updateTooltip);
                 timeline.addEventListener("mouseleave", hideTooltip);
+            }
+
+            function enablePlayPause(button: HTMLButtonElement) {
+                let isPaused = false;
+                button.addEventListener("click", () => {
+                    isPaused = !isPaused;
+                    if (isPaused) {
+                        abortController.abort();
+                        button.innerHTML = " ▶";
+                    } else {
+                        abortController = new AbortController();
+                        button.innerHTML = "⏸"
+                        // runSimulation();
+                    }
+                });
             }
 
             async function runSimulation() {
@@ -570,7 +602,7 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
             }
 
             async function handleTimelineRequest(progress: number) {
-                const requestTimestamp = new Date(initialBatches[0].start_date).getTime() + (progress / 100) * totalDuration;
+                const requestTimestamp = initialDate.getTime() + (progress / 100) * totalDuration;
 
                 try {
                     const res = await axios.get(`/api/simulation/${id}`);
@@ -593,13 +625,14 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
                 }
             }
 
-            this.start = async () => {
+            this.start = () => {
                 viewport = canvas.getContainer().querySelector('svg g[data-element-id]');
                 initialBatches = simulationData.deltas_mockup;
-                totalDuration = new Date(initialBatches[initialBatches.length - 1].end_date).getTime() - new Date(initialBatches[0].start_date).getTime();
-                createTimeline(document.body);
+                initialDate = new Date(initialBatches[0].start_date);
+                totalDuration = new Date(initialBatches[initialBatches.length - 1].end_date).getTime() - initialDate.getTime();
+                createTimeline();
 
-                await runSimulation();
+                runSimulation();
             }
         }],
     }

@@ -85,6 +85,38 @@ h1 {
   pointer-events: none;
 }
 
+.play-pause-btn {
+  position: fixed;
+  top: 750px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #76c7c0;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  width: 40px;
+  height: 40px;
+  font-size: 25px;
+  cursor: pointer;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  transition: background 0.2s;
+}
+
+.simulated-time-box {
+  position: fixed;
+  top: 750px;
+  left: 10px;
+  background: #76c7c0;
+  color: white;
+  padding: 10px;
+  height: 40px;
+  min-width: 160px;
+  border-radius: 5px;
+  font-size: 14px;
+  font-family: monospace;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;
