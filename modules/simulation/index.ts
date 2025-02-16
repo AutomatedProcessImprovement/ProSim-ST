@@ -29,11 +29,19 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
             let progressBar: HTMLDivElement;
             let pointer: HTMLDivElement;
             let tooltip: HTMLDivElement;
+            let currentProgress: number = 0.0;
             let currentDateTimeBox: HTMLDivElement;
+            let currentDateTime: Date;
+            let localProgress: number = 0.0;
             let batches: Batch[];
+            let frames: FrameCase[];
+            let playPauseButton: HTMLButtonElement;
+            let isPaused = false;
             let initialBatches: Batch[];
+            let initialFrames: FrameCase[];
             let initialDate: Date;
             let abortController: AbortController = new AbortController();
+            let hasEnded = false;
 
             function placeToken(point: Waypoint, caseId: string, tokenId: string) {
                 const { x, y } = point;
@@ -386,10 +394,10 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
                 const startTime = performance.now();
                 let pathLength = calculatePathLength(path);
 
-                function animate(time: number) {
+                function animate() {
                     if (abortController.signal.aborted) return;
 
-                    const elapsedTime = time - startTime;
+                    const elapsedTime = performance.now() - startTime;
                     const progress = Math.min(elapsedTime / duration, 1);
                     const currentDistance = progress * pathLength;
 
@@ -439,7 +447,7 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
                 tooltip = document.createElement("div");
                 tooltip.classList.add("timeline-tooltip");
 
-                const playPauseButton = document.createElement("button");
+                playPauseButton = document.createElement("button");
                 playPauseButton.classList.add("play-pause-btn");
                 playPauseButton.innerHTML = "⏸";
 
@@ -458,28 +466,28 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
 
                 enableTimelineDragging();
                 enableTimelineHover();
-                enablePlayPause(playPauseButton);
+                playPauseButton.addEventListener("click", handlePlayPause);
             }
 
             function animateTimeline(batchDuration: number) {
                 const startTime = performance.now();
-                const currentProgress = (parseFloat(progressBar.style.width) || 0) / 100;
 
                 function animate() {
                     if (abortController.signal.aborted) return;
 
-                    const elapsedTime = (performance.now() - startTime) / delta * 3600000; // 1hr = 3600000ms
+                    const elapsedTime = Math.min((performance.now() - startTime) / delta * 3600000, batchDuration); // 1hr = 3600000ms
                     const progress = Math.min(currentProgress + elapsedTime / totalDuration, 1);
-                    const localProgress = Math.min(elapsedTime / batchDuration, 1);
+                    localProgress = elapsedTime / batchDuration;
 
                     progressBar.style.width = `${progress * 100}%`;
                     pointer.style.left = `${progress * 100}%`;
 
                     const totalElapsedTime = progress * totalDuration;
-                    const currentDateTime = new Date(initialDate.getTime() + totalElapsedTime);
+                    currentDateTime = new Date(initialDate.getTime() + totalElapsedTime);
                     currentDateTimeBox.textContent = currentDateTime.toLocaleString();
 
                     if (localProgress < 1) requestAnimationFrame(animate);
+                    else currentProgress = progress;
                 }
 
                 requestAnimationFrame(animate);
@@ -497,6 +505,7 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
 
                     progressBar.style.width = `${progress}%`;
                     pointer.style.left = `${progress}%`;
+                    currentProgress = progress / 100;
                 }
 
                 function handleDragStart(event: MouseEvent | TouchEvent) {
@@ -544,24 +553,81 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
                 timeline.addEventListener("mouseleave", hideTooltip);
             }
 
-            function enablePlayPause(button: HTMLButtonElement) {
-                let isPaused = false;
-                button.addEventListener("click", () => {
-                    isPaused = !isPaused;
-                    if (isPaused) {
-                        abortController.abort();
-                        button.innerHTML = " ▶";
+            function handlePlayPause() {
+                if (!isPaused) {
+                    playPauseButton.innerHTML = " ▶";
+                    isPaused = true;
+                    abortController.abort();
+                } else {
+                    if (hasEnded) {
+                        frames = JSON.parse(JSON.stringify(initialFrames));
+                        batches = JSON.parse(JSON.stringify(initialBatches));
+                        hasEnded = false;
+                        currentProgress = 0.0;
+                        localProgress = 0.0;
                     } else {
-                        abortController = new AbortController();
-                        button.innerHTML = "⏸"
-                        // runSimulation();
+                        batches = batches.filter(batch => new Date(batch.end_date) > currentDateTime);
+                    }
+
+                    playPauseButton.innerHTML = "⏸";
+                    document.querySelectorAll(".token").forEach(token => token.remove());
+                    tokens = {};
+                    coordinateMap = {};
+                    isPaused = false;
+                    abortController = new AbortController();
+                    runSimulation(true);
+                }
+            }
+
+            async function updateFrames(batch: Batch) {
+                batch.events.forEach(event => {
+                    const paths = event.paths;
+                    const numberOfTokens = Object.keys(paths).length;
+                    if (numberOfTokens === 1) {
+                        Object.entries(paths).forEach(([tokenId, path]) => {
+                            switch (event.lifecycle) {
+                                case LifecycleTypes.CASE_ARRIVAL:
+                                    frames.push({
+                                        case_id: event.case_id,
+                                        active_elements: {
+                                            [tokenId]: path[path.length - 1],
+                                        },
+                                    });
+                                    break;
+                                case LifecycleTypes.START:
+                                case LifecycleTypes.COMPLETE:
+                                case LifecycleTypes.ENABLE:
+                                    const eventCase = frames.find(frame => frame.case_id === event.case_id);
+                                    if (eventCase) eventCase.active_elements[tokenId] = path[path.length - 1];
+                                    break;
+                                case LifecycleTypes.CASE_END:
+                                    frames = frames.filter(frame => frame.case_id !== event.case_id);
+                                    break;
+                            }
+                        });
+                    } else if (numberOfTokens > 1) {
+                        Object.entries(paths).forEach(([tokenId, path]) => {
+                            const eventCase = frames.find(frame => frame.case_id === event.case_id);
+
+                            if (eventCase) {
+                                if (elementRegistry.get(path[path.length - 1]).type === NodeTypes.PARALLEL_GATEWAY) {
+                                    if (eventCase.active_elements[tokenId]) delete eventCase.active_elements[tokenId];
+                                } else if (elementRegistry.get(path[0]).type === NodeTypes.PARALLEL_GATEWAY) {
+                                    eventCase.active_elements[tokenId] = path[path.length - 1];
+                                }
+                            }
+                        });
                     }
                 });
             }
 
-            async function runSimulation() {
-                batches = simulationData.deltas_mockup;
-                simulationData.frame_mockup.forEach(frameCase => {
+            async function runSimulation(isResume: boolean = false) {
+                if (!isResume) {
+                    batches = simulationData.deltas_mockup;
+                    frames = simulationData.frame_mockup
+                }
+
+                frames.forEach(frameCase => {
                     createTokensForFrame(frameCase);
                 });
 
@@ -594,11 +660,16 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
                                     handleBatchEvents({ caseId, batchEvents, batchDuration: proportionalDelta })
                                 )
                             );
+                            updateFrames(batch);
                         } catch (error) {
                             if (abortController.signal.aborted) return;
                         }
                     }
                 }
+
+                playPauseButton.innerHTML = " ▶";
+                isPaused = true;
+                hasEnded = true;
             }
 
             async function handleTimelineRequest(progress: number) {
@@ -607,16 +678,18 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
                 try {
                     const res = await axios.get(`/api/simulation/${id}`);
 
-                    abortController.abort();
                     document.querySelectorAll(".token").forEach(token => token.remove());
                     tokens = {};
                     coordinateMap = {};
-                    simulationData = res.data.simulationData;
                     batches = [];
-                    progressBar.style.width = `${progress}%`;
-                    pointer.style.left = `${progress}%`;
+                    frames = [];
+                    simulationData = res.data.simulationData;
 
                     setTimeout(() => {
+                        if (isPaused) {
+                            isPaused = false;
+                            playPauseButton.innerHTML = "⏸";
+                        }
                         abortController = new AbortController();
                         runSimulation();
                     }, 10);
@@ -627,7 +700,8 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
 
             this.start = () => {
                 viewport = canvas.getContainer().querySelector('svg g[data-element-id]');
-                initialBatches = simulationData.deltas_mockup;
+                initialBatches = JSON.parse(JSON.stringify(simulationData.deltas_mockup));
+                initialFrames = JSON.parse(JSON.stringify(simulationData.frame_mockup));
                 initialDate = new Date(initialBatches[0].start_date);
                 totalDuration = new Date(initialBatches[initialBatches.length - 1].end_date).getTime() - initialDate.getTime();
                 createTimeline();
