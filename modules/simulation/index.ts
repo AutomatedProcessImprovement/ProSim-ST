@@ -9,13 +9,13 @@ import {
     PathMap,
     SimulationData,
     Token,
-    TokenColors,
+    TokenColors, TokenProgresses,
     Tokens
 } from "@definitions/simulation/types";
 import {FlowTypes, LifecycleTypes, NodeTypes} from "@definitions/simulation/enums";
 import axios from "@node_modules/axios";
 
-const simulateToken = (simulationData: SimulationData, id: string) => {
+const simulation = (simulationData: SimulationData, id: string) => {
     return {
         __init__: ['tokenSimulation'],
         tokenSimulation: ['type', function(canvas: Canvas, elementRegistry: ElementRegistry) {
@@ -33,10 +33,12 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
             let currentDateTimeBox: HTMLDivElement;
             let currentDateTime: Date;
             let localProgress: number = 0.0;
+            let tokenProgresses: TokenProgresses = {};
             let batches: Batch[];
             let frames: FrameCase[];
             let playPauseButton: HTMLButtonElement;
             let isPaused = false;
+            let isResumed = false;
             let initialBatches: Batch[];
             let initialFrames: FrameCase[];
             let initialDate: Date;
@@ -170,7 +172,7 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
 
                 function processDeletion() {
                     deleteCoordinates(caseId, tokenId);
-                    viewport.removeChild(token);
+                    try { viewport.removeChild(token) } catch (e) {}
                     delete tokens[caseId][tokenId];
                 }
 
@@ -277,24 +279,24 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
                             batchEventPathEntries.forEach(([tokenId, elements]) => {
                                 const tokensOfCurrentCase = tokens[caseId];
                                 if (!tokensOfCurrentCase?.[tokenId]) {
-                                    const [color, fadeIn]: [string, boolean] = tokenColors[caseId]?.[tokenId] ??
+                                    const [color, show]: [string, boolean] = tokenColors[caseId]?.[tokenId] ??
                                         tokensOfCurrentCase ?
                                         [Object.values(tokensOfCurrentCase)[0].getAttribute("fill"), false] :
                                         [getRandomColor(), true];
-                                    createToken(elements[0], caseId, tokenId, color, fadeIn, fadeIn);
+                                    createToken(elements[0], caseId, tokenId, color, show && (!isResumed || !tokenProgresses[caseId]?.[tokenId]), show);
                                 }
                                 buildAnimationDataOfToken(animationData, tokenId, elements, batchEventPathEntries, batchEvent, resolve);
                             });
                         } else if (batchEventPathEntries.length) {
                             const [tokenId, elements] = batchEventPathEntries[0];
-                            if (!tokens[caseId]) createToken(elements[0], caseId, tokenId, tokenColors[caseId]?.[tokenId] ?? getRandomColor(), true);
+                            if (!tokens[caseId]) createToken(elements[0], caseId, tokenId, tokenColors[caseId]?.[tokenId] ?? getRandomColor(), !isResumed || !tokenProgresses[caseId]?.[tokenId]);
                             buildAnimationDataOfToken(animationData, tokenId, elements, batchEventPathEntries, batchEvent, resolve);
                         }
                     });
 
                     if (isAsyncAnimation) animateAsyncData(buildPathMap(animationData), caseId, batchDuration);
                     else {
-                        if (Object.keys(animationData).length === 0) setTimeout(resolve, batchDuration);
+                        if (Object.keys(animationData).length === 0) setTimeout(resolve, batchDuration * (1 - (isResumed ? localProgress : 0)));
                         else Object.entries(animationData).forEach(animationEntry => {
                             const [tokenId, {path, onComplete}] = animationEntry;
                             animateToken(path, onComplete, caseId, tokenId, batchDuration);
@@ -368,8 +370,8 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
                 return durations;
             }
 
-            function animateAsyncData(pathMap: PathMap, caseId: string, overallDuration: number = delta, isHidden: boolean = false, animatedTokens: Set<string> = new Set()) {
-                const durations = calculateDurations(pathMap, animatedTokens, overallDuration);
+            function animateAsyncData(pathMap: PathMap, caseId: string, remainingDuration: number = delta, isHidden: boolean = false, animatedTokens: Set<string> = new Set()) {
+                const durations = calculateDurations(pathMap, animatedTokens, remainingDuration);
 
                 Object.entries(pathMap).forEach(([tokenId, tokenData]) => {
                     if (animatedTokens.has(tokenId)) return;
@@ -380,7 +382,7 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
                     const onComplete = () => {
                         if (Object.keys(tokenData.subPaths).length) {
                             deleteToken(caseId, tokenId);
-                            animateAsyncData(tokenData.subPaths, caseId, overallDuration - duration, true, animatedTokens);
+                            animateAsyncData(tokenData.subPaths, caseId, remainingDuration - duration, true, animatedTokens);
                         } else {
                             tokenData.onComplete();
                         }
@@ -391,7 +393,10 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
             }
 
             function animateToken(path: Waypoint[], onComplete: () => void, caseId: string, tokenId: string, duration: number = delta) {
-                const startTime = performance.now();
+                let startTime = performance.now();
+                if (isResumed && tokenProgresses[caseId]?.[tokenId]) {
+                    startTime -= tokenProgresses[caseId][tokenId] * duration;
+                }
                 let pathLength = calculatePathLength(path);
 
                 function animate() {
@@ -416,8 +421,12 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
                             placeToken({ x, y }, caseId, tokenId);
                             break;
                         }
+
                         accumulatedDistance += segmentLength;
                     }
+
+                    if (!tokenProgresses[caseId]) tokenProgresses[caseId] = {};
+                    tokenProgresses[caseId][tokenId] = progress;
 
                     if (progress < 1) requestAnimationFrame(animate);
                     else onComplete();
@@ -469,25 +478,35 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
                 playPauseButton.addEventListener("click", handlePlayPause);
             }
 
-            function animateTimeline(batchDuration: number) {
-                const startTime = performance.now();
+            async function animateTimeline(batchDuration: number) {
+                let startTime = performance.now();
+                if (isResumed && localProgress) {
+                    const proportionalDelta = delta * batchDuration / 3600000;
+                    startTime -= localProgress * proportionalDelta;
+                }
 
                 function animate() {
                     if (abortController.signal.aborted) return;
 
                     const elapsedTime = Math.min((performance.now() - startTime) / delta * 3600000, batchDuration); // 1hr = 3600000ms
                     const progress = Math.min(currentProgress + elapsedTime / totalDuration, 1);
-                    localProgress = elapsedTime / batchDuration;
+                    const innerProgress = elapsedTime / batchDuration;
 
-                    progressBar.style.width = `${progress * 100}%`;
-                    pointer.style.left = `${progress * 100}%`;
+                    const progressPercentage = `${progress * 100}%`;
+                    progressBar.style.width = progressPercentage
+                    pointer.style.left = progressPercentage;
 
                     const totalElapsedTime = progress * totalDuration;
                     currentDateTime = new Date(initialDate.getTime() + totalElapsedTime);
                     currentDateTimeBox.textContent = currentDateTime.toLocaleString();
 
-                    if (localProgress < 1) requestAnimationFrame(animate);
-                    else currentProgress = progress;
+                    if (innerProgress < 1) {
+                        localProgress = innerProgress;
+                        requestAnimationFrame(animate);
+                    } else {
+                        currentProgress = progress;
+                        localProgress = 0.0;
+                    }
                 }
 
                 requestAnimationFrame(animate);
@@ -565,6 +584,7 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
                         hasEnded = false;
                         currentProgress = 0.0;
                         localProgress = 0.0;
+                        tokenProgresses = {};
                     } else {
                         batches = batches.filter(batch => new Date(batch.end_date) > currentDateTime);
                     }
@@ -574,8 +594,9 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
                     tokens = {};
                     coordinateMap = {};
                     isPaused = false;
+                    isResumed = localProgress !== 0;
                     abortController = new AbortController();
-                    runSimulation(true);
+                    runSimulation(false);
                 }
             }
 
@@ -621,8 +642,8 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
                 });
             }
 
-            async function runSimulation(isResume: boolean = false) {
-                if (!isResume) {
+            async function runSimulation(shouldUpdateBatches: boolean = true) {
+                if (shouldUpdateBatches) {
                     batches = simulationData.deltas_mockup;
                     frames = simulationData.frame_mockup
                 }
@@ -631,21 +652,23 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
                     createTokensForFrame(frameCase);
                 });
 
-                for (const batch of batches) {
+                for (const [index, batch] of batches.entries()) {
                     if (abortController.signal.aborted) return;
 
                     const batchDuration = new Date(batch.end_date).getTime() - new Date(batch.start_date).getTime();
                     const proportionalDelta = delta * batchDuration / 3600000; // 1hr = 3600000ms
 
                     if (batch.events.length === 0) {
-                        animateTimeline(batchDuration);
-                        await new Promise((resolve, reject) => {
-                            const timeout = setTimeout(resolve, proportionalDelta);
-                            abortController.signal.addEventListener("abort", () => {
-                                clearTimeout(timeout);
-                                reject("Simulation aborted");
-                            });
-                        });
+                        await Promise.all([
+                            animateTimeline(batchDuration),
+                            new Promise((resolve, reject) => {
+                                const timeout = setTimeout(resolve, proportionalDelta * (1 - (isResumed ? localProgress : 0)));
+                                abortController.signal.addEventListener("abort", () => {
+                                    clearTimeout(timeout);
+                                    reject("Simulation aborted");
+                                });
+                            })
+                        ]);
                     } else {
                         const eventsByCaseId: EventsByCaseId = {};
                         batch.events.forEach((event) => {
@@ -653,18 +676,26 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
                             eventsByCaseId[event.case_id].push(event);
                         });
 
-                        animateTimeline(batchDuration);
                         try {
                             await Promise.all(
-                                Object.entries(eventsByCaseId).map(([caseId, batchEvents]) =>
-                                    handleBatchEvents({ caseId, batchEvents, batchDuration: proportionalDelta })
-                                )
+                                [
+                                    animateTimeline(batchDuration),
+                                    ...Object.entries(eventsByCaseId).map(
+                                        ([caseId, batchEvents]) =>
+                                            handleBatchEvents({ caseId, batchEvents, batchDuration: proportionalDelta })
+                                    ),
+                                ]
                             );
-                            updateFrames(batch);
                         } catch (error) {
                             if (abortController.signal.aborted) return;
+                        } finally {
+                            if (localProgress === 0 && new Date(batch.end_date).getTime() === new Date(currentDateTime).getTime()) {
+                                updateFrames(batch);
+                            }
                         }
                     }
+
+                    if (isResumed && index === 0) isResumed = false;
                 }
 
                 playPauseButton.innerHTML = " ▶";
@@ -683,16 +714,16 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
                     coordinateMap = {};
                     batches = [];
                     frames = [];
+                    localProgress = 0.0;
+                    tokenProgresses = {};
                     simulationData = res.data.simulationData;
 
-                    setTimeout(() => {
-                        if (isPaused) {
-                            isPaused = false;
-                            playPauseButton.innerHTML = "⏸";
-                        }
-                        abortController = new AbortController();
-                        runSimulation();
-                    }, 10);
+                    if (isPaused) {
+                        isPaused = false;
+                        playPauseButton.innerHTML = "⏸";
+                    }
+                    abortController = new AbortController();
+                    runSimulation();
                 } catch (error) {
                     console.log(error);
                 }
@@ -712,4 +743,4 @@ const simulateToken = (simulationData: SimulationData, id: string) => {
     }
 };
 
-export default simulateToken;
+export default simulation;

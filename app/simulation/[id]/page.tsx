@@ -4,7 +4,7 @@ import {useEffect, useRef, useState} from "react";
 import { useRouter, useParams } from "next/navigation";
 
 import NavigatedViewer from 'bpmn-js/lib/NavigatedViewer';
-import simulateToken from "@modules/simulation";
+import simulation from "@modules/simulation";
 import axios from "axios";
 import {SimulationData} from "@definitions/simulation/types";
 
@@ -47,7 +47,7 @@ const Simulation = () => {
         if (xml !== null && typeof window !== "undefined") {
             const viewer = new NavigatedViewer({
                 container: viewerRef.current,
-                additionalModules: [simulateToken(simulationData, id)]
+                additionalModules: [simulation(simulationData, id)]
             });
 
             viewer.importXML(xml).then(() => {

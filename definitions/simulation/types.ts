@@ -63,3 +63,9 @@ export type PathMap = {
         onComplete: () => void,
     };
 };
+
+export type TokenProgresses = {
+    [caseId: string]: {
+        [tokenId: string]: number,
+    },
+}
