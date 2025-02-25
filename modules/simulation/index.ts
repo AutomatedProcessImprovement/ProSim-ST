@@ -40,7 +40,6 @@ const simulation = (simulationData: SimulationData, id: string) => {
             let isPaused = false;
             let isResumed = false;
             let initialBatches: Batch[];
-            let initialFrames: FrameCase[];
             let initialDate: Date;
             let abortController: AbortController = new AbortController();
             let hasEnded = false;
@@ -456,9 +455,20 @@ const simulation = (simulationData: SimulationData, id: string) => {
                 tooltip = document.createElement("div");
                 tooltip.classList.add("timeline-tooltip");
 
+                const playControls = document.createElement("div");
+                playControls.classList.add("play-controls");
+
+                const goToStartButton = document.createElement("button");
+                goToStartButton.classList.add("control-btn");
+                goToStartButton.innerHTML = "⏮";
+
                 playPauseButton = document.createElement("button");
-                playPauseButton.classList.add("play-pause-btn");
+                playPauseButton.classList.add("control-btn");
                 playPauseButton.innerHTML = "⏸";
+
+                const goToEndButton = document.createElement("button");
+                goToEndButton.classList.add("control-btn");
+                goToEndButton.innerHTML = "⏭";
 
                 currentDateTimeBox = document.createElement("div");
                 currentDateTimeBox.classList.add("simulated-time-box");
@@ -470,12 +480,17 @@ const simulation = (simulationData: SimulationData, id: string) => {
                 timeline.appendChild(endDate)
                 document.body.appendChild(timeline);
                 document.body.appendChild(tooltip);
-                document.body.appendChild(playPauseButton);
+                playControls.appendChild(goToStartButton);
+                playControls.appendChild(playPauseButton);
+                playControls.appendChild(goToEndButton)
+                document.body.appendChild(playControls);
                 document.body.appendChild(currentDateTimeBox);
 
                 enableTimelineDragging();
                 enableTimelineHover();
+                goToStartButton.addEventListener("click", () => handleRewindButtonClick(0));
                 playPauseButton.addEventListener("click", handlePlayPause);
+                goToEndButton.addEventListener("click", () => handleRewindButtonClick(100))
             }
 
             async function animateTimeline(batchDuration: number) {
@@ -572,6 +587,16 @@ const simulation = (simulationData: SimulationData, id: string) => {
                 timeline.addEventListener("mouseleave", hideTooltip);
             }
 
+            function handleRewindButtonClick(progress: number) {
+                abortController.abort();
+
+                progressBar.style.width = `${progress}%`;
+                pointer.style.left = `${progress}%`;
+                currentProgress = progress / 100;
+
+                handleTimelineRequest(progress);
+            }
+
             function handlePlayPause() {
                 if (!isPaused) {
                     playPauseButton.innerHTML = " ▶";
@@ -579,12 +604,10 @@ const simulation = (simulationData: SimulationData, id: string) => {
                     abortController.abort();
                 } else {
                     if (hasEnded) {
-                        frames = JSON.parse(JSON.stringify(initialFrames));
-                        batches = JSON.parse(JSON.stringify(initialBatches));
                         hasEnded = false;
                         currentProgress = 0.0;
-                        localProgress = 0.0;
-                        tokenProgresses = {};
+                        handleTimelineRequest(0);
+                        return;
                     } else {
                         batches = batches.filter(batch => new Date(batch.end_date) > currentDateTime);
                     }
@@ -732,7 +755,6 @@ const simulation = (simulationData: SimulationData, id: string) => {
             this.start = () => {
                 viewport = canvas.getContainer().querySelector('svg g[data-element-id]');
                 initialBatches = JSON.parse(JSON.stringify(simulationData.deltas_mockup));
-                initialFrames = JSON.parse(JSON.stringify(simulationData.frame_mockup));
                 initialDate = new Date(initialBatches[0].start_date);
                 totalDuration = new Date(initialBatches[initialBatches.length - 1].end_date).getTime() - initialDate.getTime();
                 createTimeline();

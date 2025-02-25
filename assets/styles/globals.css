@@ -85,11 +85,17 @@ h1 {
   pointer-events: none;
 }
 
-.play-pause-btn {
+.play-controls {
   position: fixed;
   top: 750px;
   left: 50%;
   transform: translateX(-50%);
+  width: 200px;
+  display: flex;
+  justify-content: space-between;
+}
+
+.control-btn {
   background: #76c7c0;
   color: white;
   border: none;
