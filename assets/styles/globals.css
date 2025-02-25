@@ -123,6 +123,21 @@ h1 {
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
 }
 
+.speed-select {
+  position: fixed;
+  top: 750px;
+  right: 10px;
+  height: 40px;
+  background: #76c7c0;
+  color: white;
+  padding: 10px;
+  min-width: 80px;
+  border-radius: 5px;
+  font: bold 14px monospace;
+  outline: none;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;

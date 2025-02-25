@@ -19,7 +19,8 @@ const simulation = (simulationData: SimulationData, id: string) => {
     return {
         __init__: ['tokenSimulation'],
         tokenSimulation: ['type', function(canvas: Canvas, elementRegistry: ElementRegistry) {
-            const delta = 2000; // milliseconds
+            let delta = 2000; // milliseconds
+            const defaultDelta = 2000; // milliseconds
             let tokens: Tokens = {};
             const tokenColors: TokenColors = {};
             let coordinateMap: Record<string, Record<string, Array<Token>>> = {};
@@ -148,7 +149,7 @@ const simulation = (simulationData: SimulationData, id: string) => {
                     placeToken(point, caseId, tokenId);
                     if (show) {
                         if (fadeIn) {
-                            token.style.animationDuration = `${delta / 1000}s`;
+                            token.style.animationDuration = `2s`;
                             token.classList.add("fade-in");
                             token.addEventListener("animationend", () => {
                                 token.classList.remove("fade-in");
@@ -176,7 +177,7 @@ const simulation = (simulationData: SimulationData, id: string) => {
                 }
 
                 if (fadeOut) {
-                    token.style.animationDuration = `${delta / 1000}s`;
+                    token.style.animationDuration = `2s`;
                     token.classList.add("fade-out");
                     token.addEventListener("animationend", processDeletion);
                 } else processDeletion();
@@ -470,6 +471,18 @@ const simulation = (simulationData: SimulationData, id: string) => {
                 goToEndButton.classList.add("control-btn");
                 goToEndButton.innerHTML = "⏭";
 
+                const speedSelect = document.createElement("select");
+                speedSelect.classList.add("speed-select");
+                const speeds = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+
+                speeds.forEach(speed => {
+                    const option = document.createElement("option");
+                    option.value = speed.toString();
+                    option.textContent = `${speed}x`;
+                    if (speed === 1.0) option.selected = true;
+                    speedSelect.appendChild(option);
+                });
+
                 currentDateTimeBox = document.createElement("div");
                 currentDateTimeBox.classList.add("simulated-time-box");
                 currentDateTimeBox.textContent = "--";
@@ -485,12 +498,18 @@ const simulation = (simulationData: SimulationData, id: string) => {
                 playControls.appendChild(goToEndButton)
                 document.body.appendChild(playControls);
                 document.body.appendChild(currentDateTimeBox);
+                document.body.appendChild(speedSelect);
 
                 enableTimelineDragging();
                 enableTimelineHover();
                 goToStartButton.addEventListener("click", () => handleRewindButtonClick(0));
                 playPauseButton.addEventListener("click", handlePlayPause);
-                goToEndButton.addEventListener("click", () => handleRewindButtonClick(100))
+                goToEndButton.addEventListener("click", () => handleRewindButtonClick(100));
+
+                speedSelect.addEventListener("change", (event) => {
+                    const newSpeed = parseFloat((event.target as HTMLSelectElement).value);
+                    updatePlaybackSpeed(newSpeed);
+                });
             }
 
             async function animateTimeline(batchDuration: number) {
@@ -620,6 +639,25 @@ const simulation = (simulationData: SimulationData, id: string) => {
                     isResumed = localProgress !== 0;
                     abortController = new AbortController();
                     runSimulation(false);
+                }
+            }
+
+            function updatePlaybackSpeed(newSpeed: number) {
+                if (!isPaused) {
+                    abortController.abort();
+
+                    setTimeout(() => {
+                        batches = batches.filter(batch => new Date(batch.end_date) > currentDateTime);
+                        document.querySelectorAll(".token").forEach(token => token.remove());
+                        tokens = {};
+                        coordinateMap = {};
+                        isResumed = localProgress !== 0;
+                        delta = defaultDelta / newSpeed;
+                        abortController = new AbortController();
+                        runSimulation(false);
+                    }, 100);
+                } else {
+                    delta = defaultDelta / newSpeed;
                 }
             }
 
