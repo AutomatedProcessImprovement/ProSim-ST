@@ -638,7 +638,7 @@ const simulation = (simulationData: SimulationData, id: string) => {
                     isPaused = false;
                     isResumed = localProgress !== 0;
                     abortController = new AbortController();
-                    runSimulation(false);
+                    setTimeout(() => runSimulation(false), 10);
                 }
             }
 
@@ -654,7 +654,7 @@ const simulation = (simulationData: SimulationData, id: string) => {
                         isResumed = localProgress !== 0;
                         delta = defaultDelta / newSpeed;
                         abortController = new AbortController();
-                        runSimulation(false);
+                        setTimeout(() => runSimulation(false), 10);
                     }, 100);
                 } else {
                     delta = defaultDelta / newSpeed;
@@ -784,7 +784,7 @@ const simulation = (simulationData: SimulationData, id: string) => {
                         playPauseButton.innerHTML = "⏸";
                     }
                     abortController = new AbortController();
-                    runSimulation();
+                    setTimeout(runSimulation, 10);
                 } catch (error) {
                     console.log(error);
                 }
