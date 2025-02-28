@@ -26,18 +26,18 @@ const simulation = (simulationData: SimulationData, id: string) => {
             let coordinateMap: Record<string, Record<string, Array<Token>>> = {};
             let totalDuration: number;
             let viewport: HTMLDivElement;
-            let timeline: HTMLDivElement;
-            let progressBar: HTMLDivElement;
-            let pointer: HTMLDivElement;
-            let tooltip: HTMLDivElement;
+            let timeline = document.getElementById('timeline');
+            let progressBar = document.getElementById('progress-bar');
+            let pointer = document.getElementById('pointer');
+            let tooltip = document.getElementById('timeline-tooltip');
             let currentProgress: number = 0.0;
-            let currentDateTimeBox: HTMLDivElement;
+            let currentDateTimeBox = document.getElementById('simulated-time-box');
             let currentDateTime: Date;
             let localProgress: number = 0.0;
             let tokenProgresses: TokenProgresses = {};
             let batches: Batch[];
             let frames: FrameCase[];
-            let playPauseButton: HTMLButtonElement;
+            let playPauseButton = document.getElementById('play-pause-btn');
             let isPaused = false;
             let isResumed = false;
             let initialBatches: Batch[];
@@ -435,81 +435,26 @@ const simulation = (simulationData: SimulationData, id: string) => {
                 requestAnimationFrame(animate);
             }
 
-            function createTimeline() {
-                timeline = document.createElement("div");
-                timeline.classList.add("timeline");
-
-                progressBar = document.createElement("div");
-                progressBar.classList.add("progress-bar");
-
-                pointer = document.createElement("div");
-                pointer.classList.add("pointer");
-
-                const startDate = document.createElement("small");
+            function enableTimeline() {
+                const startDate = document.getElementById("start-date");
                 startDate.textContent = initialDate.toLocaleString();
-                startDate.classList.add("start-date");
-
-                const endDate = document.createElement("small");
+                const endDate = document.getElementById("end-date");
                 endDate.textContent = new Date(initialBatches[initialBatches.length - 1].end_date).toLocaleString();
-                endDate.classList.add("end-date");
 
-                tooltip = document.createElement("div");
-                tooltip.classList.add("timeline-tooltip");
-
-                const playControls = document.createElement("div");
-                playControls.classList.add("play-controls");
-
-                const goToStartButton = document.createElement("button");
-                goToStartButton.classList.add("control-btn");
-                goToStartButton.innerHTML = "⏮";
-
-                playPauseButton = document.createElement("button");
-                playPauseButton.classList.add("control-btn");
-                playPauseButton.innerHTML = "⏸";
-
-                const goToEndButton = document.createElement("button");
-                goToEndButton.classList.add("control-btn");
-                goToEndButton.innerHTML = "⏭";
-
-                const speedSelect = document.createElement("select");
-                speedSelect.classList.add("speed-select");
-                const speeds = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
-
-                speeds.forEach(speed => {
-                    const option = document.createElement("option");
-                    option.value = speed.toString();
-                    option.textContent = `${speed}x`;
-                    if (speed === 1.0) option.selected = true;
-                    speedSelect.appendChild(option);
-                });
-
-                currentDateTimeBox = document.createElement("div");
-                currentDateTimeBox.classList.add("simulated-time-box");
-                currentDateTimeBox.textContent = "--";
-
-                timeline.appendChild(progressBar);
-                timeline.appendChild(pointer);
-                timeline.appendChild(startDate)
-                timeline.appendChild(endDate)
-                document.body.appendChild(timeline);
-                document.body.appendChild(tooltip);
-                playControls.appendChild(goToStartButton);
-                playControls.appendChild(playPauseButton);
-                playControls.appendChild(goToEndButton)
-                document.body.appendChild(playControls);
-                document.body.appendChild(currentDateTimeBox);
-                document.body.appendChild(speedSelect);
-
-                enableTimelineDragging();
-                enableTimelineHover();
+                const goToStartButton = document.getElementById('go-to-start-btn');
                 goToStartButton.addEventListener("click", () => handleRewindButtonClick(0));
                 playPauseButton.addEventListener("click", handlePlayPause);
+                const goToEndButton = document.getElementById("go-to-end-btn");
                 goToEndButton.addEventListener("click", () => handleRewindButtonClick(100));
 
+                const speedSelect = document.getElementById("speed-select");
                 speedSelect.addEventListener("change", (event) => {
                     const newSpeed = parseFloat((event.target as HTMLSelectElement).value);
                     updatePlaybackSpeed(newSpeed);
                 });
+
+                enableTimelineDragging();
+                enableTimelineHover();
             }
 
             async function animateTimeline(batchDuration: number) {
@@ -795,7 +740,7 @@ const simulation = (simulationData: SimulationData, id: string) => {
                 initialBatches = JSON.parse(JSON.stringify(simulationData.deltas_mockup));
                 initialDate = new Date(initialBatches[0].start_date);
                 totalDuration = new Date(initialBatches[initialBatches.length - 1].end_date).getTime() - initialDate.getTime();
-                createTimeline();
+                enableTimeline();
 
                 runSimulation();
             }
