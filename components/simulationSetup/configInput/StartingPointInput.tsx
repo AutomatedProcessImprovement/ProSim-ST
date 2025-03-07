@@ -36,7 +36,7 @@ const StartingPointInput = ({ minDate, maxDate }: Props) => {
         }));
     }
 
-    return <input type="datetime-local" name="starting_point" value={value} min={minDate} max={maxDate} onChange={handleDateChange}
+    return <input type="datetime-local" name="starting_point" value={value} min={minDate} max={maxDate} step={1} onChange={handleDateChange}
                   className='w-1/2 rounded-2xl bg-white px-4 py-1 me-0.5 text-left data-[invalid]:border-2 data-[invalid]:border-red-500 data-[focused]:bg-slate-200' />
 }
 

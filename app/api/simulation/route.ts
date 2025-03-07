@@ -3,6 +3,9 @@ import {NextResponse} from "next/server";
 import {writeFile} from "fs/promises";
 import path from "path";
 import {existsSync, mkdirSync} from "fs";
+import axios from "axios";
+import {AlgorithmConfiguration} from "@definitions/config/interfaces";
+import {calculateEndDate} from "@utils/dateHelpers";
 
 export const POST = async (request) => {
     try {
@@ -25,7 +28,7 @@ export const POST = async (request) => {
         await writeFile(path.join(dir, fileName), buffer);
 
         const redis = getRedisInstance();
-        await redis.set(simulationData.id, JSON.stringify({
+        await redis.set(simulationData.id as string, JSON.stringify({
             data: simulationData.data,
             fileName
         }), 'EX', 60*60*24);
@@ -39,7 +42,23 @@ export const POST = async (request) => {
 }
 
 const getSimulationData = async (body: FormData) => {
-    // Send request to the Python service
+    const configInput: AlgorithmConfiguration = JSON.parse(body.get('config') as string);
+
+    const reqBody = new FormData();
+    reqBody.append("process_id", body.get("id"));
+    reqBody.append("start_time", new Date(configInput.starting_point + "Z").toISOString());
+    reqBody.append("simulation_horizon", calculateEndDate(configInput).toISOString());
+    reqBody.append("event_log", body.get("logFile"));
+    reqBody.append("bpmn_model", body.get("bpmnFile"));
+    reqBody.append("json_parameters", body.get("jsonFile"));
+    reqBody.append("column_mapping", body.get('mapping'))
+
+    const response = await axios.post(
+        process.env.PYTHON_MICROSERVICE_BASE_URL + "/start-simulation",
+        reqBody,
+        { headers: { "Content-Type": "multipart/form-data" } }
+    )
+    console.log(response)
 
     return {
         id: body.get('id'),

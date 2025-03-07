@@ -2,7 +2,7 @@ import {AlgorithmConfiguration} from "@definitions/config/interfaces";
 import {TimeUnits} from "@definitions/config/enums";
 
 export const calculateEndDate = (data: AlgorithmConfiguration): Date => {
-    const currentDate = new Date(data.starting_point);
+    const currentDate = new Date(data.starting_point + "Z");
     const horizon = data.simulation_horizon_value;
     const newEndDate = new Date(currentDate);
 

@@ -12,6 +12,7 @@ export const DataContext = createContext({
             simulation_horizon_unit: TimeUnits.WEEKS,
             starting_point: '',
         },
+        logFile: null,
         bpmnFile: null,
         jsonFile: null,
     },
@@ -27,6 +28,7 @@ export const DataProvider = ({ children }) => {
             simulation_horizon_unit: TimeUnits.WEEKS,
             starting_point: '',
         },
+        logFile: null,
         bpmnFile: null,
         jsonFile: null,
     });

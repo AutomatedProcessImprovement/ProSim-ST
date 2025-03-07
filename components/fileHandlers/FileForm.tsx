@@ -47,6 +47,7 @@ const FileForm = () => {
         setData(prevData => ({
             ...prevData,
             id: uuid(),
+            logFile: files[0],
         }));
         setCsvData(prevData => ({
             ...prevData,

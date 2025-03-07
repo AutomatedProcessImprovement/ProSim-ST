@@ -39,13 +39,13 @@ export async function parseCsvFile(file: File){
 
     const lines = await readLines(file, { removeWhite: true });
 
-    for (const word of lines[0].split(',')) {
+    for (const word of lines[0].split(/[;,]/)) {
         fileHeaders.add(word);
     }
 
     const startLog = new Date(
         lines[1]
-            .split(',')[6]
+            .split(/[;,]/)[3]
             .replace(' ', 'T')
             .slice(0, 19) + '+00:00'
     )
@@ -54,7 +54,7 @@ export async function parseCsvFile(file: File){
 
     const endLog = new Date(
         lines[lines.length - 1]
-            .split(',')[7]
+            .split(/[;,]/)[4]
             .replace(' ', 'T')
             .slice(0, 19) + '+00:00'
     )

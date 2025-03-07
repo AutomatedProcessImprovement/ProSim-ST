@@ -1,3 +1,5 @@
+import {TimeUnits} from "@definitions/config/enums";
+
 export interface LogMapping {
     [key: string]: string | undefined | object
     case?: string
@@ -13,6 +15,6 @@ export interface LogMapping {
 
 export interface AlgorithmConfiguration {
     simulation_horizon_value?: number,
-    simulation_horizon_unit?: string,
+    simulation_horizon_unit?: TimeUnits,
     starting_point?: string,
 }
