@@ -129,8 +129,8 @@ const simulation = (simulationData: SimulationData, id: string) => {
 
             function createTokensForFrame(frameCase: FrameCase) {
                 const color = getRandomColor();
-                Object.entries(frameCase.active_elements).forEach(([tokenId, activeElementId]) => {
-                    createToken(activeElementId, frameCase.case_id, tokenId, tokenColors[frameCase.case_id]?.[tokenId] ?? color);
+                Object.entries(frameCase.activeElements).forEach(([tokenId, activeElementId]) => {
+                    createToken(activeElementId, frameCase.caseId, tokenId, tokenColors[frameCase.caseId]?.[tokenId] ?? color);
                 });
             }
 
@@ -439,7 +439,7 @@ const simulation = (simulationData: SimulationData, id: string) => {
                 const startDate = document.getElementById("start-date");
                 startDate.textContent = initialDate.toLocaleString();
                 const endDate = document.getElementById("end-date");
-                endDate.textContent = new Date(initialBatches[initialBatches.length - 1].end_date).toLocaleString();
+                endDate.textContent = new Date(initialBatches[initialBatches.length - 1].endDate).toLocaleString();
 
                 const goToStartButton = document.getElementById('go-to-start-btn');
                 goToStartButton.addEventListener("click", () => handleRewindButtonClick(0));
@@ -573,7 +573,7 @@ const simulation = (simulationData: SimulationData, id: string) => {
                         handleTimelineRequest(0);
                         return;
                     } else {
-                        batches = batches.filter(batch => new Date(batch.end_date) > currentDateTime);
+                        batches = batches.filter(batch => new Date(batch.endDate) > currentDateTime);
                     }
 
                     playPauseButton.innerHTML = "⏸";
@@ -592,7 +592,7 @@ const simulation = (simulationData: SimulationData, id: string) => {
                     abortController.abort();
 
                     setTimeout(() => {
-                        batches = batches.filter(batch => new Date(batch.end_date) > currentDateTime);
+                        batches = batches.filter(batch => new Date(batch.endDate) > currentDateTime);
                         document.querySelectorAll(".token").forEach(token => token.remove());
                         tokens = {};
                         coordinateMap = {};
@@ -615,8 +615,8 @@ const simulation = (simulationData: SimulationData, id: string) => {
                             switch (event.lifecycle) {
                                 case LifecycleTypes.CASE_ARRIVAL:
                                     frames.push({
-                                        case_id: event.case_id,
-                                        active_elements: {
+                                        caseId: event.caseId,
+                                        activeElements: {
                                             [tokenId]: path[path.length - 1],
                                         },
                                     });
@@ -624,23 +624,23 @@ const simulation = (simulationData: SimulationData, id: string) => {
                                 case LifecycleTypes.START:
                                 case LifecycleTypes.COMPLETE:
                                 case LifecycleTypes.ENABLE:
-                                    const eventCase = frames.find(frame => frame.case_id === event.case_id);
-                                    if (eventCase) eventCase.active_elements[tokenId] = path[path.length - 1];
+                                    const eventCase = frames.find(frame => frame.caseId === event.caseId);
+                                    if (eventCase) eventCase.activeElements[tokenId] = path[path.length - 1];
                                     break;
                                 case LifecycleTypes.CASE_END:
-                                    frames = frames.filter(frame => frame.case_id !== event.case_id);
+                                    frames = frames.filter(frame => frame.caseId !== event.caseId);
                                     break;
                             }
                         });
                     } else if (numberOfTokens > 1) {
                         Object.entries(paths).forEach(([tokenId, path]) => {
-                            const eventCase = frames.find(frame => frame.case_id === event.case_id);
+                            const eventCase = frames.find(frame => frame.caseId === event.caseId);
 
                             if (eventCase) {
                                 if (elementRegistry.get(path[path.length - 1]).type === NodeTypes.PARALLEL_GATEWAY) {
-                                    if (eventCase.active_elements[tokenId]) delete eventCase.active_elements[tokenId];
+                                    if (eventCase.activeElements[tokenId]) delete eventCase.activeElements[tokenId];
                                 } else if (elementRegistry.get(path[0]).type === NodeTypes.PARALLEL_GATEWAY) {
-                                    eventCase.active_elements[tokenId] = path[path.length - 1];
+                                    eventCase.activeElements[tokenId] = path[path.length - 1];
                                 }
                             }
                         });
@@ -650,8 +650,8 @@ const simulation = (simulationData: SimulationData, id: string) => {
 
             async function runSimulation(shouldUpdateBatches: boolean = true) {
                 if (shouldUpdateBatches) {
-                    batches = simulationData.deltas_mockup;
-                    frames = simulationData.frame_mockup
+                    batches = simulationData.batches;
+                    frames = simulationData.frames
                 }
 
                 frames.forEach(frameCase => {
@@ -661,7 +661,7 @@ const simulation = (simulationData: SimulationData, id: string) => {
                 for (const [index, batch] of batches.entries()) {
                     if (abortController.signal.aborted) return;
 
-                    const batchDuration = new Date(batch.end_date).getTime() - new Date(batch.start_date).getTime();
+                    const batchDuration = new Date(batch.endDate).getTime() - new Date(batch.startDate).getTime();
                     const proportionalDelta = delta * batchDuration / 3600000; // 1hr = 3600000ms
 
                     if (batch.events.length === 0) {
@@ -678,8 +678,8 @@ const simulation = (simulationData: SimulationData, id: string) => {
                     } else {
                         const eventsByCaseId: EventsByCaseId = {};
                         batch.events.forEach((event) => {
-                            if (!eventsByCaseId[event.case_id]) eventsByCaseId[event.case_id] = [];
-                            eventsByCaseId[event.case_id].push(event);
+                            if (!eventsByCaseId[event.caseId]) eventsByCaseId[event.caseId] = [];
+                            eventsByCaseId[event.caseId].push(event);
                         });
 
                         try {
@@ -695,7 +695,7 @@ const simulation = (simulationData: SimulationData, id: string) => {
                         } catch (error) {
                             if (abortController.signal.aborted) return;
                         } finally {
-                            if (localProgress === 0 && new Date(batch.end_date).getTime() === new Date(currentDateTime).getTime()) {
+                            if (localProgress === 0 && new Date(batch.endDate).getTime() === new Date(currentDateTime).getTime()) {
                                 updateFrames(batch);
                             }
                         }
@@ -737,9 +737,9 @@ const simulation = (simulationData: SimulationData, id: string) => {
 
             this.start = () => {
                 viewport = canvas.getContainer().querySelector('svg g[data-element-id]');
-                initialBatches = JSON.parse(JSON.stringify(simulationData.deltas_mockup));
-                initialDate = new Date(initialBatches[0].start_date);
-                totalDuration = new Date(initialBatches[initialBatches.length - 1].end_date).getTime() - initialDate.getTime();
+                initialBatches = JSON.parse(JSON.stringify(simulationData.batches));
+                initialDate = new Date(initialBatches[0].startDate);
+                totalDuration = new Date(initialBatches[initialBatches.length - 1].endDate).getTime() - initialDate.getTime();
                 enableTimeline();
 
                 runSimulation();

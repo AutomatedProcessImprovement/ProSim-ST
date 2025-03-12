@@ -16,30 +16,30 @@ export type TokenColors = {
 }
 
 export type SimulationData = {
-    frame_mockup: Array<FrameCase>,
-    deltas_mockup: Array<Batch>
+    frames: Array<FrameCase>,
+    batches: Array<Batch>
 }
 
 export type FrameCase = {
-    case_id: string,
-    active_elements: {
+    caseId: string,
+    activeElements: {
         [tokenId: string]: string,
     },
 }
 
 export type BatchEvent = {
-    case_id: string,
+    caseId: string,
     lifecycle: LifecycleTypes,
     timestamp: string,
-    node_id: string,
+    nodeId: string,
     paths: {
         [tokenId: string]: Array<string>,
     },
 }
 
 export type Batch = {
-    start_date: string
-    end_date: string
+    startDate: string
+    endDate: string
     events: Array<BatchEvent>
 };
 
