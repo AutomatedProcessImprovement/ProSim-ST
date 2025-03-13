@@ -5,7 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import NavigatedViewer from 'bpmn-js/lib/NavigatedViewer';
 import simulation from "@modules/simulation";
 import axios from "axios";
-import {SimulationData} from "@definitions/simulation/types";
+import {SimulationData} from "@definitions/api/types";
 
 const speeds = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
 
@@ -48,7 +48,7 @@ const Simulation = () => {
         if (xml !== null && typeof window !== "undefined") {
             const viewer = new NavigatedViewer({
                 container: viewerRef.current,
-                additionalModules: [simulation(simulationData, id)]
+                additionalModules: [simulation(simulationData, id as string)]
             });
 
             viewer.importXML(xml).then(() => {

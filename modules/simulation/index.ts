@@ -7,13 +7,14 @@ import {
     EventsByCaseId,
     FrameCase,
     PathMap,
-    SimulationData,
     Token,
     TokenColors, TokenProgresses,
     Tokens
 } from "@definitions/simulation/types";
 import {FlowTypes, LifecycleTypes, NodeTypes} from "@definitions/simulation/enums";
 import axios from "@node_modules/axios";
+import {SimulationData} from "@definitions/api/types";
+import {formatDateString} from "@utils/dateHelpers";
 
 const simulation = (simulationData: SimulationData, id: string) => {
     return {
@@ -101,7 +102,7 @@ const simulation = (simulationData: SimulationData, id: string) => {
                     }
                 });
 
-                const newSize = 9 + totalTokens;
+                const newSize = 10 + (totalTokens - 1) * 0.15;
                 affectedCoordinateKeys.forEach((coordinatesKey) => {
                     Object.values(coordinateMap[coordinatesKey]).forEach((caseTokens) => {
                         caseTokens.forEach((token) => {
@@ -129,8 +130,8 @@ const simulation = (simulationData: SimulationData, id: string) => {
 
             function createTokensForFrame(frameCase: FrameCase) {
                 const color = getRandomColor();
-                Object.entries(frameCase.activeElements).forEach(([tokenId, activeElementId]) => {
-                    createToken(activeElementId, frameCase.caseId, tokenId, tokenColors[frameCase.caseId]?.[tokenId] ?? color);
+                Object.entries(frameCase.active_elements).forEach(([tokenId, activeElementId]) => {
+                    createToken(activeElementId, frameCase.case_id, tokenId, tokenColors[frameCase.case_id]?.[tokenId] ?? color);
                 });
             }
 
@@ -437,9 +438,9 @@ const simulation = (simulationData: SimulationData, id: string) => {
 
             function enableTimeline() {
                 const startDate = document.getElementById("start-date");
-                startDate.textContent = initialDate.toLocaleString();
+                startDate.textContent = formatDateString(initialDate);
                 const endDate = document.getElementById("end-date");
-                endDate.textContent = new Date(initialBatches[initialBatches.length - 1].endDate).toLocaleString();
+                endDate.textContent = formatDateString(new Date(initialBatches[initialBatches.length - 1].endDate));
 
                 const goToStartButton = document.getElementById('go-to-start-btn');
                 goToStartButton.addEventListener("click", () => handleRewindButtonClick(0));
@@ -477,7 +478,7 @@ const simulation = (simulationData: SimulationData, id: string) => {
 
                     const totalElapsedTime = progress * totalDuration;
                     currentDateTime = new Date(initialDate.getTime() + totalElapsedTime);
-                    currentDateTimeBox.textContent = currentDateTime.toLocaleString();
+                    currentDateTimeBox.textContent = formatDateString(currentDateTime);
 
                     if (innerProgress < 1) {
                         localProgress = innerProgress;
@@ -536,8 +537,7 @@ const simulation = (simulationData: SimulationData, id: string) => {
                     const rect = timeline.getBoundingClientRect();
                     const progress = Math.max(0, Math.min(100, ((event.clientX - rect.left) / rect.width) * 100));
 
-                    const hoveredTimestamp = initialDate.getTime() + (progress / 100) * totalDuration;
-                    tooltip.textContent = new Date(hoveredTimestamp).toLocaleString();
+                    tooltip.textContent = formatDateString(new Date(initialDate.getTime() + (progress / 100) * totalDuration));
                     tooltip.style.left = `${event.clientX + 10}px`;
                     tooltip.style.top = `${event.clientY - 30}px`;
                     tooltip.style.display = "block";
@@ -600,7 +600,7 @@ const simulation = (simulationData: SimulationData, id: string) => {
                         delta = defaultDelta / newSpeed;
                         abortController = new AbortController();
                         setTimeout(() => runSimulation(false), 10);
-                    }, 100);
+                    }, 300);
                 } else {
                     delta = defaultDelta / newSpeed;
                 }
@@ -615,8 +615,8 @@ const simulation = (simulationData: SimulationData, id: string) => {
                             switch (event.lifecycle) {
                                 case LifecycleTypes.CASE_ARRIVAL:
                                     frames.push({
-                                        caseId: event.caseId,
-                                        activeElements: {
+                                        case_id: event.case_id,
+                                        active_elements: {
                                             [tokenId]: path[path.length - 1],
                                         },
                                     });
@@ -624,23 +624,23 @@ const simulation = (simulationData: SimulationData, id: string) => {
                                 case LifecycleTypes.START:
                                 case LifecycleTypes.COMPLETE:
                                 case LifecycleTypes.ENABLE:
-                                    const eventCase = frames.find(frame => frame.caseId === event.caseId);
-                                    if (eventCase) eventCase.activeElements[tokenId] = path[path.length - 1];
+                                    const eventCase = frames.find(frame => frame.case_id === event.case_id);
+                                    if (eventCase) eventCase.active_elements[tokenId] = path[path.length - 1];
                                     break;
                                 case LifecycleTypes.CASE_END:
-                                    frames = frames.filter(frame => frame.caseId !== event.caseId);
+                                    frames = frames.filter(frame => frame.case_id !== event.case_id);
                                     break;
                             }
                         });
                     } else if (numberOfTokens > 1) {
                         Object.entries(paths).forEach(([tokenId, path]) => {
-                            const eventCase = frames.find(frame => frame.caseId === event.caseId);
+                            const eventCase = frames.find(frame => frame.case_id === event.case_id);
 
                             if (eventCase) {
                                 if (elementRegistry.get(path[path.length - 1]).type === NodeTypes.PARALLEL_GATEWAY) {
-                                    if (eventCase.activeElements[tokenId]) delete eventCase.activeElements[tokenId];
+                                    if (eventCase.active_elements[tokenId]) delete eventCase.active_elements[tokenId];
                                 } else if (elementRegistry.get(path[0]).type === NodeTypes.PARALLEL_GATEWAY) {
-                                    eventCase.activeElements[tokenId] = path[path.length - 1];
+                                    eventCase.active_elements[tokenId] = path[path.length - 1];
                                 }
                             }
                         });
@@ -678,8 +678,8 @@ const simulation = (simulationData: SimulationData, id: string) => {
                     } else {
                         const eventsByCaseId: EventsByCaseId = {};
                         batch.events.forEach((event) => {
-                            if (!eventsByCaseId[event.caseId]) eventsByCaseId[event.caseId] = [];
-                            eventsByCaseId[event.caseId].push(event);
+                            if (!eventsByCaseId[event.case_id]) eventsByCaseId[event.case_id] = [];
+                            eventsByCaseId[event.case_id].push(event);
                         });
 
                         try {

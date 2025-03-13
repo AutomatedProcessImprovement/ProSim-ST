@@ -7,6 +7,7 @@ import axios from "axios";
 import {AlgorithmConfiguration} from "@definitions/config/interfaces";
 import {calculateEndDate} from "@utils/dateHelpers";
 import {Batch, BatchEvent} from "@definitions/simulation/types";
+import {SimulationData} from "@definitions/api/types";
 
 export const POST = async (request) => {
     try {
@@ -42,7 +43,10 @@ export const POST = async (request) => {
     }
 }
 
-const getSimulationData = async (body: FormData) => {
+const getSimulationData = async (body: FormData): Promise<{
+    id: string;
+    data: SimulationData;
+}> => {
     const configInput: AlgorithmConfiguration = JSON.parse(body.get('config') as string);
 
     const reqBody = new FormData();
@@ -62,10 +66,10 @@ const getSimulationData = async (body: FormData) => {
     const groupedEvents = groupEvents(response.data.events);
 
     return {
-        id: body.get('id'),
+        id: body.get('id') as string,
         data: {
             frames: response.data.frames,
-            events: groupedEvents,
+            batches: groupedEvents,
         },
     };
 }
