@@ -12,13 +12,12 @@ export const POST = async (request, {params}): Promise<
             process_id: params.id,
             timestamp: body.requestedDate,
         }
-        console.log(body.requestedDate)
         const response = await axios.post(
             process.env.PYTHON_MICROSERVICE_BASE_URL + `/resumption`,
             reqBody,
             { headers: { "Content-Type": "application/json" } }
         )
-        const groupedEvents = groupEvents(response.data.events);
+        const groupedEvents = groupEvents(response.data.events, body.requestedDate, body.finalDate);
 
         return NextResponse.json({
             simulationData: {

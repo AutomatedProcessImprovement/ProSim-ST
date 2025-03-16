@@ -8,6 +8,7 @@ import {AlgorithmConfiguration} from "@definitions/config/interfaces";
 import {calculateEndDate} from "@utils/dateHelpers";
 import {SimulationData} from "@definitions/api/types";
 import {groupEvents} from "@utils/events";
+import {BatchEvent} from "@definitions/simulation/types";
 
 export const POST = async (request) => {
     try {
@@ -39,6 +40,7 @@ export const POST = async (request) => {
 
         return NextResponse.json({ id: simulationData.id }, { status: 201 });
     } catch (error) {
+        console.log(error);
         return NextResponse.json({ error: "Failed to get simulation data." }, { status: 500 });
     }
 }
@@ -48,11 +50,13 @@ const getSimulationData = async (body: FormData): Promise<{
     data: SimulationData;
 }> => {
     const configInput: AlgorithmConfiguration = JSON.parse(body.get('config') as string);
+    const startDate = new Date(configInput.starting_point + "Z").toISOString();
+    const endDate = calculateEndDate(configInput).toISOString()
 
     const reqBody = new FormData();
     reqBody.append("process_id", body.get("id"));
-    reqBody.append("start_time", new Date(configInput.starting_point + "Z").toISOString());
-    reqBody.append("simulation_horizon", calculateEndDate(configInput).toISOString());
+    reqBody.append("start_time", startDate);
+    reqBody.append("simulation_horizon", endDate);
     reqBody.append("event_log", body.get("logFile"));
     reqBody.append("bpmn_model", body.get("bpmnFile"));
     reqBody.append("json_parameters", body.get("jsonFile"));
@@ -62,8 +66,12 @@ const getSimulationData = async (body: FormData): Promise<{
         process.env.PYTHON_MICROSERVICE_BASE_URL + "/start",
         reqBody,
         { headers: { "Content-Type": "multipart/form-data" } }
-    )
-    const groupedEvents = groupEvents(response.data.events);
+    );
+    const events: Array<BatchEvent> = response.data.events;
+    const sortedEvents = [...events].sort(
+        (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    );
+    const groupedEvents = groupEvents(events, startDate, sortedEvents[sortedEvents.length - 1].timestamp);
 
     return {
         id: body.get('id') as string,

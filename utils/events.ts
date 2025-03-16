@@ -1,20 +1,16 @@
 import {Batch, BatchEvent} from "@definitions/simulation/types";
 
-export const groupEvents = (events: Array<BatchEvent>): Array<Batch> => {
-    const sortedEvents = [...events].sort(
-        (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-    );
-    const endTimestamp = sortedEvents[sortedEvents.length - 1].timestamp;
-    const batches = generateEmptyBatches(sortedEvents[0].timestamp, endTimestamp);
+export const groupEvents = (events: Array<BatchEvent>, startDate: string, endDate: string): Array<Batch> => {
+    const batches = generateEmptyBatches(startDate, endDate);
+    const initialBatchDate = new Date(startDate);
+    initialBatchDate.setMinutes(0, 0, 0);
 
-    let batchIndex = 0;
-    for (const event of sortedEvents) {
+    for (const event of events) {
         const eventDate = new Date(event.timestamp);
-        if (event.timestamp === endTimestamp) batchIndex = batches.length - 1;
-        else while (eventDate >= new Date(batches[batchIndex].endDate)) {
-            batchIndex++;
+        const diffMs = (eventDate.getTime() - initialBatchDate.getTime()) / (1000 * 60 * 60)
+        if (diffMs >= 0) {
+            batches[Math.floor(diffMs)].events.push(event);
         }
-        batches[batchIndex].events.push(event);
     }
 
     return batches;
