@@ -14,6 +14,7 @@ import {
 import {FlowTypes, LifecycleTypes, NodeTypes} from "@definitions/simulation/enums";
 import axios from "@node_modules/axios";
 import {ResumeSimulationRequestBody, SimulationData} from "@definitions/api/types";
+import {formatDateString} from "@utils/dateHelpers";
 
 const simulation = (simulationData: SimulationData, id: string) => {
     return {
@@ -438,9 +439,9 @@ const simulation = (simulationData: SimulationData, id: string) => {
 
             function enableTimeline() {
                 const startDate = document.getElementById("start-date");
-                startDate.textContent = initialDate.toISOString();
+                startDate.textContent = formatDateString(initialDate);
                 const endDate = document.getElementById("end-date");
-                endDate.textContent = finalDate.toISOString();
+                endDate.textContent = formatDateString(finalDate);
 
                 const goToStartButton = document.getElementById('go-to-start-btn');
                 goToStartButton.addEventListener("click", () => handleRewindButtonClick(0));
@@ -478,7 +479,7 @@ const simulation = (simulationData: SimulationData, id: string) => {
 
                     const totalElapsedTime = progress * totalDuration;
                     currentDateTime = new Date(initialDate.getTime() + totalElapsedTime);
-                    currentDateTimeBox.textContent = currentDateTime.toISOString();
+                    currentDateTimeBox.textContent = formatDateString(currentDateTime);
 
                     if (innerProgress < 1) {
                         localProgress = innerProgress;
@@ -537,7 +538,7 @@ const simulation = (simulationData: SimulationData, id: string) => {
                     const rect = timeline.getBoundingClientRect();
                     const progress = Math.max(0, Math.min(100, ((event.clientX - rect.left) / rect.width) * 100));
 
-                    tooltip.textContent = new Date(initialDate.getTime() + (progress / 100) * totalDuration).toISOString();
+                    tooltip.textContent = formatDateString(new Date(initialDate.getTime() + (progress / 100) * totalDuration));
                     tooltip.style.left = `${event.clientX + 10}px`;
                     tooltip.style.top = `${event.clientY - 30}px`;
                     tooltip.style.display = "block";
