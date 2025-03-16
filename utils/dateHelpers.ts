@@ -22,11 +22,11 @@ export const calculateEndDate = (data: AlgorithmConfiguration): Date => {
 }
 
 export const formatDateString = (date: Date) => {
-    const day = date.getDay() < 10 ? '0' + date.getDay() : date.getDay();
-    const month = date.getMonth() + 1 < 10 ? '0' + date.getMonth() : date.getMonth();
-    const hours = date.getHours() < 10 ? '0' + date.getHours() : date.getHours();
-    const minutes = date.getMinutes() < 10 ? '0' + date.getMinutes() : date.getMinutes();
-    const seconds = date.getSeconds() < 10 ? '0' + date.getSeconds() : date.getSeconds();
+    const day = date.getUTCDay() < 10 ? '0' + date.getUTCDay() : date.getUTCDay();
+    const month = date.getUTCMonth() + 1 < 10 ? '0' + (date.getUTCMonth() + 1) : date.getUTCMonth() + 1;
+    const hours = date.getUTCHours() < 10 ? '0' + date.getUTCHours() : date.getUTCHours();
+    const minutes = date.getUTCMinutes() < 10 ? '0' + date.getUTCMinutes() : date.getUTCMinutes();
+    const seconds = date.getUTCSeconds() < 10 ? '0' + date.getUTCSeconds() : date.getUTCSeconds();
 
-    return day + "/" + month + "/" + date.getFullYear() + ", " + hours + ":" + minutes + ":" + seconds;
+    return day + "/" + month + "/" + date.getUTCFullYear() + ", " + hours + ":" + minutes + ":" + seconds;
 }

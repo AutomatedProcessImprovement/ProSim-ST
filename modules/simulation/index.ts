@@ -13,8 +13,7 @@ import {
 } from "@definitions/simulation/types";
 import {FlowTypes, LifecycleTypes, NodeTypes} from "@definitions/simulation/enums";
 import axios from "@node_modules/axios";
-import {SimulationData} from "@definitions/api/types";
-import {formatDateString} from "@utils/dateHelpers";
+import {ResumeSimulationRequestBody, SimulationData} from "@definitions/api/types";
 
 const simulation = (simulationData: SimulationData, id: string) => {
     return {
@@ -43,6 +42,7 @@ const simulation = (simulationData: SimulationData, id: string) => {
             let isResumed = false;
             let initialBatches: Batch[];
             let initialDate: Date;
+            let finalDate: Date;
             let abortController: AbortController = new AbortController();
             let hasEnded = false;
 
@@ -438,9 +438,9 @@ const simulation = (simulationData: SimulationData, id: string) => {
 
             function enableTimeline() {
                 const startDate = document.getElementById("start-date");
-                startDate.textContent = formatDateString(initialDate);
+                startDate.textContent = initialDate.toISOString();
                 const endDate = document.getElementById("end-date");
-                endDate.textContent = formatDateString(new Date(initialBatches[initialBatches.length - 1].endDate));
+                endDate.textContent = finalDate.toISOString();
 
                 const goToStartButton = document.getElementById('go-to-start-btn');
                 goToStartButton.addEventListener("click", () => handleRewindButtonClick(0));
@@ -478,7 +478,7 @@ const simulation = (simulationData: SimulationData, id: string) => {
 
                     const totalElapsedTime = progress * totalDuration;
                     currentDateTime = new Date(initialDate.getTime() + totalElapsedTime);
-                    currentDateTimeBox.textContent = formatDateString(currentDateTime);
+                    currentDateTimeBox.textContent = currentDateTime.toISOString();
 
                     if (innerProgress < 1) {
                         localProgress = innerProgress;
@@ -537,7 +537,7 @@ const simulation = (simulationData: SimulationData, id: string) => {
                     const rect = timeline.getBoundingClientRect();
                     const progress = Math.max(0, Math.min(100, ((event.clientX - rect.left) / rect.width) * 100));
 
-                    tooltip.textContent = formatDateString(new Date(initialDate.getTime() + (progress / 100) * totalDuration));
+                    tooltip.textContent = new Date(initialDate.getTime() + (progress / 100) * totalDuration).toISOString();
                     tooltip.style.left = `${event.clientX + 10}px`;
                     tooltip.style.top = `${event.clientY - 30}px`;
                     tooltip.style.display = "block";
@@ -710,10 +710,12 @@ const simulation = (simulationData: SimulationData, id: string) => {
             }
 
             async function handleTimelineRequest(progress: number) {
-                const requestTimestamp = initialDate.getTime() + (progress / 100) * totalDuration;
-
                 try {
-                    const res = await axios.get(`/api/simulation/${id}`);
+                    const resumptionBody: ResumeSimulationRequestBody = {
+                        requestedDate: new Date(initialDate.getTime() + (progress / 100) * totalDuration).toISOString(),
+                        finalDate: finalDate.toISOString(),
+                    }
+                    const res = await axios.post(`/api/simulation/${id}/resumption`, resumptionBody);
 
                     document.querySelectorAll(".token").forEach(token => token.remove());
                     tokens = {};
@@ -739,7 +741,8 @@ const simulation = (simulationData: SimulationData, id: string) => {
                 viewport = canvas.getContainer().querySelector('svg g[data-element-id]');
                 initialBatches = JSON.parse(JSON.stringify(simulationData.batches));
                 initialDate = new Date(initialBatches[0].startDate);
-                totalDuration = new Date(initialBatches[initialBatches.length - 1].endDate).getTime() - initialDate.getTime();
+                finalDate = new Date(initialBatches[initialBatches.length - 1].endDate)
+                totalDuration = finalDate.getTime() - initialDate.getTime();
                 enableTimeline();
 
                 runSimulation();
