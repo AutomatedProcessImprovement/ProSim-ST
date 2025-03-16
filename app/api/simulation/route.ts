@@ -68,10 +68,10 @@ const getSimulationData = async (body: FormData): Promise<{
         { headers: { "Content-Type": "multipart/form-data" } }
     );
     const events: Array<BatchEvent> = response.data.events;
-    const sortedEvents = [...events].sort(
-        (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    const latestEvent = events.reduce((max, event) =>
+        new Date(event.timestamp) > new Date(max.timestamp) ? event : max, events[0]
     );
-    const groupedEvents = groupEvents(events, startDate, sortedEvents[sortedEvents.length - 1].timestamp);
+    const groupedEvents = groupEvents(events, startDate, latestEvent.timestamp);
 
     return {
         id: body.get('id') as string,
