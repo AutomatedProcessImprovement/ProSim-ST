@@ -8,7 +8,8 @@ import {
     FrameCase,
     PathMap,
     Token,
-    TokenColors, TokenProgresses,
+    TokenColors,
+    TokenProgresses,
     Tokens
 } from "@definitions/simulation/types";
 import {FlowTypes, LifecycleTypes, NodeTypes} from "@definitions/simulation/enums";

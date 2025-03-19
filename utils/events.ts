@@ -7,9 +7,9 @@ export const groupEvents = (events: Array<BatchEvent>, startDate: string, endDat
 
     for (const event of events) {
         const eventDate = new Date(event.timestamp);
-        const diffMs = (eventDate.getTime() - initialBatchDate.getTime()) / (1000 * 60 * 60)
-        if (diffMs >= 0) {
-            batches[Math.floor(diffMs)].events.push(event);
+        const diffHr = (eventDate.getTime() - initialBatchDate.getTime()) / (1000 * 60 * 60)
+        if (diffHr >= 0) {
+            batches[Math.floor(diffHr)].events.push(event);
         }
     }
 
