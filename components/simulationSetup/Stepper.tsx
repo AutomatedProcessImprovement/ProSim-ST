@@ -68,12 +68,12 @@ const Stepper = ({children = [], onSubmit = () => {}, className = ''}: Props) =>
                 Children.map(children, (child, idx) =>
                     <>
                         {
-                            cloneElement(child as any, {
+                            cloneElement(child, {
                                 active: idx === activeStep,
                                 valid: validity[idx],
                                 form: id,
                                 idx: idx
-                            } as any)
+                            })
                         }
                         {
                             (idx < count - 1) &&

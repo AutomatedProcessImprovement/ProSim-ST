@@ -37,7 +37,7 @@ const MappingInput = ({field, label}: Props) => {
     return <Field className = 'flex h-8 flex-row items-center justify-between'>
         <Label>{ label }</Label>
         <Listbox name={field}
-                 value={value as any}
+                 value={value}
                  onChange={_value => {
                      setIsValid(true)
                      setValue(_value)
@@ -69,7 +69,7 @@ const MappingInput = ({field, label}: Props) => {
                     [...headers].map((header: string) =>
                         <ListboxOption className = 'group flex cursor-pointer items-center justify-between overflow-hidden rounded-2xl bg-white px-4 py-1 hover:bg-slate-200 data-[selected]:bg-slate-300 data-[selected]:font-semibold'
                                        key = {`${field}.${header}`}
-                                       value = {header as any}>
+                                       value = {header}>
                             {header}
                             <CheckIcon className='hidden size-4 group-data-[selected]:inline'/>
                         </ListboxOption>

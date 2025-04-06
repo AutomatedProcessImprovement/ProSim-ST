@@ -56,7 +56,7 @@ const SimulationHorizonInput = () => {
     return <>
         <input type="number" name="simulation_horizon_value" value={value} onChange={handleValueChange} min={1}
                className='w-1/2 rounded-2xl bg-white px-4 py-1 me-0.5 text-left data-[invalid]:border-2 data-[invalid]:border-red-500 data-[focused]:bg-slate-200'/>
-        <Listbox name="simulation_horizon_unit" value={unit as any} onChange={handleUnitChange}>
+        <Listbox name="simulation_horizon_unit" value={unit} onChange={handleUnitChange}>
             <ListboxButton className = {`group flex w-1/2 flex-row items-center 
                     justify-between rounded-2xl bg-white px-4 py-1 text-left
                     data-[invalid]:border-2 data-[invalid]:border-red-500 
@@ -67,8 +67,11 @@ const SimulationHorizonInput = () => {
             <ListboxOptions anchor='bottom' className='mt-1 flex w-[var(--button-width)] flex-col gap-1 rounded-2xl bg-white p-1 shadow'>
                 {
                     units.map((u: string, key: number) =>
-                        <ListboxOption className = 'group flex cursor-pointer items-center justify-between overflow-hidden rounded-2xl bg-white px-4 py-1
-                                                    hover:bg-slate-200 data-[selected]:bg-slate-300 data-[selected]:font-semibold' key = {key} value = {u as any}>
+                        <ListboxOption
+                            className =
+                                "group flex cursor-pointer items-center justify-between overflow-hidden rounded-2xl bg-white px-4 py-1hover:bg-slate-200 data-[selected]:bg-slate-300 data-[selected]:font-semibold"
+                            key = {key} value = {u}
+                        >
                             {u}<CheckIcon className='hidden size-4 group-data-[selected]:inline'/>
                         </ListboxOption>
                     )

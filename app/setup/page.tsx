@@ -18,7 +18,7 @@ import {ConfigFileInput, MappingInput, Preview, Step, Stepper} from "@components
 import {ConfigInput, SimulationHorizonInput, StartingPointInput} from "@components/simulationSetup/configInput";
 import {CsvContext} from "@context/CsvContext";
 import {clsx} from "clsx/lite";
-import axios, {AxiosError} from "axios";
+import axios from "axios";
 import {calculateEndDate} from "@utils/dateHelpers";
 
 const Setup = () => {
@@ -105,7 +105,7 @@ const Setup = () => {
     }
 
     const onSubmit = async () => {
-        let formData = new FormData();
+        const formData = new FormData();
         Object.keys(data).forEach((key) => {
             let value = data[key];
             if (!(data[key] instanceof File) && (typeof data[key] === 'object')) {
@@ -118,7 +118,7 @@ const Setup = () => {
             const res = await axios.post('/api/simulation', formData);
 
             router.push(`/simulation/${res.data.id}`);
-        } catch (error: AxiosError) {
+        } catch (error) {
             toast.error("Error occurred!", {description: error.response.data.error});
         }
     }
@@ -207,7 +207,7 @@ const Setup = () => {
                                 <tbody>
                                 {
                                     Object.entries(data.mapping)
-                                        .filter(([key, _]) => key !== 'attributes')
+                                        .filter((entry) => entry[0] !== 'attributes')
                                         .map(([key, value]) =>
                                             <tr key={key}>
                                                 <td>{key}</td>
@@ -215,7 +215,7 @@ const Setup = () => {
                                                     <ArrowRightIcon className='size-3'/>
                                                 </td>
                                                 <td className = { clsx('text-right', value === '__DISCOVER__' && 'italic') }>
-                                                    {value === '__DISCOVER__' ? 'Discover' : value}
+                                                    {value === '__DISCOVER__' ? 'Discover' : value as string}
                                                 </td>
                                             </tr>
                                         )

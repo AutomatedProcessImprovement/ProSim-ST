@@ -1,4 +1,4 @@
-import {getRedisInstance} from "@database/redis";
+import {getRedisInstance} from "@db/redis/redis";
 import {NextResponse} from "next/server";
 import {writeFile} from "fs/promises";
 import path from "path";

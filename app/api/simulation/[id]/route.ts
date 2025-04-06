@@ -1,5 +1,5 @@
 import {NextResponse} from "next/server";
-import {getRedisInstance} from "@database/redis";
+import {getRedisInstance} from "@db/redis/redis";
 import {join} from "path";
 import {readFile} from "fs/promises";
 import {SimulationEntry} from "@definitions/api/types";

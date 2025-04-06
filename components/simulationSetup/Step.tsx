@@ -1,5 +1,5 @@
 import {clsx} from "clsx/lite";
-import {cloneElement, ReactElement} from "react";
+import {cloneElement, ReactElement, ReactNode} from "react";
 import {ExclamationCircleIcon} from "@heroicons/react/16/solid";
 
 interface Props {
@@ -9,7 +9,8 @@ interface Props {
     icon?: ReactElement,
     label: string,
     valid?: boolean,
-    onNext?: (data: FormData) => boolean
+    onNext?: (data: FormData) => boolean,
+    children?: ReactNode;
 }
 
 const Step = ({form, idx, active, icon, label, valid}: Props) => {
@@ -25,7 +26,7 @@ const Step = ({form, idx, active, icon, label, valid}: Props) => {
                 }>
             {
                 icon &&
-                cloneElement(icon as any, {className: `size-6 ${icon.props.className}`})
+                cloneElement(icon, {className: `size-6 ${icon.props.className}`})
             }
             <span className='text-center text-xs'>{label}</span>
         </button>

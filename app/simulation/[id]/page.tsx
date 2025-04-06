@@ -6,6 +6,7 @@ import NavigatedViewer from 'bpmn-js/lib/NavigatedViewer';
 import simulation from "@modules/simulation";
 import axios from "axios";
 import {SimulationData} from "@definitions/api/types";
+import {Canvas} from "@node_modules/bpmn-js/lib/features/context-pad/ContextPadProvider";
 
 const speeds = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
 
@@ -21,6 +22,7 @@ const Simulation = () => {
             const res = await axios.get(`/api/simulation/${id}`);
 
             return res.data;
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         } catch (error) {
             router.replace('/');
         }
@@ -52,9 +54,10 @@ const Simulation = () => {
             });
 
             viewer.importXML(xml).then(() => {
-                viewer.get('canvas').zoom('fit-viewport');
+                const canvas = viewer.get('canvas') as Canvas;
+                canvas.zoom('fit-viewport');
 
-                const tokenSimulation = viewer.get('tokenSimulation');
+                const tokenSimulation = viewer.get('tokenSimulation') as Canvas;
                 tokenSimulation.start();
             });
         }
@@ -77,7 +80,7 @@ const Simulation = () => {
         <div id={'simulated-time-box'} className={'simulated-time-box'}>--</div>
         <select id={'speed-select'} className={'speed-select'}>
             {speeds.map(speed => (
-                <option value={speed} selected={speed === 1}>{speed}x</option>
+                <option value={speed} key={speed} selected={speed === 1}>{speed}x</option>
             ))}
         </select>
     </>;
