@@ -3,13 +3,14 @@ import {ResumeSimulationRequestBody, ResumeSimulationRequestBodyPython, Simulati
 import axios from "@node_modules/axios";
 import {groupEvents} from "@utils/events";
 
-export const POST = async (request, {params}): Promise<
+export const POST = async (request: Request, { params }: { params: { id: string } }): Promise<
     NextResponse<{ simulationData: SimulationData } | { error: string }>
 > => {
     try {
         const body: ResumeSimulationRequestBody = await request.json();
+        const { id: processId } = await params;
         const reqBody: ResumeSimulationRequestBodyPython = {
-            process_id: params.id,
+            process_id: processId,
             timestamp: body.requestedDate,
         }
         const response = await axios.post(

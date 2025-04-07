@@ -4,10 +4,17 @@ import {join} from "path";
 import {readFile} from "fs/promises";
 import {SimulationEntry} from "@definitions/api/types";
 
-export const GET = async (request, {params}) => {
+export const GET = async (request: Request, { params }: { params: { id: string } }) => {
     try {
+        const { id: processId } = await params;
+
         const redis = getRedisInstance();
-        const stringSimulationData = await redis.get(params.id);
+        const stringSimulationData = await redis.get(processId);
+
+        if (!stringSimulationData) {
+            return NextResponse.json({ error: 'Simulation data not found' }, { status: 404 });
+        }
+
         const simulation: SimulationEntry = JSON.parse(stringSimulationData);
 
         const filePath = join(process.cwd(), 'public/assets', simulation.fileName);

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "@assets/styles/globals.css";
 import {DataProvider} from "@context/DataContext";
-import { Suspense, ReactNode } from "react";
+import {Suspense, ReactNode} from "react";
 import Loader from "@components/Loader";
 import {CsvProvider} from "@context/CsvContext";
 

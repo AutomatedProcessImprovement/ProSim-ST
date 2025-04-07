@@ -78,9 +78,9 @@ const Simulation = () => {
             <button id={'go-to-end-btn'} className={'control-btn'}>⏭</button>
         </div>
         <div id={'simulated-time-box'} className={'simulated-time-box'}>--</div>
-        <select id={'speed-select'} className={'speed-select'}>
+        <select id={'speed-select'} className={'speed-select'} defaultValue={1}>
             {speeds.map(speed => (
-                <option value={speed} key={speed} selected={speed === 1}>{speed}x</option>
+                <option value={speed} key={speed}>{speed}x</option>
             ))}
         </select>
     </>;
