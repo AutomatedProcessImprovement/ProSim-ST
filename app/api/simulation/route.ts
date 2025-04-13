@@ -29,7 +29,7 @@ export const POST = async (request) => {
         const buffer = Buffer.from(await file.arrayBuffer());
         await writeFile(path.join(dir, fileName), buffer);
 
-        await insertSimulationData(simulationData);
+        await insertSimulationData(simulationData, fileName);
 
         const redis = getRedisInstance();
         await redis.set(simulationData.id as string, JSON.stringify({
@@ -71,7 +71,10 @@ const getSimulationData = async (body: FormData): Promise<PySimulationData> => {
     };
 }
 
-const insertSimulationData = async (data: PySimulationData) => {
+const insertSimulationData = async (
+    data: PySimulationData,
+    fileName: string,
+) => {
     const { id: processId, data: { events, frames } } = data;
 
     const appDataSource = await createMySQLConnection();
@@ -80,6 +83,11 @@ const insertSimulationData = async (data: PySimulationData) => {
     await queryRunner.startTransaction();
 
     try {
+        const processSql = `
+            INSERT INTO process (id, fileName)
+            VALUES (?, ?)
+        `;
+
         const eventValues = events.map(event => [
             event.case_id,
             event.lifecycle,
@@ -113,6 +121,7 @@ const insertSimulationData = async (data: PySimulationData) => {
 
         const flattenedFrameValues = frameValues.flat();
 
+        await queryRunner.query(processSql, [processId, fileName]);
         await queryRunner.query(eventSql, flattenedEventValues);
         await queryRunner.query(frameSql, flattenedFrameValues);
         await queryRunner.commitTransaction();
