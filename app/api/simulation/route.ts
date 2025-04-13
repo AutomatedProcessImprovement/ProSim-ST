@@ -28,16 +28,15 @@ export const POST = async (request) => {
         await insertSimulationData(simulationData);
 
         const fileName = `${simulationData.id}_${file.name.replaceAll(" ", "_")}`;
-        const buffer = Buffer.from(await file.arrayBuffer());
-        await writeFile(path.join(dir, fileName), buffer);
-
         const redis = getRedisInstance();
         await redis.set(simulationData.id as string, JSON.stringify({
             frames: simulationData.data.frames,
             fileName
         }), 'EX', 60*60*24);
-
         redis.disconnect();
+
+        const buffer = Buffer.from(await file.arrayBuffer());
+        await writeFile(path.join(dir, fileName), buffer);
 
         return NextResponse.json({ id: simulationData.id }, { status: 201 });
     } catch (error) {
@@ -73,7 +72,7 @@ const getSimulationData = async (body: FormData): Promise<PySimulationData> => {
 }
 
 const insertSimulationData = async (data: PySimulationData) => {
-    const { id: processId, data: { events } } = data;
+    const { id: processId, data: { events, frames } } = data;
 
     const appDataSource = await createMySQLConnection();
     const queryRunner = appDataSource.createQueryRunner();
@@ -81,25 +80,41 @@ const insertSimulationData = async (data: PySimulationData) => {
     await queryRunner.startTransaction();
 
     try {
-        const values: any[] = events.map(event => [
+        const eventValues = events.map(event => [
             event.case_id,
             event.lifecycle,
             new Date(event.timestamp).toISOString().slice(0, 19).replace("T", " "),
             event.node_id,
             JSON.stringify(event.paths),
-            processId
+            processId,
         ]);
 
-        const placeholders = values.map(() => `(?, ?, ?, ?, ?, ?)`).join(", ");
+        const eventPlaceholders = eventValues.map(() => `(?, ?, ?, ?, ?, ?)`).join(", ");
 
-        const sql = `
+        const eventSql = `
             INSERT INTO event (caseId, lifecycle, timestamp, nodeId, paths, processId)
-            VALUES ${placeholders};
+            VALUES ${eventPlaceholders};
         `;
 
-        const flattenedValues = values.flat();
+        const flattenedEventValues = eventValues.flat();
 
-        await queryRunner.query(sql, flattenedValues);
+        const frameValues = frames.map(frame => [
+            frame.case_id,
+            JSON.stringify(frame.active_elements),
+            processId,
+        ]);
+
+        const framePlaceholders = frameValues.map(() => `(?, ?, ?)`).join(", ");
+
+        const frameSql = `
+            INSERT INTO frame (caseId, activeElements, processId)
+            VALUES ${framePlaceholders};
+        `;
+
+        const flattenedFrameValues = frameValues.flat();
+
+        await queryRunner.query(eventSql, flattenedEventValues);
+        await queryRunner.query(frameSql, flattenedFrameValues);
         await queryRunner.commitTransaction();
     } catch (err) {
         console.error("Bulk insert error:", err);
