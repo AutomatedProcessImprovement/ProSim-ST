@@ -1,4 +1,4 @@
-import {Batch, FrameCase} from "@definitions/simulation/types";
+import {Batch, BatchEvent, FrameCase} from "@definitions/simulation/types";
 
 export type SimulationEntry = {
     fileName: string;
@@ -8,6 +8,14 @@ export type SimulationEntry = {
 export type SimulationData = {
     frames: Array<FrameCase>,
     batches: Array<Batch>
+}
+
+export type PySimulationData = {
+    id: string;
+    data: {
+        frames: Array<FrameCase>;
+        events: Array<BatchEvent>;
+    }
 }
 
 export type ResumeSimulationRequestBody = {

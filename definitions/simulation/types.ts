@@ -16,14 +16,14 @@ export type TokenColors = {
 }
 
 export type FrameCase = {
-    case_id: string, // in some places, snake_case is used instead of camelCase because the Python service sends the data in this form
+    case_id: number, // in some places, snake_case is used instead of camelCase because the Python service sends the data in this form
     active_elements: {
         [tokenId: string]: string,
     },
 }
 
 export type BatchEvent = {
-    case_id: string,
+    case_id: number,
     lifecycle: LifecycleTypes,
     timestamp: string,
     node_id: string,

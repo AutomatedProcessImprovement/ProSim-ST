@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "migration": "ts-node ./node_modules/typeorm/cli.js migration:generate -d db/mysql/dataSource.ts",
+    "migrate:run": "ts-node ./node_modules/typeorm/cli.js migration:run -d db/mysql/dataSource.ts"
   },
   "dependencies": {
     "@headlessui/react": "^2.1.8",
@@ -19,6 +21,7 @@
     "filesize": "^10.1.6",
     "ioredis": "^5.4.1",
     "js-levenshtein": "^1.1.6",
+    "mysql": "^2.18.1",
     "mysql2": "^3.14.0",
     "next": "15.2.4",
     "react": "^18",

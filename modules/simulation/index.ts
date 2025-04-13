@@ -48,7 +48,7 @@ const simulation = (simulationData: SimulationData, id: string) => {
             let abortController: AbortController = new AbortController();
             let hasEnded = false;
 
-            function placeToken(point: Waypoint, caseId: string, tokenId: string) {
+            function placeToken(point: Waypoint, caseId: number, tokenId: string) {
                 const { x, y } = point;
                 const token = tokens[caseId][tokenId];
                 updateCoordinateMap(point, caseId, tokenId);
@@ -56,7 +56,7 @@ const simulation = (simulationData: SimulationData, id: string) => {
                 token.setAttribute("cy", y.toString());
             }
 
-            function updateCoordinateMap(newPoint: Waypoint, caseId: string, tokenId: string) {
+            function updateCoordinateMap(newPoint: Waypoint, caseId: number, tokenId: string) {
                 const oldPoint = deleteCoordinates(caseId, tokenId);
                 const newCoordinatesKey = `${newPoint.x}_${newPoint.y}`;
                 if (!coordinateMap[newCoordinatesKey]) coordinateMap[newCoordinatesKey] = {};
@@ -66,7 +66,7 @@ const simulation = (simulationData: SimulationData, id: string) => {
                 updateTokenSizes(oldPoint);
             }
 
-            function deleteCoordinates(caseId: string, tokenId: string): Waypoint {
+            function deleteCoordinates(caseId: number, tokenId: string): Waypoint {
                 const token = tokens[caseId][tokenId];
                 const oldCoordinates = getTokenCoordinates(token);
                 const oldCoordinatesKey = `${oldCoordinates.x}_${oldCoordinates.y}`;
@@ -137,7 +137,7 @@ const simulation = (simulationData: SimulationData, id: string) => {
                 });
             }
 
-            function createToken(activeElementId: string, caseId: string, tokenId: string, color: string, fadeIn: boolean = false, show: boolean = true): Token {
+            function createToken(activeElementId: string, caseId: number, tokenId: string, color: string, fadeIn: boolean = false, show: boolean = true): Token {
                 if (!tokens[caseId]) tokens[caseId] = {};
                 const token = document.createElementNS("http://www.w3.org/2000/svg", "circle"); // this should be installed locally
                 token.setAttribute("r", "10");
@@ -170,7 +170,7 @@ const simulation = (simulationData: SimulationData, id: string) => {
                 return token;
             }
 
-            function deleteToken(caseId: string, tokenId: string, fadeOut: boolean = false) {
+            function deleteToken(caseId: number, tokenId: string, fadeOut: boolean = false) {
                 const token = tokens[caseId][tokenId];
 
                 function processDeletion() {
@@ -196,7 +196,7 @@ const simulation = (simulationData: SimulationData, id: string) => {
                 return pathLength;
             }
 
-            function handleBatchEvents({caseId, batchEvents, batchDuration}: { caseId: string; batchEvents: Array<BatchEvent>; batchDuration: number }): Promise<void> {
+            function handleBatchEvents({caseId, batchEvents, batchDuration}: { caseId: number; batchEvents: Array<BatchEvent>; batchDuration: number }): Promise<void> {
                 function addCentralPointToPath(element: Node, path: Array<Waypoint>, animationData: AnimationData, tokenId: string) {
                     const centerPoint = calculateCenterPoint(element);
                     const lastPoint = path.length ?
@@ -208,7 +208,7 @@ const simulation = (simulationData: SimulationData, id: string) => {
                 function addElementsToPath(
                     animationData: AnimationData,
                     tokenId: string,
-                    caseId: string,
+                    caseId: number,
                     elements: Array<string>,
                     batchEventPathEntries: Array<[string, Array<string>]>
                 ): { path: Array<Waypoint>, nextTokenIds: Array<string> } {
@@ -373,7 +373,7 @@ const simulation = (simulationData: SimulationData, id: string) => {
                 return durations;
             }
 
-            function animateAsyncData(pathMap: PathMap, caseId: string, remainingDuration: number = delta, isHidden: boolean = false, animatedTokens: Set<string> = new Set()) {
+            function animateAsyncData(pathMap: PathMap, caseId: number, remainingDuration: number = delta, isHidden: boolean = false, animatedTokens: Set<string> = new Set()) {
                 const durations = calculateDurations(pathMap, animatedTokens, remainingDuration);
 
                 Object.entries(pathMap).forEach(([tokenId, tokenData]) => {
@@ -395,7 +395,7 @@ const simulation = (simulationData: SimulationData, id: string) => {
                 });
             }
 
-            function animateToken(path: Waypoint[], onComplete: () => void, caseId: string, tokenId: string, duration: number = delta) {
+            function animateToken(path: Waypoint[], onComplete: () => void, caseId: number, tokenId: string, duration: number = delta) {
                 let startTime = performance.now();
                 if (isResumed && tokenProgresses[caseId]?.[tokenId]) {
                     startTime -= tokenProgresses[caseId][tokenId] * duration;
@@ -690,7 +690,7 @@ const simulation = (simulationData: SimulationData, id: string) => {
                                     animateTimeline(batchDuration),
                                     ...Object.entries(eventsByCaseId).map(
                                         ([caseId, batchEvents]) =>
-                                            handleBatchEvents({ caseId, batchEvents, batchDuration: proportionalDelta })
+                                            handleBatchEvents({ caseId: parseInt(caseId), batchEvents, batchDuration: proportionalDelta })
                                     ),
                                 ]
                             );

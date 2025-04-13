@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import {DataSource} from "typeorm";
+import { Event } from "@db/entities/Event";
 
 const parseBool = (value?: string) => value === 'true';
 
@@ -12,7 +13,7 @@ export const AppDataSource = new DataSource({
     database: process.env.MYSQL_DATABASE,
     synchronize: parseBool(process.env.TYPEORM_SYNCHRONIZE),
     logging: parseBool(process.env.TYPEORM_LOGGING),
-    entities: [],
-    migrations: ['db/migrations/*.ts'],
+    entities: [Event],
+    migrations: ['@db/migrations/*.ts'],
     subscribers: [],
-})
+});
