@@ -650,6 +650,34 @@ const simulation = (simulationData: SimulationData, id: string) => {
                 });
             }
 
+            async function handleTimelineRequest(progress: number) {
+                try {
+                    const resumptionBody: ResumeSimulationRequestBody = {
+                        requestedDate: new Date(initialDate.getTime() + (progress / 100) * totalDuration).toISOString(),
+                        finalDate: finalDate.toISOString(),
+                    }
+                    const res = await axios.post(`/api/simulation/${id}/resumption`, resumptionBody);
+
+                    document.querySelectorAll(".token").forEach(token => token.remove());
+                    tokens = {};
+                    coordinateMap = {};
+                    batches = [];
+                    frames = [];
+                    localProgress = 0.0;
+                    tokenProgresses = {};
+                    simulationData = res.data.simulationData;
+
+                    if (isPaused) {
+                        isPaused = false;
+                        playPauseButton.innerHTML = "⏸";
+                    }
+                    abortController = new AbortController();
+                    setTimeout(runSimulation, 10);
+                } catch (error) {
+                    console.log(error);
+                }
+            }
+
             async function runSimulation(shouldUpdateBatches: boolean = true) {
                 if (shouldUpdateBatches) {
                     batches = simulationData.batches;
@@ -709,34 +737,6 @@ const simulation = (simulationData: SimulationData, id: string) => {
                 playPauseButton.innerHTML = " ▶";
                 isPaused = true;
                 hasEnded = true;
-            }
-
-            async function handleTimelineRequest(progress: number) {
-                try {
-                    const resumptionBody: ResumeSimulationRequestBody = {
-                        requestedDate: new Date(initialDate.getTime() + (progress / 100) * totalDuration).toISOString(),
-                        finalDate: finalDate.toISOString(),
-                    }
-                    const res = await axios.post(`/api/simulation/${id}/resumption`, resumptionBody);
-
-                    document.querySelectorAll(".token").forEach(token => token.remove());
-                    tokens = {};
-                    coordinateMap = {};
-                    batches = [];
-                    frames = [];
-                    localProgress = 0.0;
-                    tokenProgresses = {};
-                    simulationData = res.data.simulationData;
-
-                    if (isPaused) {
-                        isPaused = false;
-                        playPauseButton.innerHTML = "⏸";
-                    }
-                    abortController = new AbortController();
-                    setTimeout(runSimulation, 10);
-                } catch (error) {
-                    console.log(error);
-                }
             }
 
             this.start = () => {

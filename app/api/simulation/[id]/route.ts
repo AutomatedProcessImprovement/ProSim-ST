@@ -2,20 +2,20 @@ import {NextResponse} from "next/server";
 import {getRedisInstance} from "@db/redis/redis";
 import {join} from "path";
 import {readFile} from "fs/promises";
-import {SimulationEntry} from "@definitions/api/types";
+import {GetSimulationByIdRequestBody, SimulationEntry} from "@definitions/api/types";
 
-export const GET = async (request: Request, { params }: { params: { id: string } }) => {
+export const GET = async (request: Request, params: GetSimulationByIdRequestBody) => {
     try {
-        const { id: processId } = await params;
+        const { id: processId, pointer, limit } = params;
 
         const redis = getRedisInstance();
-        const stringSimulationData = await redis.get(processId);
+        const stringFrames = await redis.get(processId);
 
-        if (!stringSimulationData) {
+        if (!stringFrames) {
             return NextResponse.json({ error: 'Simulation data not found' }, { status: 404 });
         }
 
-        const simulation: SimulationEntry = JSON.parse(stringSimulationData);
+        const simulation: SimulationEntry = JSON.parse(stringFrames);
 
         const filePath = join(process.cwd(), 'public/assets', simulation.fileName);
         const file = await readFile(filePath);

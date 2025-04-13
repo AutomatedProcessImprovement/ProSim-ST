@@ -1,7 +1,7 @@
-import {Column, Entity, Index, PrimaryGeneratedColumn} from "typeorm";
+import {Column, Entity, PrimaryGeneratedColumn, JoinColumn, ManyToOne} from "typeorm";
+import {Process} from "./Process";
 
 @Entity()
-@Index('PROCESS_ID_IDX', ['processId'])
 export class Frame {
     @PrimaryGeneratedColumn()
     id: number;
@@ -11,6 +11,10 @@ export class Frame {
 
     @Column({ type: "json" })
     activeElements: Record<string, string>;
+
+    @ManyToOne(() => Process)
+    @JoinColumn({ name: "processId" })
+    process: Process;
 
     @Column()
     processId: string;

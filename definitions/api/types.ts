@@ -18,6 +18,12 @@ export type PySimulationData = {
     }
 }
 
+export type GetSimulationByIdRequestBody = {
+    id: string;
+    pointer: number;
+    limit: number;
+}
+
 export type ResumeSimulationRequestBody = {
     requestedDate: string;
     finalDate: string;

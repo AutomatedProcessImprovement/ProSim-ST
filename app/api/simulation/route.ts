@@ -7,7 +7,6 @@ import axios from "axios";
 import {AlgorithmConfiguration} from "@definitions/config/interfaces";
 import {calculateEndDate} from "@utils/dateHelpers";
 import {PySimulationData} from "@definitions/api/types";
-import { Event } from "@db/entities/Event";
 import {createMySQLConnection} from "@db/mysql/typeorm";
 
 export const POST = async (request) => {
@@ -25,18 +24,19 @@ export const POST = async (request) => {
         }
 
         const simulationData = await getSimulationData(body);
-        await insertSimulationData(simulationData);
 
         const fileName = `${simulationData.id}_${file.name.replaceAll(" ", "_")}`;
+        const buffer = Buffer.from(await file.arrayBuffer());
+        await writeFile(path.join(dir, fileName), buffer);
+
+        await insertSimulationData(simulationData);
+
         const redis = getRedisInstance();
         await redis.set(simulationData.id as string, JSON.stringify({
             frames: simulationData.data.frames,
             fileName
         }), 'EX', 60*60*24);
         redis.disconnect();
-
-        const buffer = Buffer.from(await file.arrayBuffer());
-        await writeFile(path.join(dir, fileName), buffer);
 
         return NextResponse.json({ id: simulationData.id }, { status: 201 });
     } catch (error) {

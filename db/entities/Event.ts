@@ -1,7 +1,7 @@
-import {Column, Entity, Index, PrimaryGeneratedColumn} from "typeorm";
+import {Column, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn} from "typeorm";
+import {Process} from "./Process";
 
 @Entity()
-@Index('PROCESS_ID_IDX', ['processId'])
 export class Event {
     @PrimaryGeneratedColumn()
     id: number;
@@ -20,6 +20,10 @@ export class Event {
 
     @Column({ type: "json" })
     paths: Record<string, string[]>;
+
+    @ManyToOne(() => Process)
+    @JoinColumn({ name: "processId" })
+    process: Process;
 
     @Column()
     processId: string;
