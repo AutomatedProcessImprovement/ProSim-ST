@@ -84,18 +84,30 @@ const insertSimulationData = async (
 
     try {
         const processSql = `
-            INSERT INTO process (id, fileName)
-            VALUES (?, ?)
+            INSERT INTO process (id, fileName, startDate, endDate)
+            VALUES (?, ?, ?, ?)
         `;
 
-        const eventValues = events.map(event => [
-            event.case_id,
-            event.lifecycle,
-            new Date(event.timestamp).toISOString().slice(0, 19).replace("T", " "),
-            event.node_id,
-            JSON.stringify(event.paths),
-            processId,
-        ]);
+        let startDate = new Date(events[0].timestamp);
+        let endDate = new Date(events[0].timestamp);
+        const eventValues = events.map(event => {
+            const eventDate = new Date(event.timestamp);
+            if (eventDate < startDate) {
+                startDate = eventDate;
+            }
+            if (eventDate > endDate) {
+                endDate = eventDate;
+            }
+
+            return [
+                event.case_id,
+                event.lifecycle,
+                eventDate.toISOString().slice(0, 19).replace("T", " "),
+                event.node_id,
+                JSON.stringify(event.paths),
+                processId,
+            ]
+        });
 
         const eventPlaceholders = eventValues.map(() => `(?, ?, ?, ?, ?, ?)`).join(", ");
 
@@ -121,7 +133,12 @@ const insertSimulationData = async (
 
         const flattenedFrameValues = frameValues.flat();
 
-        await queryRunner.query(processSql, [processId, fileName]);
+        await queryRunner.query(processSql, [
+            processId,
+            fileName,
+            startDate.toISOString().slice(0, 19).replace("T", " "),
+            endDate.toISOString().slice(0, 19).replace("T", " "),
+        ]);
         await queryRunner.query(eventSql, flattenedEventValues);
         await queryRunner.query(frameSql, flattenedFrameValues);
         await queryRunner.commitTransaction();

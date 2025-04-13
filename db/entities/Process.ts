@@ -7,4 +7,10 @@ export class Process {
 
     @Column()
     fileName: string;
+
+    @Column({ type: "datetime" })
+    startDate: Date;
+
+    @Column({ type: "datetime" })
+    endDate: Date;
 }
