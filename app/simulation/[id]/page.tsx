@@ -29,8 +29,8 @@ const Simulation = () => {
 
     useEffect(() => {
         fetchSimulationData()
-            .then(data => {
-                setSimulationData(data.simulationData);
+            .then((data: SimulationData) => {
+                setSimulationData(data);
 
                 const buffer = Buffer.from(data.file);
                 const blob = new Blob([buffer], { type: 'application/octet-stream' });
@@ -49,7 +49,7 @@ const Simulation = () => {
         if (xml !== null && typeof window !== "undefined") {
             const viewer = new NavigatedViewer({
                 container: viewerRef.current,
-                additionalModules: [simulation(simulationData, id as string)]
+                additionalModules: [simulation(simulationData)]
             });
 
             viewer.importXML(xml).then(() => {

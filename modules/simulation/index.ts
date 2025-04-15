@@ -17,10 +17,11 @@ import axios from "@node_modules/axios";
 import {ResumeSimulationRequestBody, SimulationData} from "@definitions/api/types";
 import {formatDateString} from "@utils/dateHelpers";
 
-const simulation = (simulationData: SimulationData, id: string) => {
+const simulation = (simulationData: SimulationData) => {
     return {
         __init__: ['tokenSimulation'],
         tokenSimulation: ['type', function(canvas: Canvas, elementRegistry: ElementRegistry) {
+            let processId: string;
             let delta = 2000; // milliseconds
             const defaultDelta = 2000; // milliseconds
             let tokens: Tokens = {};
@@ -42,7 +43,6 @@ const simulation = (simulationData: SimulationData, id: string) => {
             let playPauseButton = document.getElementById('play-pause-btn');
             let isPaused = false;
             let isResumed = false;
-            let initialBatches: Batch[];
             let initialDate: Date;
             let finalDate: Date;
             let abortController: AbortController = new AbortController();
@@ -656,7 +656,7 @@ const simulation = (simulationData: SimulationData, id: string) => {
                         requestedDate: new Date(initialDate.getTime() + (progress / 100) * totalDuration).toISOString(),
                         finalDate: finalDate.toISOString(),
                     }
-                    const res = await axios.post(`/api/simulation/${id}/resumption`, resumptionBody);
+                    const res = await axios.post(`/api/simulation/${processId}/resumption`, resumptionBody);
 
                     document.querySelectorAll(".token").forEach(token => token.remove());
                     tokens = {};
@@ -741,9 +741,9 @@ const simulation = (simulationData: SimulationData, id: string) => {
 
             this.start = () => {
                 viewport = canvas.getContainer().querySelector('svg g[data-element-id]');
-                initialBatches = JSON.parse(JSON.stringify(simulationData.batches));
-                initialDate = new Date(initialBatches[0].startDate);
-                finalDate = new Date(initialBatches[initialBatches.length - 1].endDate)
+                processId = simulationData.processId;
+                initialDate = new Date(simulationData.startDate + 'Z');
+                finalDate = new Date(simulationData.endDate + 'Z');
                 totalDuration = finalDate.getTime() - initialDate.getTime();
                 enableTimeline();
 

@@ -4,6 +4,8 @@ export type SimulationData = {
     processId: string,
     frames: Array<FrameCase>,
     batches: Array<Batch>,
+    startDate: string,
+    endDate: string,
     file: Buffer,
 }
 

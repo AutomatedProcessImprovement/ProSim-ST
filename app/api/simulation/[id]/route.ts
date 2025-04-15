@@ -21,9 +21,16 @@ export const GET = async (request: Request, context: { params: { id: string } })
         const appDataSource = await createMySQLConnection();
         const processRepository = appDataSource.getRepository(Process);
 
-        const simulationProcess = await processRepository.findOneOrFail({
-            where: { id: processId },
-        });
+        const simulationProcess = await processRepository
+            .createQueryBuilder("process")
+            .select([
+                "process.id AS id",
+                "process.fileName AS fileName",
+                "CAST(process.endDate AS CHAR) AS endDate",
+                "CAST(process.startDate AS CHAR) AS startDate"
+            ])
+            .where("process.id = :id", { id: processId })
+            .getRawOne();
 
         const rawStartDate = new Date(simulationProcess.startDate);
         const startDate = rawStartDate;
@@ -76,7 +83,14 @@ export const GET = async (request: Request, context: { params: { id: string } })
         const filePath = join(process.cwd(), 'public/assets', simulationProcess.fileName);
         const file = await readFile(filePath);
 
-        return NextResponse.json({ processId, batches, frames, file }, { status: 200 });
+        return NextResponse.json({
+            processId,
+            batches,
+            frames,
+            file,
+            startDate: simulationProcess.startDate,
+            endDate: simulationProcess.endDate,
+        }, { status: 200 });
     } catch (e) {
         console.log(e)
         return NextResponse.json({ error: "Failed to get simulation data." }, { status: 500 });
