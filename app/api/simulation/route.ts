@@ -32,10 +32,7 @@ export const POST = async (request) => {
         await insertSimulationData(simulationData, fileName);
 
         const redis = getRedisInstance();
-        await redis.set(simulationData.id as string, JSON.stringify({
-            frames: simulationData.data.frames,
-            fileName
-        }), 'EX', 60*60*24);
+        await redis.set(simulationData.id, JSON.stringify(simulationData.data.frames), 'EX', 60*60*24);
         redis.disconnect();
 
         return NextResponse.json({ id: simulationData.id }, { status: 201 });
@@ -141,6 +138,7 @@ const insertSimulationData = async (
         ]);
         await queryRunner.query(eventSql, flattenedEventValues);
         await queryRunner.query(frameSql, flattenedFrameValues);
+
         await queryRunner.commitTransaction();
     } catch (err) {
         console.error("Bulk insert error:", err);

@@ -1,13 +1,10 @@
 import {Batch, BatchEvent, FrameCase} from "@definitions/simulation/types";
 
-export type SimulationEntry = {
-    fileName: string;
-    data: SimulationData;
-}
-
 export type SimulationData = {
+    processId: string,
     frames: Array<FrameCase>,
-    batches: Array<Batch>
+    batches: Array<Batch>,
+    file: Buffer,
 }
 
 export type PySimulationData = {
@@ -16,12 +13,6 @@ export type PySimulationData = {
         frames: Array<FrameCase>;
         events: Array<BatchEvent>;
     }
-}
-
-export type GetSimulationByIdRequestBody = {
-    id: string;
-    pointer: number;
-    limit: number;
 }
 
 export type ResumeSimulationRequestBody = {

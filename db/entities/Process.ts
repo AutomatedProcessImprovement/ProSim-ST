@@ -9,8 +9,8 @@ export class Process {
     fileName: string;
 
     @Column({ type: "datetime" })
-    startDate: Date;
+    startDate: string;
 
     @Column({ type: "datetime" })
-    endDate: Date;
+    endDate: string;
 }

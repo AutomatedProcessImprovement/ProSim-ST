@@ -22,7 +22,6 @@ const Simulation = () => {
             const res = await axios.get(`/api/simulation/${id}`);
 
             return res.data;
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         } catch (error) {
             router.replace('/');
         }

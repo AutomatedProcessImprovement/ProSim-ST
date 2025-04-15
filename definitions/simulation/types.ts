@@ -19,7 +19,7 @@ export type FrameCase = {
     case_id: number, // in some places, snake_case is used instead of camelCase because the Python service sends the data in this form
     active_elements: {
         [tokenId: string]: string,
-    },
+    } | string,
 }
 
 export type BatchEvent = {

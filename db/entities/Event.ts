@@ -13,7 +13,7 @@ export class Event {
     lifecycle: string;
 
     @Column({ type: "datetime" })
-    timestamp: Date;
+    timestamp: string;
 
     @Column()
     nodeId: string;
