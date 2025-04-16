@@ -38,7 +38,7 @@ const simulation = (simulationData: SimulationData) => {
             let currentDateTime: Date;
             let localProgress: number = 0.0;
             let tokenProgresses: TokenProgresses = {};
-            let batches: Batch[];
+            let batchesQueue: Batch[];
             let frames: FrameCase[];
             let playPauseButton = document.getElementById('play-pause-btn');
             let isPaused = false;
@@ -132,6 +132,9 @@ const simulation = (simulationData: SimulationData) => {
 
             function createTokensForFrame(frameCase: FrameCase) {
                 const color = getRandomColor();
+                if (typeof frameCase.active_elements === "string") {
+                    frameCase.active_elements = JSON.parse(frameCase.active_elements);
+                }
                 Object.entries(frameCase.active_elements).forEach(([tokenId, activeElementId]) => {
                     createToken(activeElementId, frameCase.case_id, tokenId, tokenColors[frameCase.case_id]?.[tokenId] ?? color);
                 });
@@ -575,7 +578,7 @@ const simulation = (simulationData: SimulationData) => {
                         handleTimelineRequest(0);
                         return;
                     } else {
-                        batches = batches.filter(batch => new Date(batch.endDate) > currentDateTime);
+                        // batches = batches.filter(batch => new Date(batch.endDate) > currentDateTime);
                     }
 
                     playPauseButton.innerHTML = "⏸";
@@ -585,7 +588,7 @@ const simulation = (simulationData: SimulationData) => {
                     isPaused = false;
                     isResumed = localProgress !== 0;
                     abortController = new AbortController();
-                    setTimeout(() => runSimulation(false), 10);
+                    setTimeout(runSimulation, 10);
                 }
             }
 
@@ -594,14 +597,14 @@ const simulation = (simulationData: SimulationData) => {
                     abortController.abort();
 
                     setTimeout(() => {
-                        batches = batches.filter(batch => new Date(batch.endDate) > currentDateTime);
+                        // batches = batches.filter(batch => new Date(batch.endDate) > currentDateTime);
                         document.querySelectorAll(".token").forEach(token => token.remove());
                         tokens = {};
                         coordinateMap = {};
                         isResumed = localProgress !== 0;
                         delta = defaultDelta / newSpeed;
                         abortController = new AbortController();
-                        setTimeout(() => runSimulation(false), 10);
+                        setTimeout(runSimulation, 10);
                     }, 300);
                 } else {
                     delta = defaultDelta / newSpeed;
@@ -661,7 +664,7 @@ const simulation = (simulationData: SimulationData) => {
                     document.querySelectorAll(".token").forEach(token => token.remove());
                     tokens = {};
                     coordinateMap = {};
-                    batches = [];
+                    batchesQueue = [];
                     frames = [];
                     localProgress = 0.0;
                     tokenProgresses = {};
@@ -678,17 +681,12 @@ const simulation = (simulationData: SimulationData) => {
                 }
             }
 
-            async function runSimulation(shouldUpdateBatches: boolean = true) {
-                if (shouldUpdateBatches) {
-                    batches = simulationData.batches;
-                    frames = simulationData.frames
-                }
-
+            async function runSimulation() {
                 frames.forEach(frameCase => {
                     createTokensForFrame(frameCase);
                 });
 
-                for (const [index, batch] of batches.entries()) {
+                for (const [index, batch] of batchesQueue.entries()) {
                     if (abortController.signal.aborted) return;
 
                     const batchDuration = new Date(batch.endDate).getTime() - new Date(batch.startDate).getTime();
@@ -744,6 +742,8 @@ const simulation = (simulationData: SimulationData) => {
                 processId = simulationData.processId;
                 initialDate = new Date(simulationData.startDate + 'Z');
                 finalDate = new Date(simulationData.endDate + 'Z');
+                batchesQueue = simulationData.batches;
+                frames = simulationData.frames;
                 totalDuration = finalDate.getTime() - initialDate.getTime();
                 enableTimeline();
 
