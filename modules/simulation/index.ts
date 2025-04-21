@@ -40,9 +40,12 @@ const simulation = (simulationData: SimulationData) => {
             let tokenProgresses: TokenProgresses = {};
             let batchesQueue: Batch[];
             let frames: FrameCase[];
+            let batchesPointer = 0;
+            const maxBatchesLimit = 15;
             let playPauseButton = document.getElementById('play-pause-btn');
             let isPaused = false;
             let isResumed = false;
+            let isFetchingBatches = false;
             let initialDate: Date;
             let finalDate: Date;
             let abortController: AbortController = new AbortController();
@@ -681,13 +684,35 @@ const simulation = (simulationData: SimulationData) => {
                 }
             }
 
+            async function topBatchesQueueUp(limit: number) {
+                if (isFetchingBatches) return;
+                isFetchingBatches = true;
+
+                try {
+                    const res = await axios.get(`/api/simulation/${processId}/polling?pointer=${batchesPointer}&limit=${limit}`);
+                    batchesQueue.push(...res.data.batches);
+                    batchesPointer = res.data.pointer;
+                } catch (error) {
+                    console.log(error);
+                } finally {
+                    isFetchingBatches = false;
+                }
+            }
+
             async function runSimulation() {
                 frames.forEach(frameCase => {
                     createTokensForFrame(frameCase);
                 });
 
-                for (const [index, batch] of batchesQueue.entries()) {
+                while (batchesQueue.length > 0) {
                     if (abortController.signal.aborted) return;
+
+                    const batch = batchesQueue.shift()!;
+
+                    const batchesQueueLength = batchesQueue.length;
+                    if (batchesQueueLength <= 5 && batchesPointer > 0) {
+                        topBatchesQueueUp(maxBatchesLimit - batchesQueueLength);
+                    }
 
                     const batchDuration = new Date(batch.endDate).getTime() - new Date(batch.startDate).getTime();
                     const proportionalDelta = delta * batchDuration / 3600000; // 1hr = 3600000ms
@@ -714,9 +739,12 @@ const simulation = (simulationData: SimulationData) => {
                             await Promise.all(
                                 [
                                     animateTimeline(batchDuration),
-                                    ...Object.entries(eventsByCaseId).map(
-                                        ([caseId, batchEvents]) =>
-                                            handleBatchEvents({ caseId: parseInt(caseId), batchEvents, batchDuration: proportionalDelta })
+                                    ...Object.entries(eventsByCaseId).map(([caseId, batchEvents]) =>
+                                        handleBatchEvents({
+                                            caseId: parseInt(caseId),
+                                            batchEvents,
+                                            batchDuration: proportionalDelta,
+                                        })
                                     ),
                                 ]
                             );
@@ -729,7 +757,7 @@ const simulation = (simulationData: SimulationData) => {
                         }
                     }
 
-                    if (isResumed && index === 0) isResumed = false;
+                    if (isResumed) isResumed = false;
                 }
 
                 playPauseButton.innerHTML = " ▶";
@@ -744,6 +772,7 @@ const simulation = (simulationData: SimulationData) => {
                 finalDate = new Date(simulationData.endDate + 'Z');
                 batchesQueue = simulationData.batches;
                 frames = simulationData.frames;
+                batchesPointer = simulationData.pointer;
                 totalDuration = finalDate.getTime() - initialDate.getTime();
                 enableTimeline();
 

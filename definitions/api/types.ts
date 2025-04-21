@@ -7,6 +7,7 @@ export type SimulationData = {
     startDate: string,
     endDate: string,
     file: Buffer,
+    pointer: number,
 }
 
 export type PySimulationData = {
@@ -15,6 +16,11 @@ export type PySimulationData = {
         frames: Array<FrameCase>;
         events: Array<BatchEvent>;
     }
+}
+
+export type PollingData = {
+    batches: Array<Batch>,
+    pointer: number,
 }
 
 export type ResumeSimulationRequestBody = {

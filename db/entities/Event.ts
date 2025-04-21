@@ -19,7 +19,7 @@ export class Event {
     nodeId: string;
 
     @Column({ type: "json" })
-    paths: Record<string, string[]>;
+    paths: string;
 
     @ManyToOne(() => Process)
     @JoinColumn({ name: "processId" })
