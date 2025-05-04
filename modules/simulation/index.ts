@@ -613,7 +613,7 @@ const simulation = (simulationData: SimulationData) => {
                     abortController.abort();
 
                     setTimeout(() => {
-                        // batches = batches.filter(batch => new Date(batch.endDate) > currentDateTime);
+                        if (localProgress) batchesQueue.unshift(currentBatch);
                         document.querySelectorAll(".token").forEach(token => token.remove());
                         tokens = {};
                         coordinateMap = {};
