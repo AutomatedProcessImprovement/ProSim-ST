@@ -39,6 +39,7 @@ const simulation = (simulationData: SimulationData) => {
             let localProgress: number = 0.0;
             let tokenProgresses: TokenProgresses = {};
             let batchesQueue: Batch[];
+            let currentBatch: Batch;
             let frames: FrameCase[];
             let batchesPointer = 0;
             const maxBatchesLimit = 15;
@@ -288,10 +289,22 @@ const simulation = (simulationData: SimulationData) => {
                             batchEventPathEntries.forEach(([tokenId, elements]) => {
                                 const tokensOfCurrentCase = tokens[caseId];
                                 if (!tokensOfCurrentCase?.[tokenId]) {
-                                    const [color, show]: [string, boolean] = tokenColors[caseId]?.[tokenId] ??
-                                        tokensOfCurrentCase ?
-                                        [Object.values(tokensOfCurrentCase)[0].getAttribute("fill"), false] :
-                                        [getRandomColor(), true];
+                                    const tokenColor = tokenColors[caseId]?.[tokenId];
+
+                                    let color: string;
+                                    let show: boolean;
+
+                                    if (tokenColor) {
+                                        color = tokenColor;
+                                        show = !tokensOfCurrentCase;
+                                    } else if (tokensOfCurrentCase) {
+                                        color = Object.values(tokensOfCurrentCase)[0].getAttribute("fill");
+                                        show = false;
+                                    } else {
+                                        color = getRandomColor();
+                                        show = true;
+                                    }
+
                                     createToken(elements[0], caseId, tokenId, color, show && (!isResumed || !tokenProgresses[caseId]?.[tokenId]), show);
                                 }
                                 buildAnimationDataOfToken(animationData, tokenId, elements, batchEventPathEntries, batchEvent, resolve);
@@ -581,7 +594,7 @@ const simulation = (simulationData: SimulationData) => {
                         handleTimelineRequest(0);
                         return;
                     } else {
-                        // batches = batches.filter(batch => new Date(batch.endDate) > currentDateTime);
+                        if (localProgress) batchesQueue.unshift(currentBatch);
                     }
 
                     playPauseButton.innerHTML = "⏸";
@@ -707,17 +720,17 @@ const simulation = (simulationData: SimulationData) => {
                 while (batchesQueue.length > 0) {
                     if (abortController.signal.aborted) return;
 
-                    const batch = batchesQueue.shift()!;
+                    currentBatch = batchesQueue.shift()!;
 
                     const batchesQueueLength = batchesQueue.length;
                     if (batchesQueueLength <= 5 && batchesPointer > 0) {
                         topBatchesQueueUp(maxBatchesLimit - batchesQueueLength);
                     }
 
-                    const batchDuration = new Date(batch.endDate).getTime() - new Date(batch.startDate).getTime();
+                    const batchDuration = new Date(currentBatch.endDate).getTime() - new Date(currentBatch.startDate).getTime();
                     const proportionalDelta = delta * batchDuration / 3600000; // 1hr = 3600000ms
 
-                    if (batch.events.length === 0) {
+                    if (currentBatch.events.length === 0) {
                         await Promise.all([
                             animateTimeline(batchDuration),
                             new Promise((resolve, reject) => {
@@ -730,7 +743,7 @@ const simulation = (simulationData: SimulationData) => {
                         ]);
                     } else {
                         const eventsByCaseId: EventsByCaseId = {};
-                        batch.events.forEach((event) => {
+                        currentBatch.events.forEach((event) => {
                             if (!eventsByCaseId[event.case_id]) eventsByCaseId[event.case_id] = [];
                             eventsByCaseId[event.case_id].push(event);
                         });
@@ -751,8 +764,8 @@ const simulation = (simulationData: SimulationData) => {
                         } catch (error) {
                             if (abortController.signal.aborted) return;
                         } finally {
-                            if (localProgress === 0 && new Date(batch.endDate).getTime() === new Date(currentDateTime).getTime()) {
-                                updateFrames(batch);
+                            if (localProgress === 0 && new Date(currentBatch.endDate).getTime() === new Date(currentDateTime).getTime()) {
+                                updateFrames(currentBatch);
                             }
                         }
                     }
