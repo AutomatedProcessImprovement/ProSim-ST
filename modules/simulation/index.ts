@@ -14,7 +14,7 @@ import {
 } from "@definitions/simulation/types";
 import {FlowTypes, LifecycleTypes, NodeTypes} from "@definitions/simulation/enums";
 import axios from "@node_modules/axios";
-import {ResumeSimulationRequestBody, SimulationData} from "@definitions/api/types";
+import {SimulationData} from "@definitions/api/types";
 import {formatDateString} from "@utils/dateHelpers";
 
 const simulation = (simulationData: SimulationData) => {
@@ -671,20 +671,18 @@ const simulation = (simulationData: SimulationData) => {
 
             async function handleTimelineRequest(progress: number) {
                 try {
-                    const resumptionBody: ResumeSimulationRequestBody = {
+                    const res = await axios.post(`/api/simulation/${processId}/resumption`, {
                         requestedDate: new Date(initialDate.getTime() + (progress / 100) * totalDuration).toISOString(),
-                        finalDate: finalDate.toISOString(),
-                    }
-                    const res = await axios.post(`/api/simulation/${processId}/resumption`, resumptionBody);
+                    });
 
                     document.querySelectorAll(".token").forEach(token => token.remove());
                     tokens = {};
                     coordinateMap = {};
-                    batchesQueue = [];
-                    frames = [];
-                    localProgress = 0.0;
                     tokenProgresses = {};
-                    simulationData = res.data.simulationData;
+                    localProgress = 0.0;
+                    batchesQueue = res.data.batches;
+                    frames = res.data.frames;
+                    batchesPointer = res.data.pointer;
 
                     if (isPaused) {
                         isPaused = false;

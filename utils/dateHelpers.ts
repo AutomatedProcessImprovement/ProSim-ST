@@ -24,3 +24,9 @@ export const calculateEndDate = (data: AlgorithmConfiguration): Date => {
 export const formatDateString = (date: Date) => {
     return date.toISOString().slice(0, 19).replace("T", " ");
 }
+
+export const getHourDifference = (date1: Date, date2: Date) => {
+    const diffMs = Math.abs(date2.getTime() - date1.getTime());
+    const diffHours = diffMs / (1000 * 60 * 60);
+    return Math.ceil(diffHours);
+}

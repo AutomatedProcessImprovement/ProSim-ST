@@ -23,12 +23,13 @@ export type PollingData = {
     pointer: number,
 }
 
-export type ResumeSimulationRequestBody = {
-    requestedDate: string;
-    finalDate: string;
-}
-
 export type ResumeSimulationRequestBodyPython = {
     process_id: string;
     timestamp: string;
+}
+
+export type ResumeSimulationResponse = {
+    frames: Array<FrameCase>,
+    batches: Array<Batch>,
+    pointer: number,
 }
