@@ -277,7 +277,7 @@ const simulation = (simulationData: SimulationData) => {
 
                 return new Promise((resolve: () => void, reject) => {
                     abortController.signal.addEventListener("abort", () => {
-                        reject("Simulation aborted");
+                        reject(new Error("Simulation aborted"));
                     });
 
                     let animationData: AnimationData = {};
@@ -729,16 +729,22 @@ const simulation = (simulationData: SimulationData) => {
                     const proportionalDelta = delta * batchDuration / 3600000; // 1hr = 3600000ms
 
                     if (currentBatch.events.length === 0) {
-                        await Promise.all([
-                            animateTimeline(batchDuration),
-                            new Promise((resolve, reject) => {
-                                const timeout = setTimeout(resolve, proportionalDelta * (1 - (isResumed ? localProgress : 0)));
-                                abortController.signal.addEventListener("abort", () => {
-                                    clearTimeout(timeout);
-                                    reject("Simulation aborted");
-                                });
-                            })
-                        ]);
+                        try {
+                            await Promise.all([
+                                animateTimeline(batchDuration),
+                                new Promise((resolve, reject) => {
+                                    const timeout = setTimeout(resolve, proportionalDelta * (1 - (isResumed ? localProgress : 0)));
+                                    abortController.signal.addEventListener("abort", () => {
+                                        clearTimeout(timeout);
+                                        reject(new Error("Simulation aborted"));
+                                    });
+                                })
+                            ]);
+                        } catch (error) {
+                            if (abortController.signal.aborted && error.message === "Simulation aborted") {
+                                return;
+                            }
+                        }
                     } else {
                         const eventsByCaseId: EventsByCaseId = {};
                         currentBatch.events.forEach((event) => {
@@ -760,7 +766,9 @@ const simulation = (simulationData: SimulationData) => {
                                 ]
                             );
                         } catch (error) {
-                            if (abortController.signal.aborted) return;
+                            if (abortController.signal.aborted && error.message === "Simulation aborted") {
+                                return;
+                            }
                         } finally {
                             if (localProgress === 0 && new Date(currentBatch.endDate).getTime() === new Date(currentDateTime).getTime()) {
                                 updateFrames(currentBatch);
