@@ -125,12 +125,14 @@ export const POST = async (
             const unrepairedTokenIds = Object.keys(activeElements)
                 .filter(tokenId => !repairedTokenIds.has(tokenId));
             const availableNewTokenIds = Object.keys(activeElements)
-                .filter(tokenId => !(tokenId in repairedActiveTokens));
+                .filter(tokenId => !(tokenId in repairedActiveTokens)).sort();
 
-            unrepairedTokenIds.forEach(unrepairedTokenId => {
+            unrepairedTokenIds.map(unrepairedTokenId =>
+                activeElements[unrepairedTokenId]
+            ).sort((a, b) => b.localeCompare(a)).forEach(activeElement => {
                 const newTokenId = availableNewTokenIds.pop();
                 if (newTokenId !== undefined) {
-                    repairedActiveTokens[newTokenId] = activeElements[unrepairedTokenId];
+                    repairedActiveTokens[newTokenId] = activeElement;
                 }
             });
 
