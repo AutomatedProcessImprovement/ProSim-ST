@@ -1,5 +1,8 @@
 import Redis, {RedisOptions} from "ioredis";
 
+export const REDIS_KEY_PREFIX_FRAMES = 'frames:';
+export const REDIS_KEY_PREFIX_WORKLOAD = 'workload:';
+
 const getRedisConfiguration = () => {
     return {
         host: process.env.REDIS_HOST ?? 'localhost',

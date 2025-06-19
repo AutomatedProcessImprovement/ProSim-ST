@@ -1,5 +1,5 @@
 import {NextResponse} from "next/server";
-import {getRedisInstance} from "@db/redis/redis";
+import {getRedisInstance, REDIS_KEY_PREFIX_FRAMES} from "@db/redis/redis";
 import {join} from "path";
 import {readFile} from "fs/promises";
 import {createMySQLConnection} from "@db/mysql/typeorm";
@@ -65,7 +65,8 @@ export const GET = async (
         const batches = groupEvents(batchEvents, startDate.toISOString(), endDate.toISOString());
 
         const redis = getRedisInstance();
-        const stringFrames = await redis.get(processId);
+        const redisKey = REDIS_KEY_PREFIX_FRAMES + processId;
+        const stringFrames = await redis.get(redisKey);
         let frames: Array<FrameCase>;
 
         if (!stringFrames) {
@@ -78,7 +79,7 @@ export const GET = async (
                 .where("frame.processId = :processId", { processId })
                 .getRawMany();
 
-            await redis.set(processId, JSON.stringify(frames), 'EX', 60*60*24);
+            await redis.set(redisKey, JSON.stringify(frames), 'EX', 60*60*24);
         } else {
             frames = JSON.parse(stringFrames);
         }

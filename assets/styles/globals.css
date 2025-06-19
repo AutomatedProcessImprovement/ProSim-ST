@@ -58,6 +58,13 @@ h1 {
   cursor: pointer;
 }
 
+.timeline-shade {
+  position: absolute;
+  bottom: 115%;
+  background-color: #d0e0f7;
+  opacity: 0.6;
+}
+
 .progress-bar {
   height: 100%;
   background: #76c7c0;
