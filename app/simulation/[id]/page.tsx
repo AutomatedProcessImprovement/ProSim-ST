@@ -1,11 +1,11 @@
 "use client";
 
-import {useEffect, useRef, useState} from "react";
+import {useEffect, useMemo, useRef, useState} from "react";
 import { useRouter, useParams } from "next/navigation";
 import NavigatedViewer from 'bpmn-js/lib/NavigatedViewer';
 import simulation from "@modules/simulation";
 import axios from "axios";
-import {SimulationData, Workload} from "@definitions/api/types";
+import {SimulationData} from "@definitions/api/types";
 import {Canvas} from "@node_modules/bpmn-js/lib/features/context-pad/ContextPadProvider";
 
 const speeds = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
@@ -14,7 +14,7 @@ const Simulation = () => {
     const viewerRef = useRef(null);
     const [xml, setXml] = useState<string>(null);
     const [simulationData, setSimulationData] = useState<SimulationData>();
-    const [workload, setWorkload] = useState<Workload>();
+    const [workload, setWorkload] = useState<Array<number>>();
     const router = useRouter();
     const { id } = useParams();
 
@@ -55,7 +55,7 @@ const Simulation = () => {
             })
             .catch(() => {});
         fetchWorkloadData()
-            .then((data: Workload) => {
+            .then((data: Array<number>) => {
                 setWorkload(data);
             })
     }, [id]);
@@ -77,25 +77,30 @@ const Simulation = () => {
         }
     }, [xml]);
 
+    const workloadBars = useMemo(() => {
+        if (!workload) return null;
+
+        const max = Math.max(...workload);
+
+        return workload.map((count, index) => {
+            const heightPercent = count / max * 100;
+
+            return (
+                <div
+                    key={index}
+                    className="timeline-shade"
+                    style={{ height: `${heightPercent}%` }}
+                ></div>
+            );
+        });
+    }, [workload]);
+
     return <>
         <div ref={viewerRef} style={{ height: '600px', width: '100%' }}></div>
         <div id={'timeline'} className={'timeline'}>
-            {workload && workload.map(({ startPercent, activeCaseCount }, index) => {
-                const endPercent = (workload[index + 1]?.startPercent ?? 100);
-                const widthPercent = Math.round((endPercent - startPercent) * 100) / 100;
-
-                return (
-                    <div
-                        key={index}
-                        className="timeline-shade"
-                        style={{
-                            left: `${startPercent}%`,
-                            width: `${widthPercent}%`,
-                            height: `${activeCaseCount}px`,
-                        }}
-                    ></div>
-                )
-            })}
+            <div className="timeline-shade-wrapper">
+                {workloadBars}
+            </div>
             <div id={'progress-bar'} className={'progress-bar'}></div>
             <div id={'pointer'} className={'pointer'}></div>
             <small id={'start-date'} className={'start-date'}></small>

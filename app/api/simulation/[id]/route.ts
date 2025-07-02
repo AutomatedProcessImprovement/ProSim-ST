@@ -36,7 +36,7 @@ export const GET = async (
             .getRawOne();
 
         const startDate = new Date(simulationProcess.startDate + "Z");
-        const rawEndDate = new Date(simulationProcess.startDate + "Z")
+        const rawEndDate = new Date(simulationProcess.startDate + "Z");
         rawEndDate.setMinutes(0, 0, 0);
         rawEndDate.setHours(rawEndDate.getHours() + limit);
 

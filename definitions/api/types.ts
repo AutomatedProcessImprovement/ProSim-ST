@@ -33,8 +33,3 @@ export type ResumeSimulationResponse = {
     batches: Array<Batch>,
     pointer: number,
 }
-
-export type Workload = Array<{
-    startPercent: number;
-    activeCaseCount: number;
-}>;

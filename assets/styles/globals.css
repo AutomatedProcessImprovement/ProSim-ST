@@ -58,9 +58,17 @@ h1 {
   cursor: pointer;
 }
 
-.timeline-shade {
+.timeline-shade-wrapper {
   position: absolute;
+  display: flex;
+  align-items: flex-end;
+  width: 100%;
+  height: 50px;
   bottom: 115%;
+}
+
+.timeline-shade {
+  flex: 1;
   background-color: #d0e0f7;
   opacity: 0.6;
 }

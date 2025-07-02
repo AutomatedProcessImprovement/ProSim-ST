@@ -1,6 +1,5 @@
 import {NextResponse} from "next/server";
 import {getRedisInstance, REDIS_KEY_PREFIX_FRAMES, REDIS_KEY_PREFIX_WORKLOAD} from "@db/redis/redis";
-import {Workload} from "@definitions/api/types";
 import {createMySQLConnection} from "@db/mysql/typeorm";
 import {Process} from "@db/entities/Process";
 import {Event} from "@db/entities/Event";
@@ -11,7 +10,7 @@ import {FrameCase} from "@definitions/simulation/types";
 export const GET = async (
     request: Request,
     context: { params: { id: string } }
-): Promise<NextResponse<Workload | {error: string}>> => {
+): Promise<NextResponse<Array<number> | {error: string}>> => {
     try {
         const params = await context.params;
         const processId = params.id;
@@ -79,30 +78,31 @@ export const GET = async (
         const start = new Date(process.startDate);
         const end = new Date(process.endDate);
         const totalDuration = end.getTime() - start.getTime();
+        const step = totalDuration / 1000;
 
-        const workload: Workload = [];
-        const iter = new Date(start);
+        const changes: Array<{ timestamp: number; effect: number }> = [];
 
-        while (iter < end) {
-            const batchStart = new Date(iter);
-            let count = 0;
-            for (const [caseId, arrival] of arrivalTimes.entries()) {
-                const ended = endTimes.get(caseId);
-                if (arrival <= batchStart && (!ended || ended > batchStart)) count++;
+        arrivalTimes.forEach((date) => changes.push({ timestamp: date.getTime(), effect: +1 }));
+        endTimes.forEach((date) => changes.push({ timestamp: date.getTime(), effect: -1 }));
+        changes.sort((a, b) => a.timestamp - b.timestamp);
+
+        const result: Array<number> = [];
+        let activeCount = 0;
+        let index = 0;
+
+        for (let i = 0; i < 1000; i++) {
+            const point = start.getTime() + i * step;
+            while (index < changes.length && changes[index].timestamp <= point) {
+                activeCount += changes[index].effect;
+                index++;
             }
-
-            const batchStartPercent = Math.round(
-                ((batchStart.getTime() - start.getTime()) / totalDuration) * 100 * 100
-            ) / 100;
-            workload.push({ startPercent: batchStartPercent, activeCaseCount: count });
-
-            iter.setHours(iter.getHours() + 1);
+            result.push(activeCount);
         }
 
-        await redis.set(redisKeyWorkload, JSON.stringify(workload), 'EX', 60 * 60 * 24);
+        await redis.set(redisKeyWorkload, JSON.stringify(result), 'EX', 60 * 60 * 24);
         redis.disconnect();
 
-        return NextResponse.json(workload, { status: 200 });
+        return NextResponse.json(result, { status: 200 });
     } catch (e) {
         console.error(e);
         return NextResponse.json({ error: "Failed to get workload data." }, { status: 500 });
