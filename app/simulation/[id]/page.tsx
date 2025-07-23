@@ -15,6 +15,14 @@ const Simulation = () => {
     const [xml, setXml] = useState<string>(null);
     const [simulationData, setSimulationData] = useState<SimulationData>();
     const [workload, setWorkload] = useState<Array<number>>();
+    const [statsVisible, setStatsVisible] = useState(false);
+    const [numberOfCases, setNumberOfCases] = useState<{
+        ongoing: number;
+        finished: number;
+    }>({
+        ongoing: 0,
+        finished: 0,
+    });
     const router = useRouter();
     const { id } = useParams();
 
@@ -42,6 +50,10 @@ const Simulation = () => {
         fetchSimulationData()
             .then((data: SimulationData) => {
                 setSimulationData(data);
+                setNumberOfCases({
+                    ongoing: data.frames.length,
+                    finished: 0,
+                });
 
                 const buffer = Buffer.from(data.file);
                 const blob = new Blob([buffer], { type: 'application/octet-stream' });
@@ -64,7 +76,7 @@ const Simulation = () => {
         if (xml !== null && typeof window !== "undefined") {
             const viewer = new NavigatedViewer({
                 container: viewerRef.current,
-                additionalModules: [simulation(simulationData)]
+                additionalModules: [simulation(simulationData, setNumberOfCases)]
             });
 
             viewer.importXML(xml).then(() => {
@@ -118,6 +130,25 @@ const Simulation = () => {
                 <option value={speed} key={speed}>{speed}x</option>
             ))}
         </select>
+
+        <div className={'stats-sidebar'}
+             style={{ transform: statsVisible ? 'translateX(0)' : 'translateX(300px)' }}
+        >
+            <button
+                className={'stats-toggle-btn'}
+                onClick={() => setStatsVisible(!statsVisible)}
+            >
+                {statsVisible ? '▶' : '◀'}
+            </button>
+            <div className={'stats-container'}>
+                <h2>Statistics</h2>
+                <div className={'stats-cases-number'}>
+                    <h3># Cases</h3>
+                    <p><i>Ongoing:</i> {numberOfCases.ongoing}</p>
+                    <p><i>Finished:</i> {numberOfCases.finished}</p>
+                </div>
+            </div>
+        </div>
     </>;
 }
 

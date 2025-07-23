@@ -16,8 +16,15 @@ import {FlowTypes, LifecycleTypes, NodeTypes} from "@definitions/simulation/enum
 import axios from "@node_modules/axios";
 import {SimulationData} from "@definitions/api/types";
 import {formatDateString} from "@utils/dateHelpers";
+import {Dispatch, SetStateAction} from "react";
 
-const simulation = (simulationData: SimulationData) => {
+const simulation = (
+    simulationData: SimulationData,
+    caseNumberSetter:  Dispatch<SetStateAction<{
+        ongoing: number
+        finished: number
+    }>>
+) => {
     return {
         __init__: ['tokenSimulation'],
         tokenSimulation: ['type', function(canvas: Canvas, elementRegistry: ElementRegistry) {
@@ -641,6 +648,10 @@ const simulation = (simulationData: SimulationData) => {
                                             [tokenId]: path[path.length - 1],
                                         },
                                     });
+                                    caseNumberSetter((state) => ({
+                                        ...state,
+                                        ongoing: state.ongoing + 1,
+                                    }));
                                     break;
                                 case LifecycleTypes.START:
                                 case LifecycleTypes.COMPLETE:
@@ -650,6 +661,10 @@ const simulation = (simulationData: SimulationData) => {
                                     break;
                                 case LifecycleTypes.CASE_END:
                                     frames = frames.filter(frame => frame.case_id !== event.case_id);
+                                    caseNumberSetter((state) => ({
+                                        ongoing: state.ongoing - 1,
+                                        finished: state.finished + 1,
+                                    }));
                                     break;
                             }
                         });
@@ -681,8 +696,13 @@ const simulation = (simulationData: SimulationData) => {
                     tokenProgresses = {};
                     localProgress = 0.0;
                     batchesQueue = res.data.batches;
-                    frames = res.data.frames;
+                    frames = [...res.data.frames];
                     batchesPointer = res.data.pointer;
+
+                    caseNumberSetter({
+                        ongoing: res.data.frames.length,
+                        finished: res.data.finishedCasesNumber,
+                    });
 
                     if (isPaused) {
                         isPaused = false;
@@ -790,7 +810,7 @@ const simulation = (simulationData: SimulationData) => {
                 initialDate = new Date(simulationData.startDate + 'Z');
                 finalDate = new Date(simulationData.endDate + 'Z');
                 batchesQueue = simulationData.batches;
-                frames = simulationData.frames;
+                frames = [...simulationData.frames];
                 batchesPointer = simulationData.pointer;
                 totalDuration = finalDate.getTime() - initialDate.getTime();
                 enableTimeline();

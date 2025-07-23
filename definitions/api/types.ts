@@ -32,4 +32,5 @@ export type ResumeSimulationResponse = {
     frames: Array<FrameCase>,
     batches: Array<Batch>,
     pointer: number,
+    finishedCasesNumber: number,
 }

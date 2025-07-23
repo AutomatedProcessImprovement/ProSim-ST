@@ -169,6 +169,53 @@ h1 {
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
 }
 
+.stats-sidebar {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100%;
+  display: flex;
+  transition: transform 0.3s ease-in-out;
+  z-index: 999;
+}
+
+.stats-toggle-btn {
+  background: #dddddd;
+  color: #777777;
+  border: none;
+  border-radius: 5px 0 0 5px;
+  padding: 20px 5px;
+  cursor: pointer;
+  align-self: center;
+  opacity: 0.7;
+}
+
+.stats-container {
+  width: 300px;
+  background-color: #f0f0f0;
+  box-shadow: -2px 0 5px rgba(0,0,0,0.1);
+  padding: 16px;
+  opacity: 0.9;
+}
+
+.stats-container > h2 {
+  font-weight: bold;
+  font-size: 24px;
+  border-bottom: 2px dashed #888888;
+  padding-bottom: 8px;
+  margin-bottom: 16px;
+}
+
+.stats-cases-number > h3 {
+  font-weight: bold;
+  font-size: 16px;
+  margin-bottom: 8px;
+}
+
+.stats-cases-number > p {
+  font-size: 14px;
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;

@@ -18,7 +18,7 @@ export const POST = async (
         const params = await context.params;
         const processId = params.id;
         const limit = 15;
-
+        const startDate = new Date(requestedDate);
         const appDataSource = await createMySQLConnection();
         const processRepository = appDataSource.getRepository(Process);
 
@@ -35,11 +35,20 @@ export const POST = async (
         const simulationStartDate = new Date(simulationProcess.startDate + "Z");
         const simulationFinishDate = new Date(simulationProcess.endDate + "Z");
 
-        const startDate = new Date(requestedDate);
+        const finishedCasesResult = await appDataSource
+            .createQueryBuilder(Event, "event")
+            .where("event.processId = :processId", { processId })
+            .andWhere("event.lifecycle = :lifecycle", { lifecycle: LifecycleTypes.CASE_END })
+            .andWhere("event.timestamp <= :requestedDate", { requestedDate: formatDateString(startDate) })
+            .select("COUNT(DISTINCT event.caseId)", "count")
+            .getRawOne();
+        const finishedCasesNumber = parseInt(finishedCasesResult.count, 10);
+
         if (startDate >= simulationFinishDate) {
             return NextResponse.json({
                 frames: [],
                 batches: [],
+                finishedCasesNumber,
                 pointer: -1
             }, { status: 200 });
         }
@@ -142,6 +151,7 @@ export const POST = async (
         return NextResponse.json({
             frames,
             batches,
+            finishedCasesNumber,
             pointer: simulationHasFinished ? -1 : getHourDifference(simulationStartDate, endDate),
         }, { status: 200 });
     } catch (error) {
