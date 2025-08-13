@@ -44,3 +44,5 @@ next-env.d.ts
 
 #mock data
 /assets/jsons
+
+.npmrc
