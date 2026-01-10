@@ -3,6 +3,7 @@ import "@assets/styles/globals.css";
 import {DataProvider} from "@context/DataContext";
 import {Suspense, ReactNode} from "react";
 import Loader from "@components/Loader";
+import {Toaster} from "sonner";
 import {CsvProvider} from "@context/CsvContext";
 
 export const metadata: Metadata = {
@@ -19,6 +20,7 @@ const RootLayout = ({ children }: Readonly<{ children: ReactNode; }>) => {
         <DataProvider>
           <CsvProvider>
             <Suspense fallback={<Loader />}>{children}</Suspense>
+            <Toaster richColors position="top-right" />
           </CsvProvider>
         </DataProvider>
       </body>
