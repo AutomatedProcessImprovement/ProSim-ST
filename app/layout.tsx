@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import "@assets/styles/globals.css";
 import {DataProvider} from "@context/DataContext";
-import {Suspense, ReactNode} from "react";
-import Loader from "@components/Loader";
+import {ReactNode} from "react";
 import {Toaster} from "sonner";
 import {CsvProvider} from "@context/CsvContext";
 
@@ -19,7 +18,7 @@ const RootLayout = ({ children }: Readonly<{ children: ReactNode; }>) => {
 
         <DataProvider>
           <CsvProvider>
-            <Suspense fallback={<Loader />}>{children}</Suspense>
+            {children}
             <Toaster richColors position="top-right" />
           </CsvProvider>
         </DataProvider>

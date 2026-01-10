@@ -20,11 +20,13 @@ import {CsvContext} from "@context/CsvContext";
 import {clsx} from "clsx/lite";
 import axios from "axios";
 import {calculateEndDate} from "@utils/dateHelpers";
+import Loader from "@components/Loader";
 
 const Setup = () => {
     const { data, setData } = useContext(DataContext);
     const { csvData: { headers, logStartDate, logEndDate } } = useContext(CsvContext);
     const [ endDate, setEndDate ] = useState<Date>(new Date());
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const router = useRouter();
 
     useEffect(() => {
@@ -105,6 +107,10 @@ const Setup = () => {
     }
 
     const onSubmit = async () => {
+        if (isSubmitting) return;
+
+        setIsSubmitting(true);
+
         const formData = new FormData();
         Object.keys(data).forEach((key) => {
             let value = data[key];
@@ -124,6 +130,12 @@ const Setup = () => {
     }
 
     return <div className={'max-w-screen-lg mx-auto p-4'}>
+        {isSubmitting && (
+            <div className="fixed inset-0 z-50 grid place-items-center bg-black/30">
+                <Loader />
+            </div>
+        )}
+
         <Stepper onSubmit={onSubmit}>
             <Step label='Setup the log mapping'
                   icon={<ArrowsRightLeftIcon/>}
