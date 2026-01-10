@@ -16,5 +16,5 @@ export const AppDataSource = new DataSource({
     synchronize: parseBool(process.env.TYPEORM_SYNCHRONIZE),
     logging: parseBool(process.env.TYPEORM_LOGGING),
     entities: [Process, Event, Frame],
-    migrations: ['db/migrations/*.ts'],
+    migrations: ['@db/migrations/*.ts'],
 });

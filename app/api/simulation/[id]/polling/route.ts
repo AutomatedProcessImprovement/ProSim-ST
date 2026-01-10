@@ -65,7 +65,7 @@ export const GET = async (
             lifecycle: event.lifecycle as LifecycleTypes,
             timestamp: event.timestamp,
             node_id: event.nodeId,
-            paths: JSON.parse(event.paths),
+            paths: event.paths,
         }));
         const batches = groupEvents(batchEvents, startDate.toISOString(), endDate.toISOString());
 

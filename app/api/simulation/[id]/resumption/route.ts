@@ -74,7 +74,7 @@ export const POST = async (
             lifecycle: event.lifecycle as LifecycleTypes,
             timestamp: event.timestamp,
             node_id: event.nodeId,
-            paths: JSON.parse(event.paths),
+            paths: event.paths,
         }));
         const batches = groupEvents(batchEvents, startDate.toISOString(), endDate.toISOString());
 
@@ -116,7 +116,7 @@ export const POST = async (
                 const previousTokenPath: [string, string][] = [];
 
                 previousCaseEvents.forEach(previousEvent => {
-                    const previousEventPaths: { [p: string]: Array<string> } = JSON.parse(previousEvent.paths);
+                    const previousEventPaths: { [p: string]: Array<string> } = previousEvent.paths;
                     Object.entries(previousEventPaths).forEach(([previousEventTokenId, path]) => {
                         if (path.includes(elementId)) {
                             previousTokenPath.push([previousEventTokenId, path[path.length - 1]])
