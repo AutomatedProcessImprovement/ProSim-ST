@@ -31,7 +31,7 @@ interface Props {
 const MappingInput = ({field, label}: Props) => {
     const { csvData: { headers } } = useContext(CsvContext);
     const { data: { mapping } } = useContext(DataContext);
-    const [value, setValue] = useState(mapping[field] || findOptimalMatch(field, [...headers]));
+    const [value, setValue] = useState(mapping[field] || findOptimalMatch(field, headers));
     const [isValid, setIsValid] = useState(Object.values(mapping).filter(value => value == mapping[field]).length <= 1);
 
     return <Field className = 'flex h-8 flex-row items-center justify-between'>

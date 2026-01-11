@@ -21,10 +21,11 @@ import {clsx} from "clsx/lite";
 import axios from "axios";
 import {calculateEndDate} from "@utils/dateHelpers";
 import Loader from "@components/Loader";
+import {getCellByHeader, normalizeLogDate} from "@utils/fileHelpers";
 
 const Setup = () => {
     const { data, setData } = useContext(DataContext);
-    const { csvData: { headers, logStartDate, logEndDate } } = useContext(CsvContext);
+    const { csvData, setCsvData } = useContext(CsvContext);
     const [ endDate, setEndDate ] = useState<Date>(new Date());
     const [isSubmitting, setIsSubmitting] = useState(false);
     const router = useRouter();
@@ -56,13 +57,22 @@ const Setup = () => {
         }
 
         logMapping.attributes = Object.fromEntries(
-            [...headers].filter(header => !Object.values(logMapping).includes(header)).map(header => [header, header])
+            csvData.headers.filter(header => !Object.values(logMapping).includes(header)).map(header => [header, header])
         );
 
         setData((prev) => ({
             ...prev,
             mapping: logMapping,
         }));
+
+        const startLog = normalizeLogDate(getCellByHeader(csvData.firstLine, csvData.headers, logMapping.start));
+        const endLog = normalizeLogDate(getCellByHeader(csvData.lastLine, csvData.headers, logMapping.end));
+
+        setCsvData((prev) => ({
+            ...prev,
+            logStartDate: startLog ?? "",
+            logEndDate: endLog ?? "",
+        }))
 
         if (new Set(Object.keys(logMapping)).size === new Set(Object.values(logMapping)).size) {
             return true
@@ -161,7 +171,7 @@ const Setup = () => {
             >
                 <div className = 'flex flex-col gap-4 p-4'>
                     <ConfigInput label='Starting Point' description='The time at which the short-term simulation begins (by default, the end of the uploaded event log).'>
-                        <StartingPointInput minDate={logStartDate} maxDate={logEndDate} />
+                        <StartingPointInput minDate={csvData.logStartDate} maxDate={csvData.logEndDate} />
                     </ConfigInput>
                     <ConfigInput label='Simulation Horizon' description='The duration (in time) to simulate, starting from the specified starting point.'>
                         <SimulationHorizonInput />

@@ -33,16 +33,18 @@ const FileForm = () => {
     const onFormSubmit = async (e) => {
         e.preventDefault();
 
-        let logStartDate = '';
-        let logEndDate = '';
-        let headers = new Set<string>();
+        let headers = new Array<string>();
+        let firstLine = new Array<string>();
+        let lastLine = new Array<string>();
 
         for (const file of files) {
-            const { fileHeaders, startLog, endLog } = await parseCsvFile(file);
+            const { fileHeaders, fileFirstLine, fileLastLine } = await parseCsvFile(file);
 
-            logStartDate = startLog;
-            logEndDate = endLog;
-            headers = new Set([...headers, ...fileHeaders]);
+            headers = Array.from(
+                new Set([...headers, ...fileHeaders])
+            );
+            firstLine = fileFirstLine;
+            lastLine = fileLastLine;
         }
         setData(prevData => ({
             ...prevData,
@@ -52,8 +54,8 @@ const FileForm = () => {
         setCsvData(prevData => ({
             ...prevData,
             headers,
-            logStartDate,
-            logEndDate,
+            firstLine,
+            lastLine,
         }));
 
         router.push('/setup');

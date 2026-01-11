@@ -35,31 +35,30 @@ export const readLines = async (
 }
 
 export async function parseCsvFile(file: File){
-    const fileHeaders = new Set<string>();
-
     const lines = await readLines(file, { removeWhite: true });
 
-    for (const word of lines[0].split(/[;,]/)) {
-        fileHeaders.add(word);
-    }
-
-    const startLog = new Date(
-        lines[1]
-            .split(/[;,]/)[3]
-            .replace(' ', 'T')
-            .slice(0, 19) + '+00:00'
-    )
-        .toISOString()
-        .slice(0, 19);
-
-    const endLog = new Date(
-        lines[lines.length - 1]
-            .split(/[;,]/)[4]
-            .replace(' ', 'T')
-            .slice(0, 19) + '+00:00'
-    )
-        .toISOString()
-        .slice(0, 19);
-
-    return { fileHeaders, startLog, endLog };
+    return {
+        fileHeaders: splitCsvLine(lines[0]),
+        fileFirstLine: splitCsvLine(lines[1]),
+        fileLastLine: splitCsvLine(lines[lines.length - 1]),
+    };
 }
+
+export const getCellByHeader = (line: string[], headers: string[], headerKey: string) => {
+    const idx = headers.indexOf(headerKey);
+    if (idx === -1) return undefined;
+    return line[idx];
+};
+
+export const normalizeLogDate = (raw?: string) => {
+    if (!raw) return undefined;
+
+    const isoish =
+        raw
+            .replace(" ", "T")
+            .slice(0, 19) + "+00:00";
+
+    return new Date(isoish).toISOString().slice(0, 19);
+};
+
+const splitCsvLine = (line: string) => line.split(/[;,]/);

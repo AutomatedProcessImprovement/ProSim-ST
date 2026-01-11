@@ -4,7 +4,9 @@ import {createContext, useState} from "react";
 
 export const CsvContext = createContext({
     csvData: {
-        headers: new Set<string>(),
+        headers: new Array<string>(),
+        firstLine: new Array<string>(),
+        lastLine: new Array<string>(),
         logStartDate: '',
         logEndDate: '',
     },
@@ -13,7 +15,9 @@ export const CsvContext = createContext({
 
 export const CsvProvider = ({ children }) => {
     const [csvData, setCsvData] = useState({
-        headers: new Set<string>(),
+        headers: new Array<string>(),
+        firstLine: new Array<string>(),
+        lastLine: new Array<string>(),
         logStartDate: '',
         logEndDate: '',
     });
