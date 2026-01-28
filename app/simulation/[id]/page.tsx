@@ -15,6 +15,7 @@ const Simulation = () => {
     const [xml, setXml] = useState<string>(null);
     const [simulationData, setSimulationData] = useState<SimulationData>();
     const [workload, setWorkload] = useState<Array<number>>();
+    const [cycleTimeData, setCycleTimeData] = useState<Array<number>>([]);
     const [statsVisible, setStatsVisible] = useState(false);
     const [numberOfCases, setNumberOfCases] = useState<{
         ongoing: number;
@@ -25,6 +26,8 @@ const Simulation = () => {
     });
     const router = useRouter();
     const { id } = useParams();
+    const chartWidth = 226;
+    const chartHeight = 120;
 
     const fetchSimulationData = async () => {
         try {
@@ -42,7 +45,17 @@ const Simulation = () => {
 
             return res.data;
         } catch (error) {
-            router.replace('/');
+            console.error(error);
+        }
+    }
+
+    const fetchCycleTimeData = async () => {
+        try {
+            const res = await axios.get(`/api/simulation/${id}/cycle-time`);
+
+            return res.data;
+        } catch (error) {
+            console.error(error);
         }
     }
 
@@ -69,7 +82,11 @@ const Simulation = () => {
         fetchWorkloadData()
             .then((data: Array<number>) => {
                 setWorkload(data);
-            })
+            });
+        fetchCycleTimeData()
+            .then((data: Array<number>) => {
+                setCycleTimeData(data);
+            });
     }, [id]);
 
     useEffect(() => {
@@ -107,6 +124,24 @@ const Simulation = () => {
         });
     }, [workload]);
 
+    const ctPolylinePoints = useMemo(() => {
+        if (!cycleTimeData || cycleTimeData.length === 0) return "";
+
+        const max = Math.max(...cycleTimeData);
+        const n = cycleTimeData.length;
+
+        return cycleTimeData
+            .map((v, i) => {
+                const x = (i / (n - 1)) * chartWidth;
+
+                const heightPercent = v / max;
+                const y = chartHeight - heightPercent * chartHeight;
+
+                return `${x.toFixed(2)},${y.toFixed(2)}`;
+            })
+            .join(" ");
+    }, [cycleTimeData]);
+
     return <>
         <div ref={viewerRef} style={{ height: '600px', width: '100%' }}></div>
         <div id={'timeline'} className={'timeline'}>
@@ -142,10 +177,33 @@ const Simulation = () => {
             </button>
             <div className={'stats-container'}>
                 <h2>Statistics</h2>
-                <div className={'stats-cases-number'}>
+                <div className={'stats-element'}>
                     <h3># Cases</h3>
                     <p><i>Ongoing:</i> {numberOfCases.ongoing}</p>
                     <p><i>Finished:</i> {numberOfCases.finished}</p>
+                </div>
+                <div className={'stats-element'}>
+                    <h3>Average CT</h3>
+                    <div className="stats-element-chart">
+                        <div className="y-axis"></div>
+                        <div className="y-axis-label">CT</div>
+
+                        <div className="x-axis"></div>
+                        <div className="x-axis-label">Time</div>
+
+                        <svg className="line-svg" viewBox={`0 0 ${chartWidth} ${chartHeight}`} preserveAspectRatio="none">
+                            <polyline
+                                points={ctPolylinePoints}
+                                fill="none"
+                                stroke="blue"
+                                strokeWidth="2"
+                                strokeLinejoin="round"
+                                strokeLinecap="round"
+                            />
+                        </svg>
+
+                        <div id="cycle-time-chart-time-bar" style={{ width: "calc(100% - 24px)" }}></div>
+                    </div>
                 </div>
             </div>
         </div>

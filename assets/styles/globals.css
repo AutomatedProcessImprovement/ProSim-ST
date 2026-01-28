@@ -206,14 +206,80 @@ h1 {
   margin-bottom: 16px;
 }
 
-.stats-cases-number > h3 {
+.stats-element {
+    margin-bottom: 32px;
+}
+
+.stats-element > h3 {
   font-weight: bold;
   font-size: 16px;
   margin-bottom: 8px;
 }
 
-.stats-cases-number > p {
+.stats-element > p {
   font-size: 14px;
+}
+
+.stats-element-chart {
+    position: relative;
+    width: 250px;
+    height: 120px;
+}
+
+.stats-element-chart > .y-axis {
+    position: absolute;
+    left: 24px;
+    bottom: 0;
+    width: 2px;
+    height: 100%;
+    background-color: black;
+    z-index: 2;
+}
+
+.stats-element-chart > .x-axis {
+    position: absolute;
+    left: 24px;
+    bottom: 0;
+    width: calc(100% - 24px);
+    height: 2px;
+    background-color: black;
+    z-index: 2;
+}
+
+.stats-element-chart > .y-axis-label {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%) rotate(-90deg);
+    transform-origin: center;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.stats-element-chart > .x-axis-label {
+    position: absolute;
+    right: 0;
+    bottom: -18px;
+    font-size: 12px;
+}
+
+.stats-element-chart > .line-svg,
+.stats-element-chart > #cycle-time-chart-time-bar {
+    position: absolute;
+    left: 24px;
+    top: 0;
+    height: 100%;
+    z-index: 1;
+    pointer-events: none;
+}
+
+.stats-element-chart > .line-svg {
+    width: calc(100% - 24px);
+}
+
+.stats-element-chart > #cycle-time-chart-time-bar {
+    background-color: black;
+    opacity: 0.2;
 }
 
 @layer utilities {

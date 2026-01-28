@@ -2,6 +2,7 @@ import Redis, {RedisOptions} from "ioredis";
 
 export const REDIS_KEY_PREFIX_FRAMES = 'frames:';
 export const REDIS_KEY_PREFIX_WORKLOAD = 'workload:';
+export const REDIS_KEY_PREFIX_CYCLE_TIME = 'cycle-time:';
 
 const getRedisConfiguration = () => {
     return {

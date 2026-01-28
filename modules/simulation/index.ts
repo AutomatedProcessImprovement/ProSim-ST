@@ -40,6 +40,7 @@ const simulation = (
             let progressBar = document.getElementById('progress-bar');
             let pointer = document.getElementById('pointer');
             let tooltip = document.getElementById('timeline-tooltip');
+            let ctTimeBar = document.getElementById('cycle-time-chart-time-bar');
             let currentProgress: number = 0.0;
             let currentDateTimeBox = document.getElementById('simulated-time-box');
             let currentDateTime: Date;
@@ -503,6 +504,7 @@ const simulation = (
                     const progressPercentage = `${progress * 100}%`;
                     progressBar.style.width = progressPercentage
                     pointer.style.left = progressPercentage;
+                    ctTimeBar.style.width = `calc((100% - 24px) * ${progress})`;
 
                     const totalElapsedTime = progress * totalDuration;
                     currentDateTime = new Date(initialDate.getTime() + totalElapsedTime);
@@ -532,6 +534,7 @@ const simulation = (
 
                     progressBar.style.width = `${progress}%`;
                     pointer.style.left = `${progress}%`;
+                    ctTimeBar.style.width = `calc((100% - 24px) * ${progress / 100})`;
                     currentProgress = progress / 100;
                 }
 
@@ -584,6 +587,7 @@ const simulation = (
 
                 progressBar.style.width = `${progress}%`;
                 pointer.style.left = `${progress}%`;
+                ctTimeBar.style.width = `calc((100% - 24px) * ${progress / 100})`;
                 currentProgress = progress / 100;
 
                 handleTimelineRequest(progress);
