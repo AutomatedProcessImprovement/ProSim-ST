@@ -10,7 +10,7 @@ import {
     Token,
     TokenColors,
     TokenProgresses,
-    Tokens
+    Tokens, WTPTState
 } from "@definitions/simulation/types";
 import {FlowTypes, LifecycleTypes, NodeTypes} from "@definitions/simulation/enums";
 import axios from "@node_modules/axios";
@@ -23,7 +23,8 @@ const simulation = (
     caseNumberSetter:  Dispatch<SetStateAction<{
         ongoing: number
         finished: number
-    }>>
+    }>>,
+    wtptSetter: Dispatch<SetStateAction<WTPTState>>
 ) => {
     return {
         __init__: ['tokenSimulation'],
@@ -36,13 +37,13 @@ const simulation = (
             let coordinateMap: Record<string, Record<string, Array<Token>>> = {};
             let totalDuration: number;
             let viewport: HTMLDivElement;
-            let timeline = document.getElementById('timeline');
-            let progressBar = document.getElementById('progress-bar');
-            let pointer = document.getElementById('pointer');
-            let tooltip = document.getElementById('timeline-tooltip');
-            let ctTimeBar = document.getElementById('cycle-time-chart-time-bar');
+            const timeline = document.getElementById('timeline');
+            const progressBar = document.getElementById('progress-bar');
+            const pointer = document.getElementById('pointer');
+            const tooltip = document.getElementById('timeline-tooltip');
+            const ctTimeBar = document.getElementById('cycle-time-chart-time-bar');
             let currentProgress: number = 0.0;
-            let currentDateTimeBox = document.getElementById('simulated-time-box');
+            const currentDateTimeBox = document.getElementById('simulated-time-box');
             let currentDateTime: Date;
             let localProgress: number = 0.0;
             let tokenProgresses: TokenProgresses = {};
@@ -51,7 +52,7 @@ const simulation = (
             let frames: FrameCase[];
             let batchesPointer = 0;
             const maxBatchesLimit = 15;
-            let playPauseButton = document.getElementById('play-pause-btn');
+            const playPauseButton = document.getElementById('play-pause-btn');
             let isPaused = false;
             let isResumed = false;
             let isFetchingBatches = false;
@@ -190,6 +191,7 @@ const simulation = (
 
                 function processDeletion() {
                     deleteCoordinates(caseId, tokenId);
+                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
                     try { viewport.removeChild(token) } catch (e) {}
                     delete tokens[caseId][tokenId];
                 }
@@ -249,6 +251,7 @@ const simulation = (
                                         otherTokenId !== tokenId &&
                                         otherElements.length > 1
                                     )
+                                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
                                     .map(([otherTokenId, _]) => otherTokenId);
                             }
                         }
@@ -288,8 +291,8 @@ const simulation = (
                         reject(new Error("Simulation aborted"));
                     });
 
-                    let animationData: AnimationData = {};
-                    let isAsyncAnimation = batchEvents.some(batchEvent => Object.keys(batchEvent.paths).length > 1)
+                    const animationData: AnimationData = {};
+                    const isAsyncAnimation = batchEvents.some(batchEvent => Object.keys(batchEvent.paths).length > 1)
 
                     batchEvents.forEach(batchEvent => {
                         const batchEventPathEntries = Object.entries(batchEvent.paths);
@@ -427,7 +430,7 @@ const simulation = (
                 if (isResumed && tokenProgresses[caseId]?.[tokenId]) {
                     startTime -= tokenProgresses[caseId][tokenId] * duration;
                 }
-                let pathLength = calculatePathLength(path);
+                const pathLength = calculatePathLength(path);
 
                 function animate() {
                     if (abortController.signal.aborted) return;
@@ -685,6 +688,7 @@ const simulation = (
                             }
                         });
                     }
+                    wtptSetter(prev => setNewWTPTState(prev, event));
                 });
             }
 
@@ -806,6 +810,97 @@ const simulation = (
                 playPauseButton.innerHTML = " ▶";
                 isPaused = true;
                 hasEnded = true;
+            }
+
+            function setNewWTPTState(previousState: WTPTState, event: BatchEvent): WTPTState {
+                const nodeId = event.node_id;
+                const caseId = event.case_id;
+                const timestamp = new Date(event.timestamp).getTime();
+
+                if (
+                    event.lifecycle !== LifecycleTypes.ENABLE &&
+                    event.lifecycle !== LifecycleTypes.START &&
+                    event.lifecycle !== LifecycleTypes.COMPLETE
+                ) {
+                    return previousState;
+                }
+
+                const nodeState = previousState[nodeId];
+                if (!nodeState) {
+                    return previousState;
+                }
+
+                const prevCase = nodeState.incompleteCases?.[caseId];
+
+                // ENABLE is the only event allowed to create a case entry
+                if (event.lifecycle === LifecycleTypes.ENABLE) {
+                    return {
+                        ...previousState,
+                        [nodeId]: {
+                            ...nodeState,
+                            incompleteCases: {
+                                ...nodeState.incompleteCases,
+                                [caseId]: {
+                                    ...(prevCase ?? {}),
+                                    enablementTime: timestamp,
+                                },
+                            },
+                        },
+                    };
+                }
+
+                // If we don't have enablementTime, ignore START/COMPLETE
+                if (!prevCase?.enablementTime) {
+                    return previousState;
+                }
+
+                // START only allowed after ENABLE
+                if (event.lifecycle === LifecycleTypes.START) {
+                    return {
+                        ...previousState,
+                        [nodeId]: {
+                            ...nodeState,
+                            incompleteCases: {
+                                ...nodeState.incompleteCases,
+                                [caseId]: {
+                                    ...prevCase,
+                                    startTime: timestamp,
+                                },
+                            },
+                        },
+                    };
+                }
+
+                // COMPLETE only allowed after ENABLE + START
+                if (!prevCase.startTime) return previousState;
+
+                // COMPLETE: now we can compute and finalize
+                const wt = prevCase.startTime - prevCase.enablementTime;
+                const pt = timestamp - prevCase.startTime;
+
+                // ignore out-of-order / invalid data, keep it stored instead of corrupting averages
+                if (wt < 0 || pt < 0) {
+                    return previousState;
+                }
+
+                // incremental averages
+                const n = nodeState._count ?? 0;
+                const newAvgWT = (nodeState.averageWT * n + wt) / (n + 1);
+                const newAvgPT = (nodeState.averagePT * n + pt) / (n + 1);
+
+                // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                const { [caseId]: _removed, ...restIncomplete } = nodeState.incompleteCases;
+
+                return {
+                    ...previousState,
+                    [nodeId]: {
+                        ...nodeState,
+                        averageWT: newAvgWT,
+                        averagePT: newAvgPT,
+                        _count: n + 1,
+                        incompleteCases: restIncomplete,
+                    },
+                };
             }
 
             this.start = () => {

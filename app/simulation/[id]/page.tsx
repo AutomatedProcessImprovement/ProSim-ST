@@ -7,6 +7,8 @@ import simulation from "@modules/simulation";
 import axios from "axios";
 import {SimulationData} from "@definitions/api/types";
 import {Canvas} from "@node_modules/bpmn-js/lib/features/context-pad/ContextPadProvider";
+import {NodeTypes} from "@definitions/simulation/enums";
+import {WTPTState} from "@definitions/simulation/types";
 
 const speeds = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
 
@@ -24,6 +26,8 @@ const Simulation = () => {
         ongoing: 0,
         finished: 0,
     });
+    const [waitingProcessingTimes, setWaitingProcessingTimes] = useState<WTPTState>({});
+    const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
     const router = useRouter();
     const { id } = useParams();
     const chartWidth = 226;
@@ -57,6 +61,29 @@ const Simulation = () => {
         } catch (error) {
             console.error(error);
         }
+    }
+
+    const getTaskIdToNameMap = (viewer: NavigatedViewer): WTPTState => {
+        const elementRegistry = viewer.get("elementRegistry") as Canvas;
+
+        const map: WTPTState = {};
+
+        for (const el of elementRegistry.getAll()) {
+            const bo = el.businessObject;
+            if (!bo) continue;
+
+            if (bo.$type !== NodeTypes.TASK) continue;
+
+            map[el.id] = {
+                _count: 0,
+                averagePT: 0,
+                averageWT: 0,
+                incompleteCases: {},
+                name: (bo.name ?? "").trim()
+            };
+        }
+
+        return map;
     }
 
     useEffect(() => {
@@ -93,12 +120,15 @@ const Simulation = () => {
         if (xml !== null && typeof window !== "undefined") {
             const viewer = new NavigatedViewer({
                 container: viewerRef.current,
-                additionalModules: [simulation(simulationData, setNumberOfCases)]
+                additionalModules: [simulation(simulationData, setNumberOfCases, setWaitingProcessingTimes)]
             });
 
             viewer.importXML(xml).then(() => {
                 const canvas = viewer.get('canvas') as Canvas;
                 canvas.zoom('fit-viewport');
+
+                const activityNodeIdMap = getTaskIdToNameMap(viewer);
+                setWaitingProcessingTimes(activityNodeIdMap);
 
                 const tokenSimulation = viewer.get('tokenSimulation') as Canvas;
                 tokenSimulation.start();
@@ -141,6 +171,15 @@ const Simulation = () => {
             })
             .join(" ");
     }, [cycleTimeData]);
+
+    const wtptList = useMemo(() => {
+        return Object.entries(waitingProcessingTimes)
+            .map(([nodeId, stats]) => ({ nodeId, stats }))
+            .sort((a, b) => {
+                const comparison = a.stats.name.localeCompare(b.stats.name);
+                return sortOrder === "asc" ? comparison : -comparison;
+            });
+    }, [waitingProcessingTimes, sortOrder]);
 
     return <>
         <div ref={viewerRef} style={{ height: '600px', width: '100%' }}></div>
@@ -204,6 +243,70 @@ const Simulation = () => {
 
                         <div id="cycle-time-chart-time-bar" style={{ width: "calc(100% - 24px)" }}></div>
                     </div>
+                </div>
+                <div className={'stats-element'}>
+                    <h3 style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        Average WT/PT
+                        <button
+                            className="sort-btn"
+                            onClick={() => setSortOrder(prev => prev === "asc" ? "desc" : "asc")}
+                        >
+                            {sortOrder === "asc" ? "A→Z" : "Z→A"}
+                        </button>
+                    </h3>
+                    <div className="wtpt-list">
+                    {wtptList.map(({ nodeId, stats }) => {
+                        const hasData =
+                            stats.averageWT >= 0 &&
+                            stats.averagePT >= 0 &&
+                            stats.averageWT + stats.averagePT > 0;
+
+                        const total = stats.averageWT + stats.averagePT;
+                        const wtPct = hasData ? (stats.averageWT / total) * 100 : 0;
+                        const ptPct = hasData ? (stats.averagePT / total) * 100 : 0;
+
+                        const wtHours = hasData ? (stats.averageWT / 3600000).toFixed(2) : null;
+                        const ptHours = hasData ? (stats.averagePT / 3600000).toFixed(2) : null;
+
+                        return (
+                            <div key={nodeId} className="wtpt-row" title={nodeId}>
+                                <div className="wtpt-row-top">
+                                    <span className="wtpt-name">{stats.name}</span>
+                                </div>
+
+                                <div className="wtpt-bar-track">
+                                    {!hasData ? (
+                                        <div className="wtpt-bar wtpt-bar-empty" />
+                                    ) : (
+                                        <>
+                                            <div
+                                                className="wtpt-bar wtpt-bar-wt"
+                                                style={{ width: `${wtPct}%` }}
+                                            >
+                                                {wtPct >= 12 &&
+                                                    <span className="wtpt-bar-label">
+                                                        {wtHours}h
+                                                    </span>
+                                                }
+                                            </div>
+
+                                            <div
+                                                className="wtpt-bar wtpt-bar-pt"
+                                                style={{ width: `${ptPct}%` }}
+                                            >
+                                                {ptPct >= 12 &&
+                                                    <span className="wtpt-bar-label">
+                                                        {ptHours}h
+                                                    </span>
+                                                }
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
                 </div>
             </div>
         </div>

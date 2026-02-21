@@ -282,6 +282,74 @@ h1 {
     opacity: 0.2;
 }
 
+.wtpt-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 8px;
+    max-height: 400px;
+    padding-right: 6px;
+    overflow-y: auto;
+}
+
+.wtpt-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.wtpt-row-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.wtpt-name {
+    font-size: 12px;
+    line-height: 1.2;
+    color: #22242a;
+}
+
+.wtpt-bar-track {
+    height: 18px;
+    border-radius: 8px;
+    background: rgba(34, 36, 42, 0.12);
+    overflow: hidden;
+    display: flex;
+}
+
+.wtpt-bar {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    transition: width 0.4s ease;
+}
+
+.wtpt-bar-empty {
+    width: 100%;
+    background: rgba(34, 36, 42, 0.25);
+}
+
+.wtpt-bar-wt {
+    background: #e74c3c;
+    color: white;
+}
+
+.wtpt-bar-pt {
+    background: #3498db;
+    color: white;
+}
+
+.wtpt-bar-label {
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+    pointer-events: none;
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;

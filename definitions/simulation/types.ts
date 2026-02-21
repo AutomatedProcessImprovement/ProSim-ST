@@ -64,3 +64,19 @@ export type TokenProgresses = {
         [tokenId: string]: number,
     },
 }
+
+export type CaseTimes = {
+    enablementTime?: number;
+    startTime?: number;
+    endTime?: number;
+}
+
+export type ActivityStats = {
+    name: string;
+    averageWT: number;
+    averagePT: number;
+    _count: number;
+    incompleteCases: Record<number, CaseTimes>;
+}
+
+export type WTPTState = Record<string, ActivityStats>;
