@@ -4,7 +4,7 @@ import {createMySQLConnection} from "@db/mysql/typeorm";
 import {Process} from "@db/entities/Process";
 import {Event} from "@db/entities/Event";
 import {formatDateString, getHourDifference} from "@utils/dateHelpers";
-import {BatchEvent, FrameCase} from "@definitions/simulation/types";
+import {BatchEvent, CaseTimes, FrameCase, WTPTState} from "@definitions/simulation/types";
 import {LifecycleTypes} from "@definitions/simulation/enums";
 import {groupEvents} from "@utils/events";
 import axios from "axios";
@@ -44,12 +44,43 @@ export const POST = async (
             .getRawOne();
         const finishedCasesNumber = parseInt(finishedCasesResult.count, 10);
 
+        const wtptEvents: Array<{
+            nodeId: string;
+            caseId: number;
+            lifecycle: LifecycleTypes;
+            timestamp: string;
+        }> = await appDataSource.query(`
+            SELECT 
+                event.nodeId AS nodeId,
+                event.caseId AS caseId,
+                event.lifecycle AS lifecycle,
+                CAST(event.timestamp AS CHAR) AS timestamp
+            FROM event
+            WHERE event.processId = ?
+                AND event.timestamp <= ?
+                AND event.lifecycle IN (?, ?, ?)
+                AND event.nodeId IS NOT NULL
+            ORDER BY 
+                event.timestamp ASC,
+                FIELD(event.lifecycle, 'ENABLE', 'START', 'COMPLETE') ASC,
+                event.id ASC
+        `, [
+            processId,
+            formatDateString(startDate),
+            LifecycleTypes.ENABLE,
+            LifecycleTypes.START,
+            LifecycleTypes.COMPLETE,
+        ]);
+
+        const wtpt = buildWTPTState(wtptEvents);
+
         if (startDate >= simulationFinishDate) {
             return NextResponse.json({
                 frames: [],
                 batches: [],
                 finishedCasesNumber,
-                pointer: -1
+                wtpt,
+                pointer: -1,
             }, { status: 200 });
         }
 
@@ -63,7 +94,7 @@ export const POST = async (
         const events: Event[] = await appDataSource.query(`
             SELECT *, CAST(timestamp AS CHAR) AS timestamp
             FROM event
-            WHERE processId = ? AND timestamp >= ? AND timestamp ${endDateOperator} ?
+            WHERE processId = ? AND event.timestamp >= ? AND event.timestamp ${endDateOperator} ?
         `, [
             processId,
             formatDateString(startDate),
@@ -96,9 +127,9 @@ export const POST = async (
                 event.timestamp, 
                 event.caseId, 
                 event.paths,
-                CAST(timestamp AS CHAR) AS timestamp
+                CAST(event.timestamp AS CHAR) AS timestamp
             FROM event
-            WHERE processId = ? AND timestamp < ?
+            WHERE processId = ? AND event.timestamp < ?
         `, [
             processId,
             formatDateString(startDate),
@@ -152,10 +183,85 @@ export const POST = async (
             frames,
             batches,
             finishedCasesNumber,
+            wtpt,
             pointer: simulationHasFinished ? -1 : getHourDifference(simulationStartDate, endDate),
         }, { status: 200 });
     } catch (error) {
         console.log(error)
         return NextResponse.json({ error: "Failed to get simulation data." }, { status: 500 });
     }
+}
+
+function buildWTPTState(events: Array<{
+    nodeId: string;
+    caseId: number;
+    lifecycle: LifecycleTypes;
+    timestamp: string;
+}>): WTPTState {
+    const state: WTPTState = {};
+
+    for (const ev of events) {
+        const nodeId = ev.nodeId;
+        const caseId = ev.caseId;
+
+        if (!nodeId) continue;
+
+        const ts = new Date(ev.timestamp + "Z").getTime();
+
+        if (!state[nodeId]) {
+            state[nodeId] = {
+                name: nodeId, // name will be overridden client-side from BPMN map anyway
+                averageWT: 0,
+                averagePT: 0,
+                _count: 0,
+                incompleteCases: {},
+            };
+        }
+
+        const nodeState = state[nodeId];
+        const prevCase: CaseTimes = nodeState.incompleteCases?.[caseId] ?? {};
+
+        if (ev.lifecycle === LifecycleTypes.ENABLE) {
+            nodeState.incompleteCases[caseId] = {
+                ...prevCase,
+                enablementTime: ts,
+            };
+            continue;
+        }
+
+        if (ev.lifecycle === LifecycleTypes.START) {
+            if (prevCase.enablementTime == null) continue; // ignore START without ENABLE
+            nodeState.incompleteCases[caseId] = {
+                ...prevCase,
+                startTime: ts,
+            };
+            continue;
+        }
+
+        if (ev.lifecycle === LifecycleTypes.COMPLETE) {
+            if (prevCase.enablementTime == null || prevCase.startTime == null) continue; // ignore COMPLETE without ENABLE+START
+            const nextCase: CaseTimes = {
+                ...prevCase,
+                endTime: ts,
+            };
+
+            const wt = nextCase.startTime - nextCase.enablementTime;
+            const pt = nextCase.endTime - nextCase.startTime;
+
+            if (wt < 0 || pt < 0) {
+                continue;
+            }
+
+            const n = nodeState._count ?? 0;
+            nodeState.averageWT = (nodeState.averageWT * n + wt) / (n + 1);
+            nodeState.averagePT = (nodeState.averagePT * n + pt) / (n + 1);
+            nodeState._count = n + 1;
+
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            const { [caseId]: _removed, ...rest } = nodeState.incompleteCases;
+            nodeState.incompleteCases = rest;
+        }
+    }
+
+    return state;
 }

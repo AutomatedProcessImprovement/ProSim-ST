@@ -712,6 +712,8 @@ const simulation = (
                         finished: res.data.finishedCasesNumber,
                     });
 
+                    wtptSetter(prev => hydrateWTPTNames(prev, res.data.wtpt));
+
                     if (isPaused) {
                         isPaused = false;
                         playPauseButton.innerHTML = "⏸";
@@ -878,7 +880,7 @@ const simulation = (
                 const wt = prevCase.startTime - prevCase.enablementTime;
                 const pt = timestamp - prevCase.startTime;
 
-                // ignore out-of-order / invalid data, keep it stored instead of corrupting averages
+                // ignore out-of-order / invalid data
                 if (wt < 0 || pt < 0) {
                     return previousState;
                 }
@@ -919,5 +921,33 @@ const simulation = (
         }],
     }
 };
+
+function hydrateWTPTNames(base: WTPTState, incoming: WTPTState): WTPTState {
+    const out: WTPTState = {};
+
+    for (const [nodeId, stats] of Object.entries(incoming)) {
+        if (!base[nodeId]) continue;
+
+        out[nodeId] = {
+            ...stats,
+            name: base[nodeId].name,
+        };
+    }
+
+    // ensure ALL base tasks exist (reset missing ones)
+    for (const [nodeId, baseStats] of Object.entries(base)) {
+        if (out[nodeId]) continue;
+
+        out[nodeId] = {
+            name: baseStats.name,
+            averageWT: 0,
+            averagePT: 0,
+            _count: 0,
+            incompleteCases: {},
+        };
+    }
+
+    return out;
+}
 
 export default simulation;

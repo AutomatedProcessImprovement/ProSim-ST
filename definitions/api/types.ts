@@ -1,4 +1,4 @@
-import {Batch, BatchEvent, FrameCase} from "@definitions/simulation/types";
+import {Batch, BatchEvent, FrameCase, WTPTState} from "@definitions/simulation/types";
 
 export type SimulationData = {
     processId: string,
@@ -33,4 +33,5 @@ export type ResumeSimulationResponse = {
     batches: Array<Batch>,
     pointer: number,
     finishedCasesNumber: number,
+    wtpt: WTPTState;
 }
