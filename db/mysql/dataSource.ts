@@ -1,8 +1,9 @@
 import 'dotenv/config';
 import {DataSource} from "typeorm";
-import {Process} from "@db/entities/Process";
-import {Event} from "@db/entities/Event";
-import {Frame} from "@db/entities/Frame";
+import {Process} from "../entities/Process";
+import {Event} from "../entities/Event";
+import {Frame} from "../entities/Frame";
+import {join} from "path";
 
 const parseBool = (value?: string) => value === 'true';
 
@@ -16,5 +17,5 @@ export const AppDataSource = new DataSource({
     synchronize: parseBool(process.env.TYPEORM_SYNCHRONIZE),
     logging: parseBool(process.env.TYPEORM_LOGGING),
     entities: [Process, Event, Frame],
-    migrations: ['db/migrations/*.ts'],
+    migrations: [join(__dirname, '../migrations/*.ts')],
 });
