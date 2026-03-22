@@ -13,4 +13,10 @@ export class Process {
 
     @Column({ type: "datetime" })
     endDate: string;
+
+    @Column({ type: "datetime", default: () => "CURRENT_TIMESTAMP" })
+    lastAccessedAt: Date;
+
+    @Column({ type: "boolean", default: false })
+    setToDelete: boolean;
 }
