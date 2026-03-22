@@ -32,6 +32,10 @@ export const POST = async (
             ])
             .where("process.id = :id", { id: processId })
             .getRawOne();
+
+        // Update lastAccessedAt
+        await processRepository.update({ id: processId }, { lastAccessedAt: new Date() });
+
         const simulationStartDate = new Date(simulationProcess.startDate + "Z");
         const simulationFinishDate = new Date(simulationProcess.endDate + "Z");
 

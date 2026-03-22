@@ -35,6 +35,9 @@ export const GET = async (
             .where("process.id = :id", { id: processId })
             .getRawOne();
 
+        // Update lastAccessedAt
+        await processRepository.update({ id: processId }, { lastAccessedAt: new Date() });
+
         const startDate = new Date(simulationProcess.startDate + "Z");
         const rawEndDate = new Date(simulationProcess.startDate + "Z");
         rawEndDate.setMinutes(0, 0, 0);
