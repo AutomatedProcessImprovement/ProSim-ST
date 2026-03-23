@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "migration": "ts-node db/scripts/generateMigration.js",
-    "migrate:run": "ts-node db/scripts/runMigrations.js"
+    "migrate:run": "ts-node db/scripts/runMigrations.js",
+    "cleanup": "node db/scripts/cleanupProcesses.js"
   },
   "dependencies": {
     "@headlessui/react": "^2.1.8",

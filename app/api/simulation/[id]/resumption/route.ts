@@ -28,10 +28,19 @@ export const POST = async (
                 "process.id AS id",
                 "process.fileName AS fileName",
                 "CAST(process.endDate AS CHAR) AS endDate",
-                "CAST(process.startDate AS CHAR) AS startDate"
+                "CAST(process.startDate AS CHAR) AS startDate",
+                "process.setToDelete AS setToDelete"
             ])
             .where("process.id = :id", { id: processId })
             .getRawOne();
+
+        if (!simulationProcess) {
+            return NextResponse.json({ error: "Process not found" }, { status: 404 });
+        }
+
+        if (simulationProcess.setToDelete) {
+            return NextResponse.json({ error: "Process is marked for deletion" }, { status: 410 });
+        }
 
         // Update lastAccessedAt
         await processRepository.update({ id: processId }, { lastAccessedAt: new Date() });
