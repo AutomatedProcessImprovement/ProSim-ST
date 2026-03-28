@@ -11,7 +11,7 @@ import axios from "axios";
 
 export const POST = async (
     request: Request,
-    context: { params: { id: string } }
+    context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse<ResumeSimulationResponse | {error: string}>> => {
     try {
         const { requestedDate } = await request.json();
