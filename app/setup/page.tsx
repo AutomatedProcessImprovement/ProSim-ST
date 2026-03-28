@@ -40,11 +40,7 @@ const Setup = () => {
         if (data.config.starting_point) {
             setEndDate(calculateEndDate(data.config));
         }
-    }, [
-        data.config.starting_point,
-        data.config.simulation_horizon_unit,
-        data.config.simulation_horizon_value,
-    ]);
+    }, [ data.config ]);
 
     const onMappingCompleted = (data: FormData) => {
         const logMapping: LogMapping = {

@@ -13,8 +13,11 @@ const StartingPointInput = ({ minDate, maxDate }: Props) => {
     const [value, setValue] = useState<string>(starting_point || maxDate);
 
     useEffect(() => {
-        setToContext(value);
-    }, [value]);
+        setData((prev) => ({
+            ...prev,
+            config: { ...prev.config, starting_point: value },
+        }));
+    }, [value, setData]);
 
     const handleDateChange = (e: ChangeEvent<HTMLInputElement>) => {
         let newDate = e.target.value;
@@ -23,17 +26,6 @@ const StartingPointInput = ({ minDate, maxDate }: Props) => {
         else if (newDate > maxDate) newDate = maxDate;
 
         setValue(newDate);
-        setToContext(newDate);
-    }
-
-    function setToContext(newDate) {
-        setData((prev) => ({
-            ...prev,
-            config: {
-                ...prev.config,
-                starting_point: newDate,
-            },
-        }));
     }
 
     return <input type="datetime-local" name="starting_point" value={value} min={minDate} max={maxDate} step={1} onChange={handleDateChange}

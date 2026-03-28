@@ -14,43 +14,25 @@ const SimulationHorizonInput = () => {
     const units: Array<TimeUnits> = [TimeUnits.DAYS, TimeUnits.WEEKS, TimeUnits.MONTHS];
 
     useEffect(() => {
-        setValueToContext(value);
-    }, [value]);
+        setData((prev) => ({
+            ...prev,
+            config: { ...prev.config, simulation_horizon_value: value },
+        }));
+    }, [value, setData]);
 
     useEffect(() => {
-       setUnitToContext(unit);
-    }, [unit]);
+        setData((prev) => ({
+            ...prev,
+            config: { ...prev.config, simulation_horizon_unit: unit },
+        }));
+    }, [unit, setData]);
 
     const handleValueChange = (e: ChangeEvent<HTMLInputElement>) => {
-        const newValue = Math.max(1, floor(Number(e.target.value)))
-        setValue(newValue);
-        setValueToContext(newValue);
+        setValue(Math.max(1, floor(Number(e.target.value))));
     };
 
     const handleUnitChange = (val: TimeUnits) => {
-        const newUnit = units.includes(val) ? val : TimeUnits.WEEKS
-        setUnit(newUnit);
-        setUnitToContext(newUnit);
-    }
-
-    function setUnitToContext(newUnit: TimeUnits) {
-        setData((prev) => ({
-            ...prev,
-            config: {
-                ...prev.config,
-                simulation_horizon_unit: newUnit,
-            },
-        }));
-    }
-
-    function setValueToContext(newValue: number) {
-        setData((prev) => ({
-            ...prev,
-            config: {
-                ...prev.config,
-                simulation_horizon_value: newValue,
-            },
-        }));
+        setUnit(units.includes(val) ? val : TimeUnits.WEEKS);
     }
 
     return <>

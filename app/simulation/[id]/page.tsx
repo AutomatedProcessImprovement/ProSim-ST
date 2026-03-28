@@ -14,6 +14,7 @@ const speeds = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
 
 const Simulation = () => {
     const viewerRef = useRef(null);
+    const xmlFetchedRef = useRef(false);
     const [xml, setXml] = useState<string>(null);
     const [simulationData, setSimulationData] = useState<SimulationData>();
     const [workload, setWorkload] = useState<Array<number>>();
@@ -32,36 +33,6 @@ const Simulation = () => {
     const { id } = useParams();
     const chartWidth = 226;
     const chartHeight = 120;
-
-    const fetchSimulationData = async () => {
-        try {
-            const res = await axios.get(`/api/simulation/${id}`);
-
-            return res.data;
-        } catch (error) {
-            router.replace('/');
-        }
-    }
-
-    const fetchWorkloadData = async () => {
-        try {
-            const res = await axios.get(`/api/simulation/${id}/workload`);
-
-            return res.data;
-        } catch (error) {
-            console.error(error);
-        }
-    }
-
-    const fetchCycleTimeData = async () => {
-        try {
-            const res = await axios.get(`/api/simulation/${id}/cycle-time`);
-
-            return res.data;
-        } catch (error) {
-            console.error(error);
-        }
-    }
 
     const getTaskIdToNameMap = (viewer: NavigatedViewer): WTPTState => {
         const elementRegistry = viewer.get("elementRegistry") as Canvas;
@@ -87,6 +58,33 @@ const Simulation = () => {
     }
 
     useEffect(() => {
+        const fetchSimulationData = async () => {
+            try {
+                const res = await axios.get(`/api/simulation/${id}`);
+                return res.data;
+            } catch {
+                router.replace('/');
+            }
+        }
+
+        const fetchWorkloadData = async () => {
+            try {
+                const res = await axios.get(`/api/simulation/${id}/workload`);
+                return res.data;
+            } catch (error) {
+                console.error(error);
+            }
+        }
+
+        const fetchCycleTimeData = async () => {
+            try {
+                const res = await axios.get(`/api/simulation/${id}/cycle-time`);
+                return res.data;
+            } catch (error) {
+                console.error(error);
+            }
+        }
+
         fetchSimulationData()
             .then((data: SimulationData) => {
                 setSimulationData(data);
@@ -101,7 +99,8 @@ const Simulation = () => {
                 return blob.text();
             })
             .then((text) => {
-                if (text && !xml) {
+                if (text && !xmlFetchedRef.current) {
+                    xmlFetchedRef.current = true;
                     setXml(text);
                 }
             })
@@ -114,7 +113,7 @@ const Simulation = () => {
             .then((data: Array<number>) => {
                 setCycleTimeData(data);
             });
-    }, [id]);
+    }, [id, router]);
 
     useEffect(() => {
         if (xml !== null && typeof window !== "undefined") {
@@ -134,7 +133,7 @@ const Simulation = () => {
                 tokenSimulation.start();
             });
         }
-    }, [xml]);
+    }, [xml, simulationData]);
 
     const workloadBars = useMemo(() => {
         if (!workload) return null;
