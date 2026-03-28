@@ -10,7 +10,7 @@ import {formatDateString} from "@utils/dateHelpers";
 
 export const GET = async (
     request: Request,
-    context: { params: { id: string } }
+    context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse<PollingData | {error: string}>> => {
     try {
         const params = await context.params;
