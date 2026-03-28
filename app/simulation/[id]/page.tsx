@@ -6,7 +6,7 @@ import NavigatedViewer from 'bpmn-js/lib/NavigatedViewer';
 import simulation from "@modules/simulation";
 import axios from "axios";
 import {SimulationData} from "@definitions/api/types";
-import {Canvas} from "@node_modules/bpmn-js/lib/features/context-pad/ContextPadProvider";
+import {Canvas} from "bpmn-js/lib/features/context-pad/ContextPadProvider";
 import {NodeTypes} from "@definitions/simulation/enums";
 import {WTPTState} from "@definitions/simulation/types";
 

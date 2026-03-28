@@ -13,7 +13,7 @@ import {
     Tokens, WTPTState
 } from "@definitions/simulation/types";
 import {FlowTypes, LifecycleTypes, NodeTypes} from "@definitions/simulation/enums";
-import axios from "@node_modules/axios";
+import axios from "axios";
 import {SimulationData} from "@definitions/api/types";
 import {formatDateString} from "@utils/dateHelpers";
 import {Dispatch, SetStateAction} from "react";

@@ -1,4 +1,4 @@
-import {NextResponse} from "@node_modules/next/server";
+import {NextResponse} from "next/server";
 import {PollingData} from "@definitions/api/types";
 import {createMySQLConnection} from "@db/mysql/typeorm";
 import {Process} from "@db/entities/Process";
