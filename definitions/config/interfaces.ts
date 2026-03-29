@@ -14,7 +14,7 @@ export interface LogMapping {
 }
 
 export interface AlgorithmConfiguration {
-    simulation_horizon_value?: number,
-    simulation_horizon_unit?: TimeUnits,
-    starting_point?: string,
+    simulationHorizonValue?: number,
+    simulationHorizonUnit?: TimeUnits,
+    startingPoint?: string,
 }

@@ -50,7 +50,7 @@ export const POST = async (request) => {
 
 const getSimulationData = async (body: FormData): Promise<SimulationSeedData> => {
     const configInput: AlgorithmConfiguration = JSON.parse(body.get('config') as string);
-    const startDate = new Date(configInput.starting_point + "Z").toISOString();
+    const startDate = new Date(configInput.startingPoint + "Z").toISOString();
     const endDate = calculateEndDate(configInput).toISOString()
 
     const reqBody = new FormData();

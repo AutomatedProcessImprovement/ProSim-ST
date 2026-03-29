@@ -8,22 +8,22 @@ import {floor} from "@floating-ui/utils";
 import {TimeUnits} from "@definitions/config/enums";
 
 const SimulationHorizonInput = () => {
-    const { data: { config: { simulation_horizon_value, simulation_horizon_unit } }, setData } = useContext(DataContext);
-    const [value, setValue] = useState(simulation_horizon_value || 8);
-    const [unit, setUnit] = useState(simulation_horizon_unit || TimeUnits.WEEKS);
+    const { data: { config: { simulationHorizonValue, simulationHorizonUnit } }, setData } = useContext(DataContext);
+    const [value, setValue] = useState(simulationHorizonValue || 8);
+    const [unit, setUnit] = useState(simulationHorizonUnit || TimeUnits.WEEKS);
     const units: Array<TimeUnits> = [TimeUnits.DAYS, TimeUnits.WEEKS, TimeUnits.MONTHS];
 
     useEffect(() => {
         setData((prev) => ({
             ...prev,
-            config: { ...prev.config, simulation_horizon_value: value },
+            config: { ...prev.config, simulationHorizonValue: value },
         }));
     }, [value, setData]);
 
     useEffect(() => {
         setData((prev) => ({
             ...prev,
-            config: { ...prev.config, simulation_horizon_unit: unit },
+            config: { ...prev.config, simulationHorizonUnit: unit },
         }));
     }, [unit, setData]);
 
@@ -36,9 +36,9 @@ const SimulationHorizonInput = () => {
     }
 
     return <>
-        <input type="number" name="simulation_horizon_value" value={value} onChange={handleValueChange} min={1}
+        <input type="number" name="simulationHorizonValue" value={value} onChange={handleValueChange} min={1}
                className='w-1/2 rounded-2xl bg-white px-4 py-1 me-0.5 text-left data-[invalid]:border-2 data-[invalid]:border-red-500 data-[focused]:bg-slate-200'/>
-        <Listbox name="simulation_horizon_unit" value={unit} onChange={handleUnitChange}>
+        <Listbox name="simulationHorizonUnit" value={unit} onChange={handleUnitChange}>
             <ListboxButton className = {`group flex w-1/2 flex-row items-center 
                     justify-between rounded-2xl bg-white px-4 py-1 text-left
                     data-[invalid]:border-2 data-[invalid]:border-red-500 

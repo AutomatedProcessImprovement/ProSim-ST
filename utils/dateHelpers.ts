@@ -2,11 +2,11 @@ import {AlgorithmConfiguration} from "@definitions/config/interfaces";
 import {TimeUnits} from "@definitions/config/enums";
 
 export const calculateEndDate = (data: AlgorithmConfiguration): Date => {
-    const currentDate = new Date(data.starting_point + "Z");
-    const horizon = data.simulation_horizon_value;
+    const currentDate = new Date(data.startingPoint + "Z");
+    const horizon = data.simulationHorizonValue;
     const newEndDate = new Date(currentDate);
 
-    switch (data.simulation_horizon_unit) {
+    switch (data.simulationHorizonUnit) {
         case TimeUnits.DAYS:
             newEndDate.setDate(currentDate.getDate() + Number(horizon));
             break;

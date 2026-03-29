@@ -37,7 +37,7 @@ const Setup = () => {
     }, [data.id, router]);
 
     useEffect(() => {
-        if (data.config.starting_point) {
+        if (data.config.startingPoint) {
             setEndDate(calculateEndDate(data.config));
         }
     }, [ data.config ]);
@@ -80,9 +80,9 @@ const Setup = () => {
 
     const onConfigCompleted = (data: FormData) => {
         const algorithmConfiguration: AlgorithmConfiguration = {
-            simulation_horizon_value: data.has('simulation_horizon_value') ? data.get('simulation_horizon_value') as unknown as number : undefined,
-            simulation_horizon_unit: data.has('simulation_horizon_unit') ? data.get('simulation_horizon_unit') as TimeUnits : undefined,
-            starting_point: data.has('starting_point') ? data.get('starting_point') as string : undefined,
+            simulationHorizonValue: data.has('simulationHorizonValue') ? Number(data.get('simulationHorizonValue')) : undefined,
+            simulationHorizonUnit: data.has('simulationHorizonUnit') ? data.get('simulationHorizonUnit') as TimeUnits : undefined,
+            startingPoint: data.has('startingPoint') ? data.get('startingPoint') as string : undefined,
         }
 
         setData((prev) => ({
@@ -174,7 +174,7 @@ const Setup = () => {
                     </ConfigInput>
                     <small>
                         With the current configuration, ProST will compute the state of the process
-                        at {data.config.starting_point.slice(0, 16).replace("T", ", ")} and
+                        at {data.config.startingPoint.slice(0, 16).replace("T", ", ")} and
                         simulate the execution of the process until {endDate.toISOString().slice(0, 16).replace("T", ", ")}
                     </small>
                 </div>
