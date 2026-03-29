@@ -68,10 +68,10 @@ export const GET = async (
             formatDateString(endDate),
         ]);
         const batchEvents: Array<BatchEvent> = events.map(event => ({
-            case_id: event.caseId,
+            caseId: event.caseId,
             lifecycle: event.lifecycle as LifecycleTypes,
             timestamp: event.timestamp,
-            node_id: event.nodeId,
+            nodeId: event.nodeId,
             paths: event.paths,
         }));
         const batches = groupEvents(batchEvents, startDate.toISOString(), endDate.toISOString());
@@ -85,15 +85,15 @@ export const GET = async (
             frames = await appDataSource.getRepository(Frame)
                 .createQueryBuilder("frame")
                 .select([
-                    "frame.caseId as case_id",
-                    "frame.activeElements as active_elements"
+                    "frame.caseId as caseId",
+                    "frame.activeElements as activeElements"
                 ])
                 .where("frame.processId = :processId", { processId })
                 .getRawMany();
 
             await redis.set(redisKey, JSON.stringify(frames), 'EX', 60*60*24);
         } else {
-            frames = JSON.parse(stringFrames);
+            frames = JSON.parse(stringFrames) as Array<FrameCase>;
         }
 
         redis.disconnect();

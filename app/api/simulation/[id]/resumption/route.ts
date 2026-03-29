@@ -1,5 +1,10 @@
 import {NextResponse} from "next/server";
-import {ResumeSimulationRequestBodyPython, ResumeSimulationResponse} from "@definitions/api/types";
+import {
+    mapPyFrameCase,
+    PyFrameCase,
+    ResumeSimulationRequestBodyPython,
+    ResumeSimulationResponse
+} from "@definitions/api/types";
 import {createMySQLConnection} from "@db/mysql/typeorm";
 import {Process} from "@db/entities/Process";
 import {Event} from "@db/entities/Event";
@@ -114,10 +119,10 @@ export const POST = async (
             formatDateString(endDate),
         ]);
         const batchEvents: Array<BatchEvent> = events.map(event => ({
-            case_id: event.caseId,
+            caseId: event.caseId,
             lifecycle: event.lifecycle as LifecycleTypes,
             timestamp: event.timestamp,
-            node_id: event.nodeId,
+            nodeId: event.nodeId,
             paths: event.paths,
         }));
         const batches = groupEvents(batchEvents, startDate.toISOString(), endDate.toISOString());
@@ -131,7 +136,8 @@ export const POST = async (
             reqBody,
             { headers: { "Content-Type": "application/json" } }
         )
-        const frames: FrameCase[] = response.data.frames;
+        const pyFrames = (response.data as { frames: Array<PyFrameCase> }).frames;
+        const frames: FrameCase[] = pyFrames.map(mapPyFrameCase);
 
         // Repair the tokens to match the ongoing precomputed events
 
@@ -149,8 +155,8 @@ export const POST = async (
         ]);
 
         frames.forEach(frame => {
-            const caseId = frame.case_id;
-            const activeElements = frame.active_elements;
+            const caseId = frame.caseId;
+            const activeElements = frame.activeElements;
             const previousCaseEvents = previousEvents.filter(event => event.caseId === caseId);
 
             const repairedActiveTokens = {};
@@ -189,7 +195,7 @@ export const POST = async (
                 }
             });
 
-            frame.active_elements = repairedActiveTokens;
+            frame.activeElements = repairedActiveTokens;
         });
 
         return NextResponse.json({

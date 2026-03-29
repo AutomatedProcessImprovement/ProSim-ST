@@ -73,10 +73,10 @@ export const GET = async (
             formatDateString(endDate),
         ]);
         const batchEvents: Array<BatchEvent> = events.map(event => ({
-            case_id: event.caseId,
+            caseId: event.caseId,
             lifecycle: event.lifecycle as LifecycleTypes,
             timestamp: event.timestamp,
-            node_id: event.nodeId,
+            nodeId: event.nodeId,
             paths: event.paths,
         }));
         const batches = groupEvents(batchEvents, startDate.toISOString(), endDate.toISOString());

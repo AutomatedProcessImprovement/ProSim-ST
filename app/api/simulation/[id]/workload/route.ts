@@ -60,7 +60,7 @@ export const GET = async (
         if (frameCache) {
             const frames: Array<FrameCase> = JSON.parse(frameCache);
             for (const frame of frames) {
-                const key = frame.case_id.toString();
+                const key = frame.caseId.toString();
                 if (!arrivalTimes.has(key)) {
                     arrivalTimes.set(key, new Date(process.startDate));
                 }

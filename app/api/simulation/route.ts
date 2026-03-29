@@ -6,7 +6,13 @@ import {existsSync, mkdirSync} from "fs";
 import axios from "axios";
 import {AlgorithmConfiguration} from "@definitions/config/interfaces";
 import {calculateEndDate} from "@utils/dateHelpers";
-import {PySimulationData} from "@definitions/api/types";
+import {
+    mapPyBatchEvent,
+    mapPyFrameCase,
+    PyBatchEvent,
+    PyFrameCase,
+    SimulationSeedData,
+} from "@definitions/api/types";
 import {createMySQLConnection} from "@db/mysql/typeorm";
 
 export const POST = async (request) => {
@@ -42,7 +48,7 @@ export const POST = async (request) => {
     }
 }
 
-const getSimulationData = async (body: FormData): Promise<PySimulationData> => {
+const getSimulationData = async (body: FormData): Promise<SimulationSeedData> => {
     const configInput: AlgorithmConfiguration = JSON.parse(body.get('config') as string);
     const startDate = new Date(configInput.starting_point + "Z").toISOString();
     const endDate = calculateEndDate(configInput).toISOString()
@@ -62,14 +68,19 @@ const getSimulationData = async (body: FormData): Promise<PySimulationData> => {
         { headers: { "Content-Type": "multipart/form-data" } }
     );
 
+    const pyData = response.data as { events: Array<PyBatchEvent>; frames: Array<PyFrameCase> };
+
     return {
         id: body.get('id') as string,
-        data: response.data,
+        data: {
+            events: pyData.events.map(mapPyBatchEvent),
+            frames: pyData.frames.map(mapPyFrameCase),
+        },
     };
 }
 
 const insertSimulationData = async (
-    data: PySimulationData,
+    data: SimulationSeedData,
     fileName: string,
 ) => {
     const { id: processId, data: { events, frames } } = data;
@@ -97,10 +108,10 @@ const insertSimulationData = async (
             }
 
             return [
-                event.case_id,
+                event.caseId,
                 event.lifecycle,
                 eventDate.toISOString().slice(0, 19).replace("T", " "),
-                event.node_id,
+                event.nodeId,
                 JSON.stringify(event.paths),
                 processId,
             ]
@@ -116,8 +127,8 @@ const insertSimulationData = async (
         const flattenedEventValues = eventValues.flat();
 
         const frameValues = frames.map(frame => [
-            frame.case_id,
-            JSON.stringify(frame.active_elements),
+            frame.caseId,
+            JSON.stringify(frame.activeElements),
             processId,
         ]);
 

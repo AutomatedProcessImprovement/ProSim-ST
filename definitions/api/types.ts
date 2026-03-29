@@ -1,4 +1,35 @@
 import {Batch, BatchEvent, FrameCase, WTPTState} from "@definitions/simulation/types";
+import {LifecycleTypes} from "@definitions/simulation/enums";
+
+export type PyBatchEvent = {
+    case_id: number,
+    lifecycle: string,
+    timestamp: string,
+    node_id: string,
+    paths: {
+        [tokenId: string]: Array<string>,
+    },
+}
+
+export const mapPyBatchEvent = (event: PyBatchEvent): BatchEvent => ({
+    caseId: event.case_id,
+    lifecycle: event.lifecycle as LifecycleTypes,
+    timestamp: event.timestamp,
+    nodeId: event.node_id,
+    paths: event.paths,
+});
+
+export type PyFrameCase = {
+    case_id: number,
+    active_elements: {
+        [tokenId: string]: string,
+    },
+}
+
+export const mapPyFrameCase = (frame: PyFrameCase): FrameCase => ({
+    caseId: frame.case_id,
+    activeElements: frame.active_elements,
+});
 
 export type SimulationData = {
     processId: string,
@@ -10,7 +41,7 @@ export type SimulationData = {
     pointer: number,
 }
 
-export type PySimulationData = {
+export type SimulationSeedData = {
     id: string;
     data: {
         frames: Array<FrameCase>;

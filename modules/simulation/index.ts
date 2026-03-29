@@ -145,11 +145,8 @@ const simulation = (
 
             function createTokensForFrame(frameCase: FrameCase) {
                 const color = getRandomColor();
-                if (typeof frameCase.active_elements === "string") {
-                    frameCase.active_elements = JSON.parse(frameCase.active_elements);
-                }
-                Object.entries(frameCase.active_elements).forEach(([tokenId, activeElementId]) => {
-                    createToken(activeElementId, frameCase.case_id, tokenId, tokenColors[frameCase.case_id]?.[tokenId] ?? color);
+                Object.entries(frameCase.activeElements).forEach(([tokenId, activeElementId]) => {
+                    createToken(activeElementId, frameCase.caseId, tokenId, tokenColors[frameCase.caseId]?.[tokenId] ?? color);
                 });
             }
 
@@ -650,8 +647,8 @@ const simulation = (
                             switch (event.lifecycle) {
                                 case LifecycleTypes.CASE_ARRIVAL:
                                     frames.push({
-                                        case_id: event.case_id,
-                                        active_elements: {
+                                        caseId: event.caseId,
+                                        activeElements: {
                                             [tokenId]: path[path.length - 1],
                                         },
                                     });
@@ -663,11 +660,11 @@ const simulation = (
                                 case LifecycleTypes.START:
                                 case LifecycleTypes.COMPLETE:
                                 case LifecycleTypes.ENABLE:
-                                    const eventCase = frames.find(frame => frame.case_id === event.case_id);
-                                    if (eventCase) eventCase.active_elements[tokenId] = path[path.length - 1];
+                                    const eventCase = frames.find(frame => frame.caseId === event.caseId);
+                                    if (eventCase) eventCase.activeElements[tokenId] = path[path.length - 1];
                                     break;
                                 case LifecycleTypes.CASE_END:
-                                    frames = frames.filter(frame => frame.case_id !== event.case_id);
+                                    frames = frames.filter(frame => frame.caseId !== event.caseId);
                                     caseNumberSetter((state) => ({
                                         ongoing: state.ongoing - 1,
                                         finished: state.finished + 1,
@@ -677,13 +674,13 @@ const simulation = (
                         });
                     } else if (numberOfTokens > 1) {
                         Object.entries(paths).forEach(([tokenId, path]) => {
-                            const eventCase = frames.find(frame => frame.case_id === event.case_id);
+                            const eventCase = frames.find(frame => frame.caseId === event.caseId);
 
                             if (eventCase) {
                                 if (elementRegistry.get(path[path.length - 1]).type === NodeTypes.PARALLEL_GATEWAY) {
-                                    if (eventCase.active_elements[tokenId]) delete eventCase.active_elements[tokenId];
+                                    if (eventCase.activeElements[tokenId]) delete eventCase.activeElements[tokenId];
                                 } else if (elementRegistry.get(path[0]).type === NodeTypes.PARALLEL_GATEWAY) {
-                                    eventCase.active_elements[tokenId] = path[path.length - 1];
+                                    eventCase.activeElements[tokenId] = path[path.length - 1];
                                 }
                             }
                         });
@@ -778,8 +775,8 @@ const simulation = (
                     } else {
                         const eventsByCaseId: EventsByCaseId = {};
                         currentBatch.events.forEach((event) => {
-                            if (!eventsByCaseId[event.case_id]) eventsByCaseId[event.case_id] = [];
-                            eventsByCaseId[event.case_id].push(event);
+                            if (!eventsByCaseId[event.caseId]) eventsByCaseId[event.caseId] = [];
+                            eventsByCaseId[event.caseId].push(event);
                         });
 
                         try {
@@ -815,8 +812,8 @@ const simulation = (
             }
 
             function setNewWTPTState(previousState: WTPTState, event: BatchEvent): WTPTState {
-                const nodeId = event.node_id;
-                const caseId = event.case_id;
+                const nodeId = event.nodeId;
+                const caseId = event.caseId;
                 const timestamp = new Date(event.timestamp).getTime();
 
                 if (
