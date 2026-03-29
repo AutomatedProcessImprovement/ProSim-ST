@@ -14,7 +14,9 @@ const speeds = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
 
 const Simulation = () => {
     const viewerRef = useRef(null);
+    const viewerInstanceRef = useRef<NavigatedViewer | null>(null);
     const xmlFetchedRef = useRef(false);
+    const initializedProcessIdRef = useRef<string | null>(null);
     const [xml, setXml] = useState<string>(null);
     const [simulationData, setSimulationData] = useState<SimulationData>();
     const [workload, setWorkload] = useState<Array<number>>();
@@ -31,6 +33,7 @@ const Simulation = () => {
     const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
     const router = useRouter();
     const { id } = useParams();
+    const processId = Array.isArray(id) ? id[0] : id;
     const chartWidth = 226;
     const chartHeight = 120;
 
@@ -58,9 +61,25 @@ const Simulation = () => {
     }
 
     useEffect(() => {
+        if (!processId) return;
+        if (initializedProcessIdRef.current === processId) return;
+        initializedProcessIdRef.current = processId;
+
+        // Reset local state when switching to a new simulation id.
+        xmlFetchedRef.current = false;
+        setXml(null);
+        setSimulationData(undefined);
+        setWorkload(undefined);
+        setCycleTimeData([]);
+
+        if (viewerInstanceRef.current) {
+            viewerInstanceRef.current.destroy();
+            viewerInstanceRef.current = null;
+        }
+
         const fetchSimulationData = async () => {
             try {
-                const res = await axios.get(`/api/simulation/${id}`);
+                const res = await axios.get(`/api/simulation/${processId}`);
                 return res.data;
             } catch {
                 router.replace('/');
@@ -69,7 +88,7 @@ const Simulation = () => {
 
         const fetchWorkloadData = async () => {
             try {
-                const res = await axios.get(`/api/simulation/${id}/workload`);
+                const res = await axios.get(`/api/simulation/${processId}/workload`);
                 return res.data;
             } catch (error) {
                 console.error(error);
@@ -78,7 +97,7 @@ const Simulation = () => {
 
         const fetchCycleTimeData = async () => {
             try {
-                const res = await axios.get(`/api/simulation/${id}/cycle-time`);
+                const res = await axios.get(`/api/simulation/${processId}/cycle-time`);
                 return res.data;
             } catch (error) {
                 console.error(error);
@@ -113,14 +132,17 @@ const Simulation = () => {
             .then((data: Array<number>) => {
                 setCycleTimeData(data);
             });
-    }, [id, router]);
+    }, [processId, router]);
 
     useEffect(() => {
-        if (xml !== null && typeof window !== "undefined") {
+        if (xml !== null && simulationData && typeof window !== "undefined") {
+            if (viewerInstanceRef.current) return;
+
             const viewer = new NavigatedViewer({
                 container: viewerRef.current,
                 additionalModules: [simulation(simulationData, setNumberOfCases, setWaitingProcessingTimes)]
             });
+            viewerInstanceRef.current = viewer;
 
             viewer.importXML(xml).then(() => {
                 const canvas = viewer.get('canvas') as Canvas;
@@ -134,6 +156,15 @@ const Simulation = () => {
             });
         }
     }, [xml, simulationData]);
+
+    useEffect(() => {
+        return () => {
+            if (viewerInstanceRef.current) {
+                viewerInstanceRef.current.destroy();
+                viewerInstanceRef.current = null;
+            }
+        };
+    }, []);
 
     const workloadBars = useMemo(() => {
         if (!workload) return null;
