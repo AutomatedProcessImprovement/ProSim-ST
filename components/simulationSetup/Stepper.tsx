@@ -27,7 +27,12 @@ const Stepper = ({children = [], onSubmit = () => {}, className = ''}: Props) =>
 
     const submit = (evt: SyntheticEvent<HTMLFormElement, SubmitEvent>) => {
         evt.preventDefault();
-        const action = new URL((evt.nativeEvent.submitter as HTMLButtonElement).formAction);
+        const submitter = evt.nativeEvent.submitter as HTMLButtonElement | null;
+        const rawAction = submitter?.formAction || submitter?.getAttribute('formaction') || '';
+        if (!rawAction) return;
+
+        const action = new URL(rawAction, 'http://localhost');
+        const actionPath = action.pathname.replace(/^\/+/, '');
         const data = new FormData(evt.currentTarget);
 
         if (activeStep <= count) {
@@ -35,7 +40,7 @@ const Stepper = ({children = [], onSubmit = () => {}, className = ''}: Props) =>
             setValidity(validity);
         }
 
-        switch(action.pathname) {
+        switch(actionPath) {
             case 'go':
                 setActiveStep(Number.parseInt(action.searchParams.get('step') as string));
                 break;

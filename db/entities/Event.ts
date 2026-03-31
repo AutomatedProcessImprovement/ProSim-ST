@@ -1,5 +1,6 @@
 import {Column, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn} from "typeorm";
 import {Process} from "./Process";
+import {LifecycleTypes} from "@definitions/simulation/enums";
 
 @Entity()
 export class Event {
@@ -9,8 +10,8 @@ export class Event {
     @Column()
     caseId: number;
 
-    @Column()
-    lifecycle: string;
+    @Column({ type: "varchar", length: 255 })
+    lifecycle: LifecycleTypes;
 
     @Column({ type: "datetime" })
     timestamp: string;

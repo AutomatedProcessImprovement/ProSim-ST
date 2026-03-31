@@ -16,7 +16,7 @@ export const DataContext = createContext({
         bpmnFile: null,
         jsonFile: null,
     },
-    setData: (value:any) => value,
+    setData: (value:unknown) => value,
 });
 
 export const DataProvider = ({ children }) => {

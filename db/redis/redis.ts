@@ -8,7 +8,7 @@ const getRedisConfiguration = () => {
     return {
         host: process.env.REDIS_HOST ?? 'localhost',
         password: process.env.REDIS_PASSWORD ?? '',
-        port: parseInt(process.env.REDIS_PORT) ?? 6379,
+        port: parseInt(process.env.REDIS_PORT ?? '6379', 10),
     }
 }
 
@@ -38,7 +38,7 @@ export const getRedisInstance = (config = getRedisConfiguration()) => {
         });
 
         return redis;
-    } catch (e) {
+    } catch {
         throw new Error(`[Redis] Could not create a Redis instance`);
     }
 }

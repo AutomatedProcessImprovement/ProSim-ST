@@ -24,7 +24,7 @@ const generateEmptyBatches = (startDate: string, endDate: string): Array<Batch> 
 
     start.setMinutes(0, 0, 0);
     if (start < new Date(startDate)) {
-        let nextHour = new Date(start);
+        const nextHour = new Date(start);
         nextHour.setHours(nextHour.getHours() + 1);
         emptyBatches.push({
             startDate: startDate,
@@ -36,7 +36,7 @@ const generateEmptyBatches = (startDate: string, endDate: string): Array<Batch> 
     }
 
     while (start < end) {
-        let nextHour = new Date(start);
+        const nextHour = new Date(start);
         nextHour.setHours(nextHour.getHours() + 1);
 
         emptyBatches.push({

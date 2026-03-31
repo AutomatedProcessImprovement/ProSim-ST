@@ -6,6 +6,7 @@ import {Event} from "@db/entities/Event";
 import {Frame} from "@db/entities/Frame";
 import {LifecycleTypes} from "@definitions/simulation/enums";
 import {FrameCase} from "@definitions/simulation/types";
+import {buildWorkloadSeries} from "@utils/workload";
 
 export const GET = async (
     request: Request,
@@ -38,66 +39,17 @@ export const GET = async (
             .orderBy("event.timestamp", "ASC")
             .getMany();
 
-        const arrivalTimes = new Map<string, Date>();
-        const endTimes = new Map<string, Date>();
-
-        for (const event of events) {
-            switch (event.lifecycle) {
-                case LifecycleTypes.CASE_ARRIVAL:
-                    arrivalTimes.set(event.caseId.toString(), new Date(event.timestamp));
-                    break;
-                case LifecycleTypes.CASE_END:
-                    endTimes.set(event.caseId.toString(), new Date(event.timestamp));
-                    break;
-                default:
-                    break;
-            }
-        }
-
+        let frames: Array<FrameCase>;
         const redisKeyFrames = REDIS_KEY_PREFIX_FRAMES + processId
         const frameCache = await redis.get(redisKeyFrames);
 
         if (frameCache) {
-            const frames: Array<FrameCase> = JSON.parse(frameCache);
-            for (const frame of frames) {
-                const key = frame.caseId.toString();
-                if (!arrivalTimes.has(key)) {
-                    arrivalTimes.set(key, new Date(process.startDate));
-                }
-            }
+            frames = JSON.parse(frameCache) as Array<FrameCase>;
         } else {
-            const frames = await appDataSource.getRepository(Frame).find({ where: { processId } });
-            for (const frame of frames) {
-                const key = frame.caseId.toString();
-                if (!arrivalTimes.has(key)) {
-                    arrivalTimes.set(key, new Date(process.startDate));
-                }
-            }
+            frames = await appDataSource.getRepository(Frame).find({ where: { processId } });
         }
 
-        const start = new Date(process.startDate);
-        const end = new Date(process.endDate);
-        const totalDuration = end.getTime() - start.getTime();
-        const step = totalDuration / 1000;
-
-        const changes: Array<{ timestamp: number; effect: number }> = [];
-
-        arrivalTimes.forEach((date) => changes.push({ timestamp: date.getTime(), effect: +1 }));
-        endTimes.forEach((date) => changes.push({ timestamp: date.getTime(), effect: -1 }));
-        changes.sort((a, b) => a.timestamp - b.timestamp);
-
-        const result: Array<number> = [];
-        let activeCount = 0;
-        let index = 0;
-
-        for (let i = 0; i < 1000; i++) {
-            const point = start.getTime() + i * step;
-            while (index < changes.length && changes[index].timestamp <= point) {
-                activeCount += changes[index].effect;
-                index++;
-            }
-            result.push(activeCount);
-        }
+        const result = buildWorkloadSeries(events, frames, process.startDate, process.endDate);
 
         await redis.set(redisKeyWorkload, JSON.stringify(result), 'EX', 60 * 60 * 24);
         redis.disconnect();

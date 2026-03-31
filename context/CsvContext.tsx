@@ -10,7 +10,7 @@ export const CsvContext = createContext({
         logStartDate: '',
         logEndDate: '',
     },
-    setCsvData: (value:any) => value,
+    setCsvData: (value:unknown) => value,
 });
 
 export const CsvProvider = ({ children }) => {
