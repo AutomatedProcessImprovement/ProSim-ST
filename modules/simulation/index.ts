@@ -4,7 +4,6 @@ import {
     AnimationData,
     Batch,
     BatchEvent,
-    EventsByCaseId,
     FrameCase,
     PathMap,
     Token,
@@ -19,7 +18,20 @@ import {formatDateString} from "@utils/dateHelpers";
 import {Dispatch, SetStateAction} from "react";
 import {buildPathMap, calculateDurations, calculatePathLength} from "@modules/simulation/pathDurationHelpers";
 import {applyEventToFrames} from "@modules/simulation/frameStateHelpers";
-import {hydrateWTPTNames, setNewWTPTState} from "@modules/simulation/wtptHelpers";
+import {setNewWTPTState} from "@modules/simulation/wtptHelpers";
+import {buildResumedWTPT, buildTimelineResumptionPatch} from "@modules/simulation/timelineResumptionHelpers";
+import {
+    calculatePlaybackDelta,
+    decidePlaybackSpeedUpdateAction,
+    decidePlayPauseResumeAction,
+} from "@modules/simulation/playbackStateHelpers";
+import {
+    computeEmptyBatchWaitTime,
+    computeProportionalDelta,
+    groupEventsByCaseId,
+    shouldTopUpQueue,
+    shouldUpdateFrames,
+} from "@modules/simulation/runSimulationHelpers";
 
 const simulation = (
     simulationData: SimulationData,
@@ -523,47 +535,62 @@ const simulation = (
             }
 
             function handlePlayPause() {
-                if (!isPaused) {
+                const action = decidePlayPauseResumeAction({
+                    isPaused,
+                    hasEnded,
+                    batchesQueue,
+                    currentBatch,
+                    localProgress,
+                });
+
+                if (action.kind === "pause") {
                     playPauseButton.innerHTML = " ▶";
                     isPaused = true;
                     abortController.abort();
-                } else {
-                    if (hasEnded) {
-                        hasEnded = false;
-                        currentProgress = 0.0;
-                        handleTimelineRequest(0);
-                        return;
-                    } else {
-                        if (localProgress) batchesQueue.unshift(currentBatch);
-                    }
-
-                    playPauseButton.innerHTML = "⏸";
-                    document.querySelectorAll(".token").forEach(token => token.remove());
-                    tokens = {};
-                    coordinateMap = {};
-                    isPaused = false;
-                    isResumed = localProgress !== 0;
-                    abortController = new AbortController();
-                    setTimeout(runSimulation, 10);
+                    return;
                 }
+
+                if (action.kind === "restart") {
+                    hasEnded = false;
+                    currentProgress = 0.0;
+                    handleTimelineRequest(0);
+                    return;
+                }
+
+                batchesQueue = action.nextQueue;
+                playPauseButton.innerHTML = "⏸";
+                document.querySelectorAll(".token").forEach(token => token.remove());
+                tokens = action.resetPatch.tokens;
+                coordinateMap = action.resetPatch.coordinateMap;
+                isPaused = false;
+                isResumed = action.resetPatch.isResumed;
+                abortController = new AbortController();
+                setTimeout(runSimulation, 10);
             }
 
             function updatePlaybackSpeed(newSpeed: number) {
-                if (!isPaused) {
+                const action = decidePlaybackSpeedUpdateAction({
+                    isPaused,
+                    batchesQueue,
+                    currentBatch,
+                    localProgress,
+                });
+
+                if (action.kind === "running") {
                     abortController.abort();
 
                     setTimeout(() => {
-                        if (localProgress) batchesQueue.unshift(currentBatch);
+                        batchesQueue = action.nextQueue;
                         document.querySelectorAll(".token").forEach(token => token.remove());
-                        tokens = {};
-                        coordinateMap = {};
-                        isResumed = localProgress !== 0;
-                        delta = defaultDelta / newSpeed;
+                        tokens = action.resetPatch.tokens;
+                        coordinateMap = action.resetPatch.coordinateMap;
+                        isResumed = action.resetPatch.isResumed;
+                        delta = calculatePlaybackDelta(defaultDelta, newSpeed);
                         abortController = new AbortController();
                         setTimeout(runSimulation, 10);
                     }, 300);
                 } else {
-                    delta = defaultDelta / newSpeed;
+                    delta = calculatePlaybackDelta(defaultDelta, newSpeed);
                 }
             }
 
@@ -593,23 +620,22 @@ const simulation = (
                         requestedDate: new Date(initialDate.getTime() + (progress / 100) * totalDuration).toISOString(),
                     });
 
+                    const patch = buildTimelineResumptionPatch(res.data, isPaused);
+
                     document.querySelectorAll(".token").forEach(token => token.remove());
                     tokens = {};
                     coordinateMap = {};
-                    tokenProgresses = {};
-                    localProgress = 0.0;
-                    batchesQueue = res.data.batches;
-                    frames = [...res.data.frames];
-                    batchesPointer = res.data.pointer;
+                    tokenProgresses = patch.tokenProgresses;
+                    localProgress = patch.localProgress;
+                    batchesQueue = patch.batchesQueue;
+                    frames = patch.frames;
+                    batchesPointer = patch.batchesPointer;
 
-                    caseNumberSetter({
-                        ongoing: res.data.frames.length,
-                        finished: res.data.finishedCasesNumber,
-                    });
+                    caseNumberSetter(patch.caseNumbers);
 
-                    wtptSetter(prev => hydrateWTPTNames(prev, res.data.wtpt));
+                    wtptSetter(prev => buildResumedWTPT(prev, res.data.wtpt));
 
-                    if (isPaused) {
+                    if (patch.shouldUnpause) {
                         isPaused = false;
                         playPauseButton.innerHTML = "⏸";
                     }
@@ -646,19 +672,19 @@ const simulation = (
                     currentBatch = batchesQueue.shift()!;
 
                     const batchesQueueLength = batchesQueue.length;
-                    if (batchesQueueLength <= 5 && batchesPointer > 0) {
+                    if (shouldTopUpQueue(batchesQueueLength, batchesPointer)) {
                         topBatchesQueueUp(maxBatchesLimit - batchesQueueLength);
                     }
 
                     const batchDuration = new Date(currentBatch.endDate).getTime() - new Date(currentBatch.startDate).getTime();
-                    const proportionalDelta = delta * batchDuration / 3600000; // 1hr = 3600000ms
+                    const proportionalDelta = computeProportionalDelta(delta, batchDuration);
 
                     if (currentBatch.events.length === 0) {
                         try {
                             await Promise.all([
                                 animateTimeline(batchDuration),
                                 new Promise((resolve, reject) => {
-                                    const timeout = setTimeout(resolve, proportionalDelta * (1 - (isResumed ? localProgress : 0)));
+                                    const timeout = setTimeout(resolve, computeEmptyBatchWaitTime(proportionalDelta, isResumed, localProgress));
                                     abortController.signal.addEventListener("abort", () => {
                                         clearTimeout(timeout);
                                         reject(new Error("Simulation aborted"));
@@ -671,12 +697,7 @@ const simulation = (
                             }
                         }
                     } else {
-                        const eventsByCaseId: EventsByCaseId = {};
-                        currentBatch.events.forEach((event) => {
-                            if (!eventsByCaseId[event.caseId]) eventsByCaseId[event.caseId] = [];
-                            eventsByCaseId[event.caseId].push(event);
-                        });
-
+                        const eventsByCaseId = groupEventsByCaseId(currentBatch.events);
                         try {
                             await Promise.all(
                                 [
@@ -695,7 +716,7 @@ const simulation = (
                                 return;
                             }
                         } finally {
-                            if (localProgress === 0 && new Date(currentBatch.endDate).getTime() === new Date(currentDateTime).getTime()) {
+                            if (shouldUpdateFrames(localProgress, currentBatch.endDate, currentDateTime)) {
                                 updateFrames(currentBatch);
                             }
                         }
