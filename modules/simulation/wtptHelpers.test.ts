@@ -1,6 +1,6 @@
 import {LifecycleTypes} from "@definitions/simulation/enums";
 import {BatchEvent, WTPTState} from "@definitions/simulation/types";
-import {hydrateWTPTNames, setNewWTPTState} from "@modules/simulation/index";
+import {hydrateWTPTNames, setNewWTPTState} from "@modules/simulation/wtptHelpers";
 
 function makeBatchEvent(overrides: Partial<BatchEvent>): BatchEvent {
     return {
