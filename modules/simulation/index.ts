@@ -17,6 +17,8 @@ import axios from "axios";
 import {SimulationData} from "@definitions/api/types";
 import {formatDateString} from "@utils/dateHelpers";
 import {Dispatch, SetStateAction} from "react";
+import {buildPathMap, calculateDurations, calculatePathLength} from "@modules/simulation/pathDurationHelpers";
+import {applyEventToFrames} from "@modules/simulation/frameStateHelpers";
 
 const simulation = (
     simulationData: SimulationData,
@@ -200,16 +202,6 @@ const simulation = (
                 } else processDeletion();
             }
 
-            function calculatePathLength(path: Waypoint[]): number {
-                let pathLength = 0;
-                for (let i = 0; i < path.length - 1; i++) {
-                    const dx = path[i + 1].x - path[i].x;
-                    const dy = path[i + 1].y - path[i].y;
-                    pathLength += Math.sqrt(dx * dx + dy * dy);
-                }
-                return pathLength;
-            }
-
             function handleBatchEvents({caseId, batchEvents, batchDuration}: { caseId: number; batchEvents: Array<BatchEvent>; batchDuration: number }): Promise<void> {
                 function addCentralPointToPath(element: Node, path: Array<Waypoint>, animationData: AnimationData, tokenId: string) {
                     const centerPoint = calculateCenterPoint(element);
@@ -335,70 +327,6 @@ const simulation = (
                 });
             }
 
-            function buildPathMap(asyncAnimationData: AnimationData): PathMap {
-                const pathMap: PathMap = {};
-
-                function buildPathMapRec(tokenId: string, currentPathMap: PathMap, currentPath: Waypoint[] = []): number {
-                    const tokenData = asyncAnimationData[tokenId];
-                    const currentTokenPath = tokenData.path
-                    const currentTokenPathLength = calculatePathLength(currentTokenPath);
-                    currentPathMap[tokenId] = { path: currentTokenPath, subPaths: {}, onComplete: tokenData.onComplete };
-                    let longestSubPath = 0;
-
-                    if (!(tokenData.nextTokenIds && tokenData.nextTokenIds.length)) {
-                        currentPathMap[tokenId].longestSubPathLength = currentTokenPathLength;
-                    } else {
-                        const nextTokenIds = tokenData.nextTokenIds || [];
-                        nextTokenIds.forEach(nextTokenId => {
-                            const subPathLength = buildPathMapRec(nextTokenId, currentPathMap[tokenId].subPaths, [...currentPath, ...currentTokenPath]);
-                            longestSubPath = Math.max(longestSubPath, subPathLength);
-                        });
-                        currentPathMap[tokenId].longestSubPathLength = currentTokenPathLength + longestSubPath;
-                    }
-
-                    return currentTokenPathLength + longestSubPath;
-                }
-
-                const tokenIds = Object.keys(asyncAnimationData).filter(tokenId =>
-                    !Object.values(asyncAnimationData).some(data => data.nextTokenIds?.includes(tokenId))
-                );
-
-                tokenIds.forEach(tokenId => { buildPathMapRec(tokenId, pathMap); });
-
-                return pathMap;
-            }
-
-            function calculateDurations(pathMap: PathMap, animatedTokens: Set<string>, overallDuration: number) {
-                const durations: Record<string, number> = {};
-                const mergingTokenIds = new Array<string>();
-
-                Object.entries(pathMap).forEach(([tokenId, tokenData]) => {
-                    if (animatedTokens.has(tokenId)) return;
-
-                    if (Object.keys(tokenData.subPaths).length === 1) mergingTokenIds.push(tokenId);
-                    else durations[tokenId] = calculatePathLength(tokenData.path) * overallDuration / tokenData.longestSubPathLength;
-                });
-
-                if (mergingTokenIds.length) {
-                    const tokenIdWithLongestPath = mergingTokenIds.reduce((longestPathTokenId, tokenId) =>
-                        pathMap[tokenId].longestSubPathLength > pathMap[longestPathTokenId].longestSubPathLength ? tokenId : longestPathTokenId
-                    );
-                    const longestPath = pathMap[tokenIdWithLongestPath].longestSubPathLength;
-                    const tokenWithLongestPathSegmentLength = calculatePathLength(pathMap[tokenIdWithLongestPath].path);
-                    const tokenWithLongestPathDuration = overallDuration * tokenWithLongestPathSegmentLength / longestPath;
-                    const tokenWithLongestPathRemainingPathLength = longestPath - tokenWithLongestPathSegmentLength;
-                    const tokenWithLongestPathRemainingDuration = overallDuration - tokenWithLongestPathDuration;
-
-                    mergingTokenIds.forEach(tokenId => {
-                        const segmentLength = calculatePathLength(pathMap[tokenId].path);
-                        const remainingPathLength = pathMap[tokenId].longestSubPathLength - segmentLength;
-                        const currentRemainingDuration = remainingPathLength * tokenWithLongestPathRemainingDuration / tokenWithLongestPathRemainingPathLength;
-                        durations[tokenId] = overallDuration - currentRemainingDuration;
-                    });
-                }
-
-                return durations;
-            }
 
             function animateAsyncData(pathMap: PathMap, caseId: number, remainingDuration: number = delta, isHidden: boolean = false, animatedTokens: Set<string> = new Set()) {
                 const durations = calculateDurations(pathMap, animatedTokens, remainingDuration);
@@ -640,51 +568,20 @@ const simulation = (
 
             async function updateFrames(batch: Batch) {
                 batch.events.forEach(event => {
-                    const paths = event.paths;
-                    const numberOfTokens = Object.keys(paths).length;
-                    if (numberOfTokens === 1) {
-                        Object.entries(paths).forEach(([tokenId, path]) => {
-                            switch (event.lifecycle) {
-                                case LifecycleTypes.CASE_ARRIVAL:
-                                    frames.push({
-                                        caseId: event.caseId,
-                                        activeElements: {
-                                            [tokenId]: path[path.length - 1],
-                                        },
-                                    });
-                                    caseNumberSetter((state) => ({
-                                        ...state,
-                                        ongoing: state.ongoing + 1,
-                                    }));
-                                    break;
-                                case LifecycleTypes.START:
-                                case LifecycleTypes.COMPLETE:
-                                case LifecycleTypes.ENABLE:
-                                    const eventCase = frames.find(frame => frame.caseId === event.caseId);
-                                    if (eventCase) eventCase.activeElements[tokenId] = path[path.length - 1];
-                                    break;
-                                case LifecycleTypes.CASE_END:
-                                    frames = frames.filter(frame => frame.caseId !== event.caseId);
-                                    caseNumberSetter((state) => ({
-                                        ongoing: state.ongoing - 1,
-                                        finished: state.finished + 1,
-                                    }));
-                                    break;
-                            }
-                        });
-                    } else if (numberOfTokens > 1) {
-                        Object.entries(paths).forEach(([tokenId, path]) => {
-                            const eventCase = frames.find(frame => frame.caseId === event.caseId);
+                    const {frames: updatedFrames, countersDelta} = applyEventToFrames(
+                        frames,
+                        event,
+                        (elementId) => elementRegistry.get(elementId)?.type,
+                    );
+                    frames = updatedFrames;
 
-                            if (eventCase) {
-                                if (elementRegistry.get(path[path.length - 1]).type === NodeTypes.PARALLEL_GATEWAY) {
-                                    if (eventCase.activeElements[tokenId]) delete eventCase.activeElements[tokenId];
-                                } else if (elementRegistry.get(path[0]).type === NodeTypes.PARALLEL_GATEWAY) {
-                                    eventCase.activeElements[tokenId] = path[path.length - 1];
-                                }
-                            }
-                        });
+                    if (countersDelta.ongoing || countersDelta.finished) {
+                        caseNumberSetter((state) => ({
+                            ongoing: state.ongoing + countersDelta.ongoing,
+                            finished: state.finished + countersDelta.finished,
+                        }));
                     }
+
                     wtptSetter(prev => setNewWTPTState(prev, event));
                 });
             }
@@ -811,97 +708,6 @@ const simulation = (
                 hasEnded = true;
             }
 
-            function setNewWTPTState(previousState: WTPTState, event: BatchEvent): WTPTState {
-                const nodeId = event.nodeId;
-                const caseId = event.caseId;
-                const timestamp = new Date(event.timestamp).getTime();
-
-                if (
-                    event.lifecycle !== LifecycleTypes.ENABLE &&
-                    event.lifecycle !== LifecycleTypes.START &&
-                    event.lifecycle !== LifecycleTypes.COMPLETE
-                ) {
-                    return previousState;
-                }
-
-                const nodeState = previousState[nodeId];
-                if (!nodeState) {
-                    return previousState;
-                }
-
-                const prevCase = nodeState.incompleteCases?.[caseId];
-
-                // ENABLE is the only event allowed to create a case entry
-                if (event.lifecycle === LifecycleTypes.ENABLE) {
-                    return {
-                        ...previousState,
-                        [nodeId]: {
-                            ...nodeState,
-                            incompleteCases: {
-                                ...nodeState.incompleteCases,
-                                [caseId]: {
-                                    ...(prevCase ?? {}),
-                                    enablementTime: timestamp,
-                                },
-                            },
-                        },
-                    };
-                }
-
-                // If we don't have enablementTime, ignore START/COMPLETE
-                if (!prevCase?.enablementTime) {
-                    return previousState;
-                }
-
-                // START only allowed after ENABLE
-                if (event.lifecycle === LifecycleTypes.START) {
-                    return {
-                        ...previousState,
-                        [nodeId]: {
-                            ...nodeState,
-                            incompleteCases: {
-                                ...nodeState.incompleteCases,
-                                [caseId]: {
-                                    ...prevCase,
-                                    startTime: timestamp,
-                                },
-                            },
-                        },
-                    };
-                }
-
-                // COMPLETE only allowed after ENABLE + START
-                if (!prevCase.startTime) return previousState;
-
-                // COMPLETE: now we can compute and finalize
-                const wt = prevCase.startTime - prevCase.enablementTime;
-                const pt = timestamp - prevCase.startTime;
-
-                // ignore out-of-order / invalid data
-                if (wt < 0 || pt < 0) {
-                    return previousState;
-                }
-
-                // incremental averages
-                const n = nodeState._count ?? 0;
-                const newAvgWT = (nodeState.averageWT * n + wt) / (n + 1);
-                const newAvgPT = (nodeState.averagePT * n + pt) / (n + 1);
-
-                // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                const { [caseId]: _removed, ...restIncomplete } = nodeState.incompleteCases;
-
-                return {
-                    ...previousState,
-                    [nodeId]: {
-                        ...nodeState,
-                        averageWT: newAvgWT,
-                        averagePT: newAvgPT,
-                        _count: n + 1,
-                        incompleteCases: restIncomplete,
-                    },
-                };
-            }
-
             this.start = () => {
                 viewport = canvas.getContainer().querySelector('svg g[data-element-id]');
                 processId = simulationData.processId;
@@ -919,7 +725,98 @@ const simulation = (
     }
 };
 
-function hydrateWTPTNames(base: WTPTState, incoming: WTPTState): WTPTState {
+export function setNewWTPTState(previousState: WTPTState, event: BatchEvent): WTPTState {
+    const nodeId = event.nodeId;
+    const caseId = event.caseId;
+    const timestamp = new Date(event.timestamp).getTime();
+
+    if (
+        event.lifecycle !== LifecycleTypes.ENABLE &&
+        event.lifecycle !== LifecycleTypes.START &&
+        event.lifecycle !== LifecycleTypes.COMPLETE
+    ) {
+        return previousState;
+    }
+
+    const nodeState = previousState[nodeId];
+    if (!nodeState) {
+        return previousState;
+    }
+
+    const prevCase = nodeState.incompleteCases?.[caseId];
+
+    // ENABLE is the only event allowed to create a case entry
+    if (event.lifecycle === LifecycleTypes.ENABLE) {
+        return {
+            ...previousState,
+            [nodeId]: {
+                ...nodeState,
+                incompleteCases: {
+                    ...nodeState.incompleteCases,
+                    [caseId]: {
+                        ...(prevCase ?? {}),
+                        enablementTime: timestamp,
+                    },
+                },
+            },
+        };
+    }
+
+    // If we don't have enablementTime, ignore START/COMPLETE
+    if (!prevCase?.enablementTime) {
+        return previousState;
+    }
+
+    // START only allowed after ENABLE
+    if (event.lifecycle === LifecycleTypes.START) {
+        return {
+            ...previousState,
+            [nodeId]: {
+                ...nodeState,
+                incompleteCases: {
+                    ...nodeState.incompleteCases,
+                    [caseId]: {
+                        ...prevCase,
+                        startTime: timestamp,
+                    },
+                },
+            },
+        };
+    }
+
+    // COMPLETE only allowed after ENABLE + START
+    if (!prevCase.startTime) return previousState;
+
+    // COMPLETE: now we can compute and finalize
+    const wt = prevCase.startTime - prevCase.enablementTime;
+    const pt = timestamp - prevCase.startTime;
+
+    // ignore out-of-order / invalid data
+    if (wt < 0 || pt < 0) {
+        return previousState;
+    }
+
+    // incremental averages
+    const n = nodeState._count ?? 0;
+    const newAvgWT = (nodeState.averageWT * n + wt) / (n + 1);
+    const newAvgPT = (nodeState.averagePT * n + pt) / (n + 1);
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { [caseId]: _removed, ...restIncomplete } = nodeState.incompleteCases;
+
+    return {
+        ...previousState,
+        [nodeId]: {
+            ...nodeState,
+            averageWT: newAvgWT,
+            averagePT: newAvgPT,
+            _count: n + 1,
+            incompleteCases: restIncomplete,
+        },
+    };
+}
+
+export function hydrateWTPTNames(base: WTPTState, incoming: WTPTState): WTPTState {
     const out: WTPTState = {};
 
     for (const [nodeId, stats] of Object.entries(incoming)) {
