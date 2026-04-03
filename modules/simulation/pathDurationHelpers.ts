@@ -24,7 +24,7 @@ export function buildPathMap(asyncAnimationData: AnimationData): PathMap {
         if (!(tokenData.nextTokenIds && tokenData.nextTokenIds.length)) {
             currentPathMap[tokenId].longestSubPathLength = currentTokenPathLength;
         } else {
-            const nextTokenIds = tokenData.nextTokenIds || [];
+            const nextTokenIds = tokenData.nextTokenIds;
             nextTokenIds.forEach(nextTokenId => {
                 const subPathLength = buildPathMapRec(nextTokenId, currentPathMap[tokenId].subPaths);
                 longestSubPath = Math.max(longestSubPath, subPathLength);

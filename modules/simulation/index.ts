@@ -17,8 +17,6 @@ import {SimulationData} from "@definitions/api/types";
 import {formatDateString} from "@utils/dateHelpers";
 import {Dispatch, SetStateAction} from "react";
 import {buildPathMap, calculateDurations, calculatePathLength} from "@modules/simulation/pathDurationHelpers";
-import {applyEventToFrames} from "@modules/simulation/frameStateHelpers";
-import {setNewWTPTState} from "@modules/simulation/wtptHelpers";
 import {buildResumedWTPT, buildTimelineResumptionPatch} from "@modules/simulation/timelineResumptionHelpers";
 import {
     calculatePlaybackDelta,
@@ -28,10 +26,12 @@ import {
 import {
     computeEmptyBatchWaitTime,
     computeProportionalDelta,
+    computeTokenAnimationStartTime,
     groupEventsByCaseId,
     shouldTopUpQueue,
     shouldUpdateFrames,
 } from "@modules/simulation/runSimulationHelpers";
+import {applyBatchFrameUpdatesIfNeeded} from "@modules/simulation/frameUpdateHelpers";
 
 const simulation = (
     simulationData: SimulationData,
@@ -75,6 +75,10 @@ const simulation = (
             let finalDate: Date;
             let abortController: AbortController = new AbortController();
             let hasEnded = false;
+
+            function getNodeTypeFromRegistry(elementId: string): string | undefined {
+                return elementRegistry.get(elementId)?.type;
+            }
 
             function placeToken(point: Waypoint, caseId: number, tokenId: string) {
                 const { x, y } = point;
@@ -262,7 +266,7 @@ const simulation = (
                     return { path, nextTokenIds };
                 }
 
-                function fillAnimationDataOfToken(animationData: AnimationData, tokenId: string, path: Array<Waypoint>, nextTokenIds: Array<string> = []) {
+                function fillAnimationDataOfToken(animationData: AnimationData, tokenId: string, path: Array<Waypoint>, nextTokenIds: Array<string>) {
                     if (!animationData[tokenId]) animationData[tokenId] = {path, nextTokenIds};
                     else {
                         animationData[tokenId] = {
@@ -329,7 +333,7 @@ const simulation = (
                         }
                     });
 
-                    if (isAsyncAnimation) animateAsyncData(buildPathMap(animationData), caseId, batchDuration);
+                    if (isAsyncAnimation) animateAsyncData(buildPathMap(animationData), caseId, batchDuration, false, new Set());
                     else {
                         if (Object.keys(animationData).length === 0) setTimeout(resolve, batchDuration * (1 - (isResumed ? localProgress : 0)));
                         else Object.entries(animationData).forEach(animationEntry => {
@@ -341,7 +345,7 @@ const simulation = (
             }
 
 
-            function animateAsyncData(pathMap: PathMap, caseId: number, remainingDuration: number = delta, isHidden: boolean = false, animatedTokens: Set<string> = new Set()) {
+            function animateAsyncData(pathMap: PathMap, caseId: number, remainingDuration: number, isHidden: boolean, animatedTokens: Set<string>) {
                 const durations = calculateDurations(pathMap, animatedTokens, remainingDuration);
 
                 Object.entries(pathMap).forEach(([tokenId, tokenData]) => {
@@ -363,11 +367,13 @@ const simulation = (
                 });
             }
 
-            function animateToken(path: Waypoint[], onComplete: () => void, caseId: number, tokenId: string, duration: number = delta) {
-                let startTime = performance.now();
-                if (isResumed && tokenProgresses[caseId]?.[tokenId]) {
-                    startTime -= tokenProgresses[caseId][tokenId] * duration;
-                }
+            function animateToken(path: Waypoint[], onComplete: () => void, caseId: number, tokenId: string, duration: number) {
+                const startTime = computeTokenAnimationStartTime(
+                    performance.now(),
+                    duration,
+                    isResumed,
+                    tokenProgresses[caseId]?.[tokenId],
+                );
                 const pathLength = calculatePathLength(path);
 
                 function animate() {
@@ -594,26 +600,6 @@ const simulation = (
                 }
             }
 
-            async function updateFrames(batch: Batch) {
-                batch.events.forEach(event => {
-                    const {frames: updatedFrames, countersDelta} = applyEventToFrames(
-                        frames,
-                        event,
-                        (elementId) => elementRegistry.get(elementId)?.type,
-                    );
-                    frames = updatedFrames;
-
-                    if (countersDelta.ongoing || countersDelta.finished) {
-                        caseNumberSetter((state) => ({
-                            ongoing: state.ongoing + countersDelta.ongoing,
-                            finished: state.finished + countersDelta.finished,
-                        }));
-                    }
-
-                    wtptSetter(prev => setNewWTPTState(prev, event));
-                });
-            }
-
             async function handleTimelineRequest(progress: number) {
                 try {
                     const res = await axios.post(`/api/simulation/${processId}/resumption`, {
@@ -716,9 +702,14 @@ const simulation = (
                                 return;
                             }
                         } finally {
-                            if (shouldUpdateFrames(localProgress, currentBatch.endDate, currentDateTime)) {
-                                updateFrames(currentBatch);
-                            }
+                            frames = applyBatchFrameUpdatesIfNeeded({
+                                shouldApply: shouldUpdateFrames(localProgress, currentBatch.endDate, currentDateTime),
+                                frames,
+                                batch: currentBatch,
+                                getNodeType: getNodeTypeFromRegistry,
+                                caseNumberSetter,
+                                wtptSetter,
+                            });
                         }
                     }
 

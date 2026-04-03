@@ -39,3 +39,13 @@ export function computeEmptyBatchWaitTime(
     return proportionalDelta * (1 - (isResumed ? localProgress : 0));
 }
 
+export function computeTokenAnimationStartTime(
+    baseStartTime: number,
+    duration: number,
+    isResumed: boolean,
+    tokenProgress: number | undefined,
+): number {
+    if (!isResumed || !tokenProgress) return baseStartTime;
+    return baseStartTime - tokenProgress * duration;
+}
+

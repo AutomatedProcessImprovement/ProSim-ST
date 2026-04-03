@@ -3,6 +3,7 @@ import {BatchEvent} from "@definitions/simulation/types";
 import {
     computeEmptyBatchWaitTime,
     computeProportionalDelta,
+    computeTokenAnimationStartTime,
     groupEventsByCaseId,
     shouldTopUpQueue,
     shouldUpdateFrames,
@@ -90,3 +91,18 @@ describe("computeEmptyBatchWaitTime", () => {
         expect(computeEmptyBatchWaitTime(1000, true, 0)).toBe(1000);
     });
 });
+
+describe("computeTokenAnimationStartTime", () => {
+    it("returns unmodified start time when not resumed", () => {
+        expect(computeTokenAnimationStartTime(100, 2000, false, 0.5)).toBe(100);
+    });
+
+    it("returns unmodified start time when token progress is missing", () => {
+        expect(computeTokenAnimationStartTime(100, 2000, true, undefined)).toBe(100);
+    });
+
+    it("shifts start time backward when resumed with saved token progress", () => {
+        expect(computeTokenAnimationStartTime(100, 2000, true, 0.25)).toBe(-400);
+    });
+});
+

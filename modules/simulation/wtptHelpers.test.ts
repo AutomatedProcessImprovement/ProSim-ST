@@ -39,6 +39,12 @@ describe("setNewWTPTState", () => {
         expect(next).toBe(previous);
     });
 
+    it("returns previous state when node does not exist in WTPT map", () => {
+        const previous = makeState();
+        const next = setNewWTPTState(previous, makeBatchEvent({nodeId: "Unknown_Task"}));
+        expect(next).toBe(previous);
+    });
+
     it("records ENABLE and START, then finalizes averages on COMPLETE", () => {
         const enabled = setNewWTPTState(makeState(), makeBatchEvent({
             lifecycle: LifecycleTypes.ENABLE,
@@ -70,6 +76,27 @@ describe("setNewWTPTState", () => {
         expect(completed).toBe(previous);
     });
 
+    it("ignores COMPLETE when ENABLE exists but START is missing", () => {
+        const withEnableOnly: WTPTState = {
+            ...makeState(),
+            Task_A: {
+                ...makeState().Task_A,
+                incompleteCases: {
+                    1: {
+                        enablementTime: new Date("2024-01-01T09:00:00.000Z").getTime(),
+                    },
+                },
+            },
+        };
+
+        const next = setNewWTPTState(withEnableOnly, makeBatchEvent({
+            lifecycle: LifecycleTypes.COMPLETE,
+            timestamp: "2024-01-01T10:00:00.000Z",
+        }));
+
+        expect(next).toBe(withEnableOnly);
+    });
+
     it("keeps previous state for invalid out-of-order timestamps", () => {
         const withCase = {
             ...makeState(),
@@ -90,6 +117,23 @@ describe("setNewWTPTState", () => {
         }));
 
         expect(next).toBe(withCase);
+    });
+
+    it("uses count fallback when _count is missing", () => {
+        const previous = makeState();
+        delete (previous.Task_A as unknown as Record<string, unknown>)._count;
+        previous.Task_A.incompleteCases[1] = {
+            enablementTime: new Date("2024-01-01T09:00:00.000Z").getTime(),
+            startTime: new Date("2024-01-01T09:30:00.000Z").getTime(),
+        };
+
+        const next = setNewWTPTState(previous, makeBatchEvent({
+            lifecycle: LifecycleTypes.COMPLETE,
+            timestamp: "2024-01-01T10:30:00.000Z",
+        }));
+
+        expect(next.Task_A._count).toBe(1);
+        expect(next.Task_A.averageWT).toBe(30 * 60 * 1000);
     });
 });
 

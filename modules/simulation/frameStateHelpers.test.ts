@@ -35,6 +35,24 @@ describe("applyEventToFrames", () => {
 		expect(result.countersDelta).toEqual({ongoing: 0, finished: 0});
 	});
 
+	it("keeps frames unchanged when single-token update references missing case", () => {
+		const initial: FrameCase[] = [{caseId: 2, activeElements: {t1: "Task_A"}}];
+		const result = applyEventToFrames(initial, makeEvent({
+			lifecycle: LifecycleTypes.START,
+			paths: {t1: ["Task_A", "Task_B"]},
+		}), () => undefined);
+
+		expect(result.frames).toEqual(initial);
+	});
+
+	it("returns unchanged state when event contains no token paths", () => {
+		const initial: FrameCase[] = [{caseId: 1, activeElements: {t1: "Task_A"}}];
+		const result = applyEventToFrames(initial, makeEvent({paths: {}}), () => undefined);
+
+		expect(result.frames).toEqual(initial);
+		expect(result.countersDelta).toEqual({ongoing: 0, finished: 0});
+	});
+
 	it("removes frame and adjusts counters on CASE_END", () => {
 		const initial: FrameCase[] = [
 			{caseId: 1, activeElements: {t1: "Task_B"}},
@@ -75,6 +93,45 @@ describe("applyEventToFrames", () => {
 
 		expect(result.frames[0].activeElements.t1).toBeUndefined();
 		expect(result.frames[0].activeElements.t2).toBeUndefined();
+	});
+
+	it("ignores multi-token branch updates when case does not exist", () => {
+		const initial: FrameCase[] = [{caseId: 2, activeElements: {t1: "Task_X"}}];
+		const nodeType = (elementId: string) => (elementId === "PGW" ? NodeTypes.PARALLEL_GATEWAY : NodeTypes.TASK);
+		const result = applyEventToFrames(initial, makeEvent({
+			paths: {
+				t1: ["PGW", "Task_X"],
+				t2: ["Task_Y", "PGW"],
+			},
+		}), nodeType);
+
+		expect(result.frames).toEqual(initial);
+	});
+
+	it("keeps active elements unchanged when neither parallel condition matches", () => {
+		const initial: FrameCase[] = [{caseId: 1, activeElements: {t1: "Task_X"}}];
+		const nodeType = () => NodeTypes.TASK;
+		const result = applyEventToFrames(initial, makeEvent({
+			paths: {
+				t1: ["Task_X", "Task_Y"],
+				t2: ["Task_Z", "Task_W"],
+			},
+		}), nodeType);
+
+		expect(result.frames).toEqual(initial);
+	});
+
+	it("does not remove token when destination is parallel gateway but token key is missing", () => {
+		const initial: FrameCase[] = [{caseId: 1, activeElements: {t1: "Task_X"}}];
+		const nodeType = (elementId: string) => (elementId === "PGW" ? NodeTypes.PARALLEL_GATEWAY : NodeTypes.TASK);
+		const result = applyEventToFrames(initial, makeEvent({
+			paths: {
+				ghost: ["Task_Z", "PGW"],
+				t1: ["Task_X", "PGW"],
+			},
+		}), nodeType);
+
+		expect(result.frames[0].activeElements.t1).toBeUndefined();
 	});
 });
 
