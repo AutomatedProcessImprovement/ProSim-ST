@@ -1,0 +1,121 @@
+name: CI + VPS Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-nextjs-main
+  cancel-in-progress: false
+
+jobs:
+  test-and-migrate:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: ${{ secrets.CI_MYSQL_ROOT_PASSWORD }}
+          MYSQL_DATABASE: ${{ vars.CI_MYSQL_DATABASE }}
+          MYSQL_USER: ${{ secrets.CI_MYSQL_USER }}
+          MYSQL_PASSWORD: ${{ secrets.CI_MYSQL_PASSWORD }}
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -u${{ secrets.CI_MYSQL_USER }} -p${{ secrets.CI_MYSQL_PASSWORD }} --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test -- --runInBand
+
+      - name: Install MySQL client
+        run: sudo apt-get update && sudo apt-get install -y mysql-client
+
+      - name: Wait for MySQL
+        env:
+          MYSQL_HOST: 127.0.0.1
+          MYSQL_PORT: 3306
+          MYSQL_USER: ${{ secrets.CI_MYSQL_USER }}
+          MYSQL_PASSWORD: ${{ secrets.CI_MYSQL_PASSWORD }}
+        run: |
+          for i in {1..30}; do
+            if mysqladmin ping -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --silent; then
+              echo "MySQL is up"
+              exit 0
+            fi
+            echo "Waiting for MySQL..."
+            sleep 2
+          done
+          echo "MySQL did not become ready in time"
+          exit 1
+
+      - name: Run migrations
+        env:
+          MYSQL_HOST: 127.0.0.1
+          MYSQL_PORT: 3306
+          MYSQL_USER: ${{ secrets.CI_MYSQL_USER }}
+          MYSQL_PASSWORD: ${{ secrets.CI_MYSQL_PASSWORD }}
+          MYSQL_DATABASE: ${{ vars.CI_MYSQL_DATABASE }}
+          TYPEORM_SYNCHRONIZE: "false"
+          TYPEORM_LOGGING: "false"
+          REDIS_HOST: 127.0.0.1
+          REDIS_PORT: 6379
+          REDIS_PASSWORD: ""
+          REDIS_EXPIRY_MS: PX
+          REDIS_MAX_AGE: ""
+          PYTHON_MICROSERVICE_BASE_URL: http://127.0.0.1:8000
+        run: npm run migrate:run
+
+  deploy-to-vps:
+    runs-on: ubuntu-latest
+    needs: test-and-migrate
+    environment: production
+
+    steps:
+      - name: Deploy on VPS via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          DEPLOY_BRANCH: main
+          DEPLOY_PATH: ${{ vars.VPS_NEXTJS_APP_DIR }}
+          IMAGE_NAME: ${{ vars.NEXTJS_IMAGE_NAME }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          script_stop: true
+          envs: DEPLOY_BRANCH,DEPLOY_PATH,IMAGE_NAME
+          script: |
+            set -euo pipefail
+            
+            cd "$DEPLOY_PATH"
+            git fetch origin "$DEPLOY_BRANCH"
+            git checkout "$DEPLOY_BRANCH"
+            git reset --hard "origin/$DEPLOY_BRANCH"
+            
+            docker build -t "$IMAGE_NAME" .
+            
+            cd ~/app
+            docker compose up -d mysql_nextjs redis
+            docker compose run --rm nextjs npm run migrate:run
+            docker compose up -d nextjs
+            
+            docker image prune -f
