@@ -61,13 +61,8 @@ jobs:
 
             cd ~/app
 
-            # start dependencies
             docker compose up -d mysql_nextjs redis
-
-            # run migrations (PRODUCTION DB)
             docker compose run --rm -e RUN_MIGRATIONS=1 nextjs true
-
-            # start app
             docker compose up -d nextjs
 
             docker image prune -f
