@@ -14,22 +14,6 @@ jobs:
   test-and-migrate:
     runs-on: ubuntu-latest
 
-    services:
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: ${{ secrets.CI_MYSQL_ROOT_PASSWORD }}
-          MYSQL_DATABASE: ${{ vars.CI_MYSQL_DATABASE }}
-          MYSQL_USER: ${{ secrets.CI_MYSQL_USER }}
-          MYSQL_PASSWORD: ${{ secrets.CI_MYSQL_PASSWORD }}
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="mysqladmin ping -h 127.0.0.1 -u${{ secrets.CI_MYSQL_USER }} -p${{ secrets.CI_MYSQL_PASSWORD }} --silent"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=20
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -43,8 +27,23 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run tests
-        run: npm test -- --runInBand
+      - name: Start MySQL for CI
+        env:
+          CI_MYSQL_ROOT_PASSWORD: ${{ secrets.CI_MYSQL_ROOT_PASSWORD }}
+          CI_MYSQL_DATABASE: ${{ vars.CI_MYSQL_DATABASE }}
+          CI_MYSQL_USER: ${{ secrets.CI_MYSQL_USER }}
+          CI_MYSQL_PASSWORD: ${{ secrets.CI_MYSQL_PASSWORD }}
+        run: |
+          docker rm -f ci-mysql >/dev/null 2>&1 || true
+
+          docker run -d \
+            --name ci-mysql \
+            -e MYSQL_ROOT_PASSWORD="$CI_MYSQL_ROOT_PASSWORD" \
+            -e MYSQL_DATABASE="$CI_MYSQL_DATABASE" \
+            -e MYSQL_USER="$CI_MYSQL_USER" \
+            -e MYSQL_PASSWORD="$CI_MYSQL_PASSWORD" \
+            -p 3306:3306 \
+            mysql:8.0
 
       - name: Install MySQL client
         run: sudo apt-get update && sudo apt-get install -y mysql-client
@@ -65,7 +64,11 @@ jobs:
             sleep 2
           done
           echo "MySQL did not become ready in time"
+          docker logs ci-mysql || true
           exit 1
+
+      - name: Run tests
+        run: npm test -- --runInBand
 
       - name: Run migrations
         env:
@@ -83,6 +86,11 @@ jobs:
           REDIS_MAX_AGE: ""
           PYTHON_MICROSERVICE_BASE_URL: http://127.0.0.1:8000
         run: npm run migrate:run
+
+      - name: Stop CI MySQL
+        if: always()
+        run: |
+          docker rm -f ci-mysql >/dev/null 2>&1 || true
 
   deploy-to-vps:
     runs-on: ubuntu-latest
@@ -105,17 +113,17 @@ jobs:
           envs: DEPLOY_BRANCH,DEPLOY_PATH,IMAGE_NAME
           script: |
             set -euo pipefail
-            
+
             cd "$DEPLOY_PATH"
             git fetch origin "$DEPLOY_BRANCH"
             git checkout "$DEPLOY_BRANCH"
             git reset --hard "origin/$DEPLOY_BRANCH"
-            
+
             docker build -t "$IMAGE_NAME" .
-            
+
             cd ~/app
             docker compose up -d mysql_nextjs redis
             docker compose run --rm nextjs npm run migrate:run
             docker compose up -d nextjs
-            
+
             docker image prune -f
