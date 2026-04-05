@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: 'standalone',
   webpack: (config, { isServer }) => {
     if (isServer) {
       // Externalize typeorm on server side to avoid bundling optional drivers
