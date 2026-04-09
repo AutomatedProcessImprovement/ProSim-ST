@@ -2,7 +2,7 @@ import {Column, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn} from "typ
 import {Process} from "./Process";
 import {LifecycleTypes} from "@definitions/simulation/enums";
 
-@Entity()
+@Entity("event")
 export class Event {
     @PrimaryGeneratedColumn()
     id: number;

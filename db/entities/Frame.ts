@@ -1,7 +1,7 @@
 import {Column, Entity, PrimaryGeneratedColumn, JoinColumn, ManyToOne} from "typeorm";
 import {Process} from "./Process";
 
-@Entity()
+@Entity("frame")
 export class Frame {
     @PrimaryGeneratedColumn()
     id: number;
