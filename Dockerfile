@@ -31,7 +31,9 @@ COPY --from=builder /app/tsconfig.typeorm.json ./tsconfig.typeorm.json
 COPY --from=builder /app/tsconfig.json ./tsconfig.json
 COPY docker/entrypoint.sh /entrypoint.sh
 
-RUN chmod +x /entrypoint.sh && chown -R nextjs:nodejs /app
+RUN mkdir -p /app/public/assets \
+    && chmod +x /entrypoint.sh \
+    && chown -R nextjs:nodejs /app \
 
 USER nextjs
 EXPOSE 3000
