@@ -8,6 +8,7 @@ jest.mock("next/server", () => ({
 
 jest.mock("@db/redis/redis", () => ({
     getRedisInstance: jest.fn(),
+    REDIS_KEY_PREFIX_FRAMES: "frames:",
 }));
 
 jest.mock("fs/promises", () => ({
@@ -28,7 +29,7 @@ jest.mock("@db/mysql/typeorm", () => ({
 }));
 
 import {POST} from "./route";
-import {getRedisInstance} from "@db/redis/redis";
+import {getRedisInstance, REDIS_KEY_PREFIX_FRAMES} from "@db/redis/redis";
 import {writeFile} from "fs/promises";
 import {existsSync, mkdirSync} from "fs";
 import axios from "axios";
@@ -133,7 +134,7 @@ describe("POST /api/simulation", () => {
         expect(queryRunner.commitTransaction).toHaveBeenCalled();
         expect(queryRunner.release).toHaveBeenCalled();
         expect(redis.set).toHaveBeenCalledWith(
-            "process-1",
+            `${REDIS_KEY_PREFIX_FRAMES}process-1`,
             JSON.stringify([{caseId: 1, activeElements: {token: "Task_1"}}]),
             "EX",
             60 * 60 * 24,

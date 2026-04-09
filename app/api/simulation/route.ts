@@ -1,4 +1,4 @@
-import {getRedisInstance} from "@db/redis/redis";
+import {getRedisInstance, REDIS_KEY_PREFIX_FRAMES} from "@db/redis/redis";
 import {NextResponse} from "next/server";
 import {writeFile} from "fs/promises";
 import path from "path";
@@ -38,7 +38,8 @@ export const POST = async (request) => {
         await insertSimulationData(simulationData, fileName);
 
         const redis = getRedisInstance();
-        await redis.set(simulationData.id, JSON.stringify(simulationData.data.frames), 'EX', 60*60*24);
+        const redisKey = REDIS_KEY_PREFIX_FRAMES + simulationData.id;
+        await redis.set(redisKey, JSON.stringify(simulationData.data.frames), 'EX', 60*60*24);
         redis.disconnect();
 
         return NextResponse.json({ id: simulationData.id }, { status: 201 });
