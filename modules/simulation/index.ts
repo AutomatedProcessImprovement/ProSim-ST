@@ -41,9 +41,7 @@ const simulation = (
     }>>,
     wtptSetter: Dispatch<SetStateAction<WTPTState>>
 ) => {
-    return {
-        __init__: ['tokenSimulation'],
-        tokenSimulation: ['type', function(canvas: Canvas, elementRegistry: ElementRegistry) {
+    const tokenSimulation = function(canvas: Canvas, elementRegistry: ElementRegistry) {
             let processId: string;
             let delta = 2000; // milliseconds
             const defaultDelta = 2000; // milliseconds
@@ -734,7 +732,13 @@ const simulation = (
 
                 runSimulation();
             }
-        }],
+        };
+
+    (tokenSimulation as typeof tokenSimulation & { $inject: string[] }).$inject = ['canvas', 'elementRegistry'];
+
+    return {
+        __init__: ['tokenSimulation'],
+        tokenSimulation: ['type', tokenSimulation],
     }
 };
 
