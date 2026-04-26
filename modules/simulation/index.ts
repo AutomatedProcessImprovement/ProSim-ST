@@ -32,6 +32,7 @@ import {
     shouldUpdateFrames,
 } from "@modules/simulation/runSimulationHelpers";
 import {applyBatchFrameUpdatesIfNeeded} from "@modules/simulation/frameUpdateHelpers";
+import { QueueMetricsState } from "@definitions/simulation/networkMetrics";
 
 const simulation = (
     simulationData: SimulationData,
@@ -39,7 +40,8 @@ const simulation = (
         ongoing: number
         finished: number
     }>>,
-    wtptSetter: Dispatch<SetStateAction<WTPTState>>
+    wtptSetter: Dispatch<SetStateAction<WTPTState>>,
+    queueMetricsSetter: Dispatch<SetStateAction<QueueMetricsState>>
 ) => {
     const tokenSimulation = function(canvas: Canvas, elementRegistry: ElementRegistry) {
             let processId: string;
@@ -73,6 +75,18 @@ const simulation = (
             let finalDate: Date;
             let abortController: AbortController = new AbortController();
             let hasEnded = false;
+            let simulationStartMs = 0;
+            let currentBatchIndex = 0;
+
+            function emitQueueSample(queueLength: number) {
+                queueMetricsSetter(prev => ({
+                    ...prev,
+                    samples: [...prev.samples.slice(-49), {
+                        batchIndex: currentBatchIndex,
+                        queueLength,
+                    }],
+                }));
+            }
 
             function getNodeTypeFromRegistry(elementId: string): string | undefined {
                 return elementRegistry.get(elementId)?.type;
@@ -615,6 +629,13 @@ const simulation = (
                     frames = patch.frames;
                     batchesPointer = patch.batchesPointer;
 
+                    currentBatchIndex = Math.round((progress / 100) * Math.ceil(totalDuration / 3600000));
+                    queueMetricsSetter(prev => ({
+                        totalBatches: prev.totalBatches,
+                        totalDuration: prev.totalDuration,
+                        samples: [{ batchIndex: currentBatchIndex, queueLength: patch.batchesQueue.length }],
+                    }));
+
                     caseNumberSetter(patch.caseNumbers);
 
                     wtptSetter(prev => buildResumedWTPT(prev, res.data.wtpt));
@@ -638,6 +659,7 @@ const simulation = (
                     const res = await axios.get(`/api/simulation/${processId}/polling?pointer=${batchesPointer}&limit=${limit}`);
                     batchesQueue.push(...res.data.batches);
                     batchesPointer = res.data.pointer;
+                    emitQueueSample(batchesQueue.length);
                 } catch (error) {
                     console.log(error);
                 } finally {
@@ -654,8 +676,10 @@ const simulation = (
                     if (abortController.signal.aborted) return;
 
                     currentBatch = batchesQueue.shift()!;
+                    currentBatchIndex++;
 
                     const batchesQueueLength = batchesQueue.length;
+                    emitQueueSample(batchesQueueLength);
                     if (shouldTopUpQueue(batchesQueueLength, batchesPointer)) {
                         topBatchesQueueUp(maxBatchesLimit - batchesQueueLength);
                     }
@@ -729,6 +753,15 @@ const simulation = (
                 batchesPointer = simulationData.pointer;
                 totalDuration = finalDate.getTime() - initialDate.getTime();
                 enableTimeline();
+
+                simulationStartMs = performance.now();
+                currentBatchIndex = 0;
+                const totalBatches = Math.ceil(totalDuration / 3600000);
+                queueMetricsSetter({
+                    totalBatches,
+                    totalDuration,
+                    samples: [{ batchIndex: 0, queueLength: simulationData.batches.length }],
+                });
 
                 runSimulation();
             }

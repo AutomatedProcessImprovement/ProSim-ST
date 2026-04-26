@@ -9,6 +9,8 @@ import {SimulationData} from "@definitions/api/types";
 import {Canvas} from "bpmn-js/lib/features/context-pad/ContextPadProvider";
 import {NodeTypes} from "@definitions/simulation/enums";
 import {WTPTState} from "@definitions/simulation/types";
+import { QueueMetricsState } from "@definitions/simulation/networkMetrics";
+import { NetworkActivityChart } from "@components/NetworkActivityChart";
 
 const speeds = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
 
@@ -30,6 +32,7 @@ const Simulation = () => {
         finished: 0,
     });
     const [waitingProcessingTimes, setWaitingProcessingTimes] = useState<WTPTState>({});
+    const [networkMetrics, setNetworkMetrics] = useState<QueueMetricsState | null>(null);
     const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
     const router = useRouter();
     const { id } = useParams();
@@ -71,6 +74,7 @@ const Simulation = () => {
         setSimulationData(undefined);
         setWorkload(undefined);
         setCycleTimeData([]);
+        setNetworkMetrics(null);
 
         if (viewerInstanceRef.current) {
             viewerInstanceRef.current.destroy();
@@ -140,7 +144,7 @@ const Simulation = () => {
 
             const viewer = new NavigatedViewer({
                 container: viewerRef.current,
-                additionalModules: [simulation(simulationData, setNumberOfCases, setWaitingProcessingTimes)]
+                additionalModules: [simulation(simulationData, setNumberOfCases, setWaitingProcessingTimes, setNetworkMetrics)]
             });
             viewerInstanceRef.current = viewer;
 
@@ -338,6 +342,7 @@ const Simulation = () => {
                     })}
                 </div>
                 </div>
+                {networkMetrics && <NetworkActivityChart metrics={networkMetrics} />}
             </div>
         </div>
     </>;
