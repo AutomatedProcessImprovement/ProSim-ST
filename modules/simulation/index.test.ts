@@ -150,12 +150,13 @@ function setupPlugin(
         }),
     };
 
-    const pluginDef = simulation(simulationData, caseNumberSetter, wtptSetter) as unknown as SimulationPluginDefinition;
+    const networkMetricsSetter = jest.fn();
+    const pluginDef = simulation(simulationData, caseNumberSetter, wtptSetter, networkMetricsSetter) as unknown as SimulationPluginDefinition;
     const ctor = pluginDef.tokenSimulation[1];
     const instance: SimulationPluginInstance = {};
     ctor.call(instance, canvas, elementRegistry);
 
-    return {instance, caseNumberSetter, wtptSetter, container, elementRegistry};
+    return {instance, caseNumberSetter, wtptSetter, networkMetricsSetter, container, elementRegistry};
 }
 
 describe("modules/simulation/index", () => {
