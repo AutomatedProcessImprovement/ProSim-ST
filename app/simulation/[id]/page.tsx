@@ -1,6 +1,6 @@
 "use client";
 
-import {useEffect, useMemo, useRef, useState} from "react";
+import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import { useRouter, useParams } from "next/navigation";
 import NavigatedViewer from 'bpmn-js/lib/NavigatedViewer';
 import simulation from "@modules/simulation";
@@ -15,6 +15,12 @@ import { NetworkActivityChart } from "@components/NetworkActivityChart";
 import { NetworkActivityState, INITIAL_NETWORK_ACTIVITY_STATE, measureResponseBytes } from "@definitions/simulation/networkActivity";
 import { SmoothAnimationPanel } from "@components/SmoothAnimationPanel";
 import { SmoothAnimationState, INITIAL_SMOOTH_ANIMATION_STATE } from "@definitions/simulation/smoothAnimation";
+import { FaultTolerancePanel } from "@components/FaultTolerancePanel";
+import {
+    FaultToleranceState,
+    FaultRate,
+    INITIAL_FAULT_TOLERANCE_STATE,
+} from "@definitions/simulation/faultTolerance";
 
 const speeds = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
 
@@ -42,6 +48,8 @@ const Simulation = () => {
     const rafIdRef = useRef<number>(0);
     const frameCountRef = useRef<number>(0);
     const lastSecondRef = useRef<number>(0);
+    const [faultToleranceState, setFaultToleranceState] = useState<FaultToleranceState>(INITIAL_FAULT_TOLERANCE_STATE);
+    const faultRateRef = useRef<number>(0);
     const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
     const router = useRouter();
     const { id } = useParams();
@@ -88,6 +96,8 @@ const Simulation = () => {
         setSmoothAnimation(INITIAL_SMOOTH_ANIMATION_STATE);
         frameCountRef.current = 0;
         lastSecondRef.current = performance.now();
+        setFaultToleranceState(INITIAL_FAULT_TOLERANCE_STATE);
+        faultRateRef.current = 0;
 
         if (viewerInstanceRef.current) {
             viewerInstanceRef.current.destroy();
@@ -163,7 +173,7 @@ const Simulation = () => {
 
             const viewer = new NavigatedViewer({
                 container: viewerRef.current,
-                additionalModules: [simulation(simulationData, setNumberOfCases, setWaitingProcessingTimes, setNetworkMetrics, setNetworkActivity)]
+                additionalModules: [simulation(simulationData, setNumberOfCases, setWaitingProcessingTimes, setNetworkMetrics, setNetworkActivity, setFaultToleranceState, faultRateRef)]
             });
             viewerInstanceRef.current = viewer;
 
@@ -265,6 +275,11 @@ const Simulation = () => {
                 return sortOrder === "asc" ? comparison : -comparison;
             });
     }, [waitingProcessingTimes, sortOrder]);
+
+    const handleFaultRateChange = useCallback((rate: FaultRate) => {
+        faultRateRef.current = rate;
+        setFaultToleranceState(prev => ({ ...prev, faultRate: rate }));
+    }, []);
 
     return <>
         <div ref={viewerRef} style={{ height: '600px', width: '100%' }}></div>
@@ -402,6 +417,14 @@ const Simulation = () => {
                         setSmoothAnimation(INITIAL_SMOOTH_ANIMATION_STATE);
                         frameCountRef.current = 0;
                         lastSecondRef.current = performance.now();
+                    }}
+                />
+                <FaultTolerancePanel
+                    state={faultToleranceState}
+                    onRateChange={handleFaultRateChange}
+                    onReset={() => {
+                        setFaultToleranceState(INITIAL_FAULT_TOLERANCE_STATE);
+                        faultRateRef.current = 0;
                     }}
                 />
             </div>

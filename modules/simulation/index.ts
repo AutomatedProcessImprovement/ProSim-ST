@@ -15,7 +15,7 @@ import {FlowTypes, LifecycleTypes, NodeTypes} from "@definitions/simulation/enum
 import axios from "axios";
 import {SimulationData} from "@definitions/api/types";
 import {formatDateString} from "@utils/dateHelpers";
-import {Dispatch, SetStateAction} from "react";
+import {Dispatch, MutableRefObject, SetStateAction} from "react";
 import {buildPathMap, calculateDurations, calculatePathLength} from "@modules/simulation/pathDurationHelpers";
 import {buildResumedWTPT, buildTimelineResumptionPatch} from "@modules/simulation/timelineResumptionHelpers";
 import {
@@ -34,6 +34,7 @@ import {
 import {applyBatchFrameUpdatesIfNeeded} from "@modules/simulation/frameUpdateHelpers";
 import { QueueMetricsState } from "@definitions/simulation/networkMetrics";
 import { NetworkActivityState, measureResponseBytes } from "@definitions/simulation/networkActivity";
+import { FaultToleranceState } from "@definitions/simulation/faultTolerance";
 
 const simulation = (
     simulationData: SimulationData,
@@ -43,7 +44,9 @@ const simulation = (
     }>>,
     wtptSetter: Dispatch<SetStateAction<WTPTState>>,
     queueMetricsSetter: Dispatch<SetStateAction<QueueMetricsState>>,
-    networkActivitySetter: Dispatch<SetStateAction<NetworkActivityState>>
+    networkActivitySetter: Dispatch<SetStateAction<NetworkActivityState>>,
+    faultToleranceSetter: Dispatch<SetStateAction<FaultToleranceState>>,
+    faultRateRef: MutableRefObject<number>,
 ) => {
     const tokenSimulation = function(canvas: Canvas, elementRegistry: ElementRegistry) {
             let processId: string;
@@ -80,6 +83,7 @@ const simulation = (
             let hasEnded = false;
             let simulationStartMs = 0;
             let currentBatchIndex = 0;
+            const pendingRecoveries = new Set<string>();
 
             function emitQueueSample(queueLength: number) {
                 queueMetricsSetter(prev => ({
@@ -638,6 +642,13 @@ const simulation = (
                         totalDuration: prev.totalDuration,
                         samples: [{ batchIndex: currentBatchIndex, queueLength: patch.batchesQueue.length }],
                     }));
+                    pendingRecoveries.clear();
+                    faultToleranceSetter(prev => ({
+                        ...prev,
+                        batchesDropped: 0,
+                        gapRecoveries: 0,
+                        simulationCrashed: false,
+                    }));
 
                     const resumptionBytes = measureResponseBytes(res);
                     networkActivitySetter({
@@ -688,11 +699,19 @@ const simulation = (
                     createTokensForFrame(frameCase);
                 });
 
+                try {
                 while (batchesQueue.length > 0) {
                     if (abortController.signal.aborted) return;
 
                     currentBatch = batchesQueue.shift()!;
                     currentBatchIndex++;
+
+                    if (faultRateRef.current > 0 && Math.random() < faultRateRef.current) {
+                        currentBatch.events.forEach(event => pendingRecoveries.add(String(event.caseId)));
+                        if (isResumed) isResumed = false;
+                        faultToleranceSetter(prev => ({ ...prev, batchesDropped: prev.batchesDropped + 1 }));
+                        continue;
+                    }
 
                     const batchesQueueLength = batchesQueue.length;
                     emitQueueSample(batchesQueueLength);
@@ -726,13 +745,17 @@ const simulation = (
                             await Promise.all(
                                 [
                                     animateTimeline(batchDuration),
-                                    ...Object.entries(eventsByCaseId).map(([caseId, batchEvents]) =>
-                                        handleBatchEvents({
+                                    ...Object.entries(eventsByCaseId).map(([caseId, batchEvents]) => {
+                                        if (pendingRecoveries.has(caseId)) {
+                                            pendingRecoveries.delete(caseId);
+                                            faultToleranceSetter(prev => ({ ...prev, gapRecoveries: prev.gapRecoveries + 1 }));
+                                        }
+                                        return handleBatchEvents({
                                             caseId: parseInt(caseId),
                                             batchEvents,
                                             batchDuration: proportionalDelta,
-                                        })
-                                    ),
+                                        });
+                                    }),
                                 ]
                             );
                         } catch (error) {
@@ -757,6 +780,12 @@ const simulation = (
                 playPauseButton.innerHTML = " ▶";
                 isPaused = true;
                 hasEnded = true;
+                } catch (error) {
+                    if (!abortController.signal.aborted) {
+                        faultToleranceSetter(prev => ({ ...prev, simulationCrashed: true }));
+                    }
+                    throw error;
+                }
             }
 
             this.start = () => {

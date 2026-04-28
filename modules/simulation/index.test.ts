@@ -152,12 +152,14 @@ function setupPlugin(
 
     const networkMetricsSetter = jest.fn();
     const networkActivitySetter = jest.fn();
-    const pluginDef = simulation(simulationData, caseNumberSetter, wtptSetter, networkMetricsSetter, networkActivitySetter) as unknown as SimulationPluginDefinition;
+    const faultToleranceSetter = jest.fn();
+    const faultRateRef = { current: 0 };
+    const pluginDef = simulation(simulationData, caseNumberSetter, wtptSetter, networkMetricsSetter, networkActivitySetter, faultToleranceSetter, faultRateRef) as unknown as SimulationPluginDefinition;
     const ctor = pluginDef.tokenSimulation[1];
     const instance: SimulationPluginInstance = {};
     ctor.call(instance, canvas, elementRegistry);
 
-    return {instance, caseNumberSetter, wtptSetter, networkMetricsSetter, networkActivitySetter, container, elementRegistry};
+    return {instance, caseNumberSetter, wtptSetter, networkMetricsSetter, networkActivitySetter, faultToleranceSetter, faultRateRef, container, elementRegistry};
 }
 
 describe("modules/simulation/index", () => {
@@ -1640,6 +1642,141 @@ describe("modules/simulation/index", () => {
 
         timeline.dispatchEvent(new MouseEvent("mouseleave", {bubbles: true}));
         expect(tooltip.style.display).toBe("none");
+    });
+
+    describe("fault tolerance", () => {
+        it("drops batch and increments batchesDropped when fault rate triggers", () => {
+            const batch: Batch = {
+                startDate: "2024-01-01T00:00:00.000Z",
+                endDate: "2024-01-01T01:00:00.000Z",
+                events: [{
+                    caseId: 42,
+                    lifecycle: LifecycleTypes.START,
+                    timestamp: "2024-01-01T00:05:00.000Z",
+                    nodeId: "Task_A",
+                    paths: { t1: ["Task_A"] },
+                } satisfies BatchEvent],
+            };
+
+            jest.spyOn(Math, "random").mockReturnValue(0.01);
+
+            const { instance, faultToleranceSetter, faultRateRef } =
+                setupPlugin(makeSimulationData({ batches: [batch] }));
+            faultRateRef.current = 0.05;
+
+            instance.start?.();
+
+            const calls = (faultToleranceSetter as jest.Mock).mock.calls;
+            const droppedCall = calls.find(([updater]) => {
+                if (typeof updater !== "function") return false;
+                const result = updater({ faultRate: 0.05, batchesDropped: 0, gapRecoveries: 0, simulationCrashed: false });
+                return result.batchesDropped === 1;
+            });
+            expect(droppedCall).toBeDefined();
+            expect(mockedGroupEventsByCaseId).not.toHaveBeenCalled();
+        });
+
+        it("counts gap recovery when caseId from dropped batch appears in next batch", () => {
+            const droppedBatch: Batch = {
+                startDate: "2024-01-01T00:00:00.000Z",
+                endDate: "2024-01-01T01:00:00.000Z",
+                events: [{
+                    caseId: 7,
+                    lifecycle: LifecycleTypes.START,
+                    timestamp: "2024-01-01T00:05:00.000Z",
+                    nodeId: "Task_A",
+                    paths: { t1: ["Task_A"] },
+                } satisfies BatchEvent],
+            };
+            const recoveryBatch: Batch = {
+                startDate: "2024-01-01T01:00:00.000Z",
+                endDate: "2024-01-01T02:00:00.000Z",
+                events: [{
+                    caseId: 7,
+                    lifecycle: LifecycleTypes.COMPLETE,
+                    timestamp: "2024-01-01T01:05:00.000Z",
+                    nodeId: "Task_A",
+                    paths: { t1: ["Task_A"] },
+                } satisfies BatchEvent],
+            };
+
+            const randomSpy = jest.spyOn(Math, "random");
+            randomSpy.mockReturnValueOnce(0.01); // first batch: dropped
+            randomSpy.mockReturnValue(1.0);      // second batch: not dropped
+
+            mockedGroupEventsByCaseId.mockReturnValue({ "7": [recoveryBatch.events[0]] });
+
+            const { instance, faultToleranceSetter, faultRateRef } =
+                setupPlugin(makeSimulationData({ batches: [droppedBatch, recoveryBatch] }));
+            faultRateRef.current = 0.05;
+
+            instance.start?.();
+
+            const calls = (faultToleranceSetter as jest.Mock).mock.calls;
+            const recoveryCall = calls.find(([updater]) => {
+                if (typeof updater !== "function") return false;
+                const result = updater({ faultRate: 0.05, batchesDropped: 1, gapRecoveries: 0, simulationCrashed: false });
+                return result.gapRecoveries === 1;
+            });
+            expect(recoveryCall).toBeDefined();
+        });
+
+        it("does not call faultToleranceSetter for drops when faultRate is 0", () => {
+            const batch: Batch = {
+                startDate: "2024-01-01T00:00:00.000Z",
+                endDate: "2024-01-01T01:00:00.000Z",
+                events: [],
+            };
+
+            jest.spyOn(Math, "random").mockReturnValue(0.01);
+
+            const { instance, faultToleranceSetter } =
+                setupPlugin(makeSimulationData({ batches: [batch] }));
+
+            instance.start?.();
+
+            const calls = (faultToleranceSetter as jest.Mock).mock.calls;
+            const dropCall = calls.find(([updater]) => {
+                if (typeof updater !== "function") return false;
+                const result = updater({ faultRate: 0, batchesDropped: 0, gapRecoveries: 0, simulationCrashed: false });
+                return result.batchesDropped === 1;
+            });
+            expect(dropCall).toBeUndefined();
+        });
+
+        it("resets batchesDropped and gapRecoveries (but preserves faultRate) on timeline seek", async () => {
+            const { instance, faultToleranceSetter } = setupPlugin();
+            instance.start?.();
+
+            mockedBuildPatch.mockReturnValue({
+                batchesQueue: [],
+                frames: [],
+                batchesPointer: 0,
+                tokenProgresses: {},
+                localProgress: 0,
+                caseNumbers: { ongoing: 0, finished: 0 },
+                shouldUnpause: false,
+            });
+            mockedAxios.post.mockResolvedValue({ data: {} });
+
+            const btn = document.getElementById("go-to-start-btn") as HTMLButtonElement;
+            btn.click();
+            await Promise.resolve();
+            await Promise.resolve();
+
+            const calls = (faultToleranceSetter as jest.Mock).mock.calls;
+            const resetCall = calls.find(([updater]) => {
+                if (typeof updater !== "function") return false;
+                const result = updater({
+                    faultRate: 0.10,
+                    batchesDropped: 5,
+                    gapRecoveries: 3,
+                    simulationCrashed: false,
+                });
+                return result.batchesDropped === 0 && result.gapRecoveries === 0 && result.faultRate === 0.10;
+            });
+            expect(resetCall).toBeDefined();
+        });
     });
 });
 
