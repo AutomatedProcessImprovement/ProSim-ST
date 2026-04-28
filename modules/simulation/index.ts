@@ -85,6 +85,31 @@ const simulation = (
             let currentBatchIndex = 0;
             const pendingRecoveries = new Set<string>();
 
+            function teleportDroppedBatch(batch: Batch) {
+                batch.events.forEach(event => {
+                    if (!tokens[event.caseId]) return;
+                    Object.entries(event.paths).forEach(([tokenId, elements]) => {
+                        if (!tokens[event.caseId]?.[tokenId]) return;
+                        if (event.lifecycle === LifecycleTypes.CASE_END) {
+                            deleteToken(event.caseId, tokenId);
+                            return;
+                        }
+                        const lastElementId = elements[elements.length - 1];
+                        const element = elementRegistry.get(lastElementId);
+                        if (!element) return;
+                        let finalPoint: Waypoint;
+                        if (element.type === FlowTypes.FLOW) {
+                            const waypoints = element.waypoints;
+                            if (!waypoints?.length) return;
+                            finalPoint = waypoints[waypoints.length - 1];
+                        } else {
+                            finalPoint = calculateCenterPoint(element);
+                        }
+                        placeToken(finalPoint, event.caseId, tokenId);
+                    });
+                });
+            }
+
             function emitQueueSample(queueLength: number) {
                 queueMetricsSetter(prev => ({
                     ...prev,
@@ -707,6 +732,7 @@ const simulation = (
                     currentBatchIndex++;
 
                     if (faultRateRef.current > 0 && Math.random() < faultRateRef.current) {
+                        teleportDroppedBatch(currentBatch);
                         currentBatch.events.forEach(event => pendingRecoveries.add(String(event.caseId)));
                         if (isResumed) isResumed = false;
                         faultToleranceSetter(prev => ({ ...prev, batchesDropped: prev.batchesDropped + 1 }));
