@@ -81,6 +81,7 @@ const simulation = (
             let finalDate: Date;
             let abortController: AbortController = new AbortController();
             let hasEnded = false;
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
             let simulationStartMs = 0;
             let currentBatchIndex = 0;
             const pendingRecoveries = new Set<string>();
@@ -88,7 +89,8 @@ const simulation = (
             function teleportDroppedBatch(batch: Batch) {
                 batch.events.forEach(event => {
                     if (!tokens[event.caseId]) return;
-                    Object.entries(event.paths).forEach(([tokenId, elements]) => {
+                    const pathEntries = Object.entries(event.paths);
+                    pathEntries.forEach(([tokenId, elements]) => {
                         if (!tokens[event.caseId]?.[tokenId]) return;
                         if (event.lifecycle === LifecycleTypes.CASE_END) {
                             deleteToken(event.caseId, tokenId);
@@ -97,6 +99,19 @@ const simulation = (
                         const lastElementId = elements[elements.length - 1];
                         const element = elementRegistry.get(lastElementId);
                         if (!element) return;
+                        // In normal flow, a "split source" token (one whose path ends at a
+                        // gateway that another token in the same event starts from) gets
+                        // deleted by animateAsyncData — replicate that here so it doesn't
+                        // become a ghost stuck at the gateway.
+                        const isSplitSource = pathEntries.some(([otherTokenId, otherElements]) =>
+                            otherTokenId !== tokenId &&
+                            otherElements[0] === lastElementId &&
+                            otherElements.length > 1
+                        );
+                        if (isSplitSource) {
+                            deleteToken(event.caseId, tokenId);
+                            return;
+                        }
                         let finalPoint: Waypoint;
                         if (element.type === FlowTypes.FLOW) {
                             const waypoints = element.waypoints;
@@ -725,87 +740,91 @@ const simulation = (
                 });
 
                 try {
-                while (batchesQueue.length > 0) {
-                    if (abortController.signal.aborted) return;
+                    while (batchesQueue.length > 0) {
+                        if (abortController.signal.aborted) return;
 
-                    currentBatch = batchesQueue.shift()!;
-                    currentBatchIndex++;
+                        currentBatch = batchesQueue.shift()!;
+                        currentBatchIndex++;
 
-                    if (faultRateRef.current > 0 && Math.random() < faultRateRef.current) {
-                        teleportDroppedBatch(currentBatch);
-                        currentBatch.events.forEach(event => pendingRecoveries.add(String(event.caseId)));
-                        if (isResumed) isResumed = false;
-                        faultToleranceSetter(prev => ({ ...prev, batchesDropped: prev.batchesDropped + 1 }));
-                        continue;
-                    }
+                        const batchesQueueLength = batchesQueue.length;
+                        emitQueueSample(batchesQueueLength);
 
-                    const batchesQueueLength = batchesQueue.length;
-                    emitQueueSample(batchesQueueLength);
-                    if (shouldTopUpQueue(batchesQueueLength, batchesPointer)) {
-                        topBatchesQueueUp(maxBatchesLimit - batchesQueueLength);
-                    }
-
-                    const batchDuration = new Date(currentBatch.endDate).getTime() - new Date(currentBatch.startDate).getTime();
-                    const proportionalDelta = computeProportionalDelta(delta, batchDuration);
-
-                    if (currentBatch.events.length === 0) {
-                        try {
-                            await Promise.all([
-                                animateTimeline(batchDuration),
-                                new Promise((resolve, reject) => {
-                                    const timeout = setTimeout(resolve, computeEmptyBatchWaitTime(proportionalDelta, isResumed, localProgress));
-                                    abortController.signal.addEventListener("abort", () => {
-                                        clearTimeout(timeout);
-                                        reject(new Error("Simulation aborted"));
-                                    });
-                                })
-                            ]);
-                        } catch (error) {
-                            if (abortController.signal.aborted && error.message === "Simulation aborted") {
-                                return;
+                        if (faultRateRef.current > 0 && batchesQueueLength > 2 && Math.random() < faultRateRef.current) {
+                            teleportDroppedBatch(currentBatch);
+                            currentBatch.events.forEach(event => pendingRecoveries.add(String(event.caseId)));
+                            if (isResumed) isResumed = false;
+                            faultToleranceSetter(prev => ({ ...prev, batchesDropped: prev.batchesDropped + 1 }));
+                            if (shouldTopUpQueue(batchesQueueLength, batchesPointer)) {
+                                topBatchesQueueUp(maxBatchesLimit - batchesQueueLength);
                             }
+                            continue;
                         }
-                    } else {
-                        const eventsByCaseId = groupEventsByCaseId(currentBatch.events);
-                        try {
-                            await Promise.all(
-                                [
+
+                        if (shouldTopUpQueue(batchesQueueLength, batchesPointer)) {
+                            topBatchesQueueUp(maxBatchesLimit - batchesQueueLength);
+                        }
+
+                        const batchDuration = new Date(currentBatch.endDate).getTime() - new Date(currentBatch.startDate).getTime();
+                        const proportionalDelta = computeProportionalDelta(delta, batchDuration);
+
+                        if (currentBatch.events.length === 0) {
+                            try {
+                                await Promise.all([
                                     animateTimeline(batchDuration),
-                                    ...Object.entries(eventsByCaseId).map(([caseId, batchEvents]) => {
-                                        if (pendingRecoveries.has(caseId)) {
-                                            pendingRecoveries.delete(caseId);
-                                            faultToleranceSetter(prev => ({ ...prev, gapRecoveries: prev.gapRecoveries + 1 }));
-                                        }
-                                        return handleBatchEvents({
-                                            caseId: parseInt(caseId),
-                                            batchEvents,
-                                            batchDuration: proportionalDelta,
+                                    new Promise((resolve, reject) => {
+                                        const timeout = setTimeout(resolve, computeEmptyBatchWaitTime(proportionalDelta, isResumed, localProgress));
+                                        abortController.signal.addEventListener("abort", () => {
+                                            clearTimeout(timeout);
+                                            reject(new Error("Simulation aborted"));
                                         });
-                                    }),
-                                ]
-                            );
-                        } catch (error) {
-                            if (abortController.signal.aborted && error.message === "Simulation aborted") {
-                                return;
+                                    })
+                                ]);
+                            } catch (error) {
+                                if (abortController.signal.aborted && error.message === "Simulation aborted") {
+                                    return;
+                                }
                             }
-                        } finally {
-                            frames = applyBatchFrameUpdatesIfNeeded({
-                                shouldApply: shouldUpdateFrames(localProgress, currentBatch.endDate, currentDateTime),
-                                frames,
-                                batch: currentBatch,
-                                getNodeType: getNodeTypeFromRegistry,
-                                caseNumberSetter,
-                                wtptSetter,
-                            });
+                        } else {
+                            const eventsByCaseId = groupEventsByCaseId(currentBatch.events);
+                            try {
+                                await Promise.all(
+                                    [
+                                        animateTimeline(batchDuration),
+                                        ...Object.entries(eventsByCaseId).map(([caseId, batchEvents]) => {
+                                            if (pendingRecoveries.has(caseId)) {
+                                                pendingRecoveries.delete(caseId);
+                                                faultToleranceSetter(prev => ({ ...prev, gapRecoveries: prev.gapRecoveries + 1 }));
+                                            }
+                                            return handleBatchEvents({
+                                                caseId: parseInt(caseId),
+                                                batchEvents,
+                                                batchDuration: proportionalDelta,
+                                            });
+                                        }),
+                                    ]
+                                );
+                            } catch (error) {
+                                if (abortController.signal.aborted && error.message === "Simulation aborted") {
+                                    return;
+                                }
+                            } finally {
+                                frames = applyBatchFrameUpdatesIfNeeded({
+                                    shouldApply: shouldUpdateFrames(localProgress, currentBatch.endDate, currentDateTime),
+                                    frames,
+                                    batch: currentBatch,
+                                    getNodeType: getNodeTypeFromRegistry,
+                                    caseNumberSetter,
+                                    wtptSetter,
+                                });
+                            }
                         }
+
+                        if (isResumed) isResumed = false;
                     }
 
-                    if (isResumed) isResumed = false;
-                }
-
-                playPauseButton.innerHTML = " ▶";
-                isPaused = true;
-                hasEnded = true;
+                    playPauseButton.innerHTML = " ▶";
+                    isPaused = true;
+                    hasEnded = true;
                 } catch (error) {
                     if (!abortController.signal.aborted) {
                         faultToleranceSetter(prev => ({ ...prev, simulationCrashed: true }));

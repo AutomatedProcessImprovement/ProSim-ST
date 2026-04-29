@@ -1,6 +1,6 @@
 import {BatchEvent, EventsByCaseId} from "@definitions/simulation/types";
 
-const QUEUE_TOP_UP_THRESHOLD = 5;
+export const QUEUE_TOP_UP_THRESHOLD = 5;
 const MS_PER_HOUR = 3600000;
 
 export function shouldTopUpQueue(queueLength: number, batchesPointer: number): boolean {
