@@ -11,6 +11,8 @@ import {NodeTypes} from "@definitions/simulation/enums";
 import {WTPTState} from "@definitions/simulation/types";
 import { QueueMetricsState } from "@definitions/simulation/networkMetrics";
 import { NetworkActivityChart } from "@components/NetworkActivityChart";
+import { SmoothAnimationPanel } from "@components/SmoothAnimationPanel";
+import { SmoothAnimationState, INITIAL_SMOOTH_ANIMATION_STATE } from "@definitions/simulation/smoothAnimation";
 
 const speeds = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
 
@@ -33,6 +35,10 @@ const Simulation = () => {
     });
     const [waitingProcessingTimes, setWaitingProcessingTimes] = useState<WTPTState>({});
     const [networkMetrics, setNetworkMetrics] = useState<QueueMetricsState | null>(null);
+    const [smoothAnimation, setSmoothAnimation] = useState<SmoothAnimationState>(INITIAL_SMOOTH_ANIMATION_STATE);
+    const rafIdRef = useRef<number>(0);
+    const frameCountRef = useRef<number>(0);
+    const lastSecondRef = useRef<number>(0);
     const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
     const router = useRouter();
     const { id } = useParams();
@@ -75,6 +81,9 @@ const Simulation = () => {
         setWorkload(undefined);
         setCycleTimeData([]);
         setNetworkMetrics(null);
+        setSmoothAnimation(INITIAL_SMOOTH_ANIMATION_STATE);
+        frameCountRef.current = 0;
+        lastSecondRef.current = performance.now();
 
         if (viewerInstanceRef.current) {
             viewerInstanceRef.current.destroy();
@@ -168,6 +177,38 @@ const Simulation = () => {
                 viewerInstanceRef.current = null;
             }
         };
+    }, []);
+
+    useEffect(() => {
+        lastSecondRef.current = performance.now();
+
+        function tick(now: number) {
+            frameCountRef.current += 1;
+            const elapsed = now - lastSecondRef.current;
+
+            if (elapsed >= 1000) {
+                const fps = Math.round(frameCountRef.current * 1000 / elapsed);
+                frameCountRef.current = 0;
+                lastSecondRef.current = now;
+
+                setSmoothAnimation(prev => {
+                    const isFirst = prev.fpsHistory.length === 0;
+                    const newHistory = [...prev.fpsHistory, fps].slice(-30);
+                    return {
+                        currentFps: fps,
+                        minFps: isFirst ? fps : Math.min(prev.minFps, fps),
+                        maxFps: Math.max(prev.maxFps, fps),
+                        averageFps: Math.round(newHistory.reduce((s, f) => s + f, 0) / newHistory.length),
+                        fpsHistory: newHistory,
+                    };
+                });
+            }
+
+            rafIdRef.current = requestAnimationFrame(tick);
+        }
+
+        rafIdRef.current = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(rafIdRef.current);
     }, []);
 
     const workloadBars = useMemo(() => {
@@ -343,6 +384,14 @@ const Simulation = () => {
                 </div>
                 </div>
                 {networkMetrics && <NetworkActivityChart metrics={networkMetrics} />}
+                <SmoothAnimationPanel
+                    state={smoothAnimation}
+                    onReset={() => {
+                        setSmoothAnimation(INITIAL_SMOOTH_ANIMATION_STATE);
+                        frameCountRef.current = 0;
+                        lastSecondRef.current = performance.now();
+                    }}
+                />
             </div>
         </div>
     </>;
