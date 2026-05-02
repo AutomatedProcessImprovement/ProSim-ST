@@ -15,6 +15,8 @@ import { NetworkActivityChart } from "@components/NetworkActivityChart";
 import { NetworkActivityState, INITIAL_NETWORK_ACTIVITY_STATE, measureResponseBytes } from "@definitions/simulation/networkActivity";
 import { SmoothAnimationPanel } from "@components/SmoothAnimationPanel";
 import { SmoothAnimationState, INITIAL_SMOOTH_ANIMATION_STATE } from "@definitions/simulation/smoothAnimation";
+import { StressTestPanel } from "@components/StressTestPanel";
+import { StressTestState, INITIAL_STRESS_TEST_STATE, ScaleFactor } from "@definitions/simulation/stressTest";
 
 const speeds = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
 
@@ -42,6 +44,10 @@ const Simulation = () => {
     const rafIdRef = useRef<number>(0);
     const frameCountRef = useRef<number>(0);
     const lastSecondRef = useRef<number>(0);
+    const [scale, setScale] = useState<ScaleFactor>(1);
+    const scaleRef = useRef<number>(1);
+    const [stressTestState, setStressTestState] = useState<StressTestState>(INITIAL_STRESS_TEST_STATE);
+    const numberOfCasesRef = useRef(numberOfCases);
     const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
     const router = useRouter();
     const { id } = useParams();
@@ -74,8 +80,9 @@ const Simulation = () => {
 
     useEffect(() => {
         if (!processId) return;
-        if (initializedProcessIdRef.current === processId) return;
-        initializedProcessIdRef.current = processId;
+        const initKey = `${processId}_${scale}`;
+        if (initializedProcessIdRef.current === initKey) return;
+        initializedProcessIdRef.current = initKey;
 
         // Reset local state when switching to a new simulation id.
         xmlFetchedRef.current = false;
@@ -88,6 +95,7 @@ const Simulation = () => {
         setSmoothAnimation(INITIAL_SMOOTH_ANIMATION_STATE);
         frameCountRef.current = 0;
         lastSecondRef.current = performance.now();
+        setStressTestState(INITIAL_STRESS_TEST_STATE);
 
         if (viewerInstanceRef.current) {
             viewerInstanceRef.current.destroy();
@@ -96,7 +104,7 @@ const Simulation = () => {
 
         const fetchSimulationData = async () => {
             try {
-                const res = await axios.get(`/api/simulation/${processId}`);
+                const res = await axios.get(`/api/simulation/${processId}?scale=${scaleRef.current}`);
                 const bytes = measureResponseBytes(res);
                 setNetworkActivity(prev => ({
                     totalBytes: prev.totalBytes + bytes,
@@ -155,7 +163,7 @@ const Simulation = () => {
             .then((data: Array<number>) => {
                 setCycleTimeData(data);
             });
-    }, [processId, router]);
+    }, [processId, scale, router]);
 
     useEffect(() => {
         if (xml !== null && simulationData && typeof window !== "undefined") {
@@ -163,7 +171,7 @@ const Simulation = () => {
 
             const viewer = new NavigatedViewer({
                 container: viewerRef.current,
-                additionalModules: [simulation(simulationData, setNumberOfCases, setWaitingProcessingTimes, setNetworkMetrics, setNetworkActivity)]
+                additionalModules: [simulation(simulationData, setNumberOfCases, setWaitingProcessingTimes, setNetworkMetrics, setNetworkActivity, scaleRef.current)]
             });
             viewerInstanceRef.current = viewer;
 
@@ -220,6 +228,26 @@ const Simulation = () => {
         rafIdRef.current = requestAnimationFrame(tick);
         return () => cancelAnimationFrame(rafIdRef.current);
     }, []);
+
+    numberOfCasesRef.current = numberOfCases;
+
+    useEffect(() => {
+        const id = setInterval(() => {
+            const { ongoing, finished } = numberOfCasesRef.current;
+            setStressTestState(prev => ({
+                currentConcurrent: ongoing,
+                peakConcurrent: Math.max(prev.peakConcurrent, ongoing),
+                totalFinished: finished,
+                concurrencyHistory: [...prev.concurrencyHistory, ongoing].slice(-30),
+            }));
+        }, 1000);
+        return () => clearInterval(id);
+    }, []);
+
+    const handleScaleChange = (s: ScaleFactor) => {
+        scaleRef.current = s;
+        setScale(s);
+    };
 
     const workloadBars = useMemo(() => {
         if (!workload) return null;
@@ -403,6 +431,12 @@ const Simulation = () => {
                         frameCountRef.current = 0;
                         lastSecondRef.current = performance.now();
                     }}
+                />
+                <StressTestPanel
+                    state={stressTestState}
+                    scale={scale}
+                    onScaleChange={handleScaleChange}
+                    onReset={() => setStressTestState(INITIAL_STRESS_TEST_STATE)}
                 />
             </div>
         </div>

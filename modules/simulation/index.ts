@@ -43,7 +43,8 @@ const simulation = (
     }>>,
     wtptSetter: Dispatch<SetStateAction<WTPTState>>,
     queueMetricsSetter: Dispatch<SetStateAction<QueueMetricsState>>,
-    networkActivitySetter: Dispatch<SetStateAction<NetworkActivityState>>
+    networkActivitySetter: Dispatch<SetStateAction<NetworkActivityState>>,
+    scale: number = 1
 ) => {
     const tokenSimulation = function(canvas: Canvas, elementRegistry: ElementRegistry) {
             let processId: string;
@@ -78,6 +79,7 @@ const simulation = (
             let finalDate: Date;
             let abortController: AbortController = new AbortController();
             let hasEnded = false;
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
             let simulationStartMs = 0;
             let currentBatchIndex = 0;
 
@@ -666,7 +668,7 @@ const simulation = (
                 isFetchingBatches = true;
 
                 try {
-                    const res = await axios.get(`/api/simulation/${processId}/polling?pointer=${batchesPointer}&limit=${limit}`);
+                    const res = await axios.get(`/api/simulation/${processId}/polling?pointer=${batchesPointer}&limit=${limit}&scale=${scale}`);
                     const bytes = measureResponseBytes(res);
                     networkActivitySetter(prev => ({
                         totalBytes: prev.totalBytes + bytes,

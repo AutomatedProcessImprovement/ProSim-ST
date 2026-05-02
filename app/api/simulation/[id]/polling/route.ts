@@ -7,6 +7,7 @@ import {BatchEvent} from "@definitions/simulation/types";
 import {LifecycleTypes} from "@definitions/simulation/enums";
 import {groupEvents} from "@utils/events";
 import {formatDateString} from "@utils/dateHelpers";
+import {multiplyBatches} from "@utils/multiplySimulationData";
 
 export const GET = async (
     request: Request,
@@ -18,6 +19,7 @@ export const GET = async (
         const { searchParams } = new URL(request.url);
         const pointer = parseInt(searchParams.get("pointer") || "0", 10);
         const limit = parseInt(searchParams.get("limit") || "10", 10);
+        const scale = parseInt(searchParams.get("scale") ?? "1", 10);
 
         const appDataSource = await createMySQLConnection();
         const processRepository = appDataSource.getRepository(Process);
@@ -82,7 +84,7 @@ export const GET = async (
         const batches = groupEvents(batchEvents, startDate.toISOString(), endDate.toISOString());
 
         return NextResponse.json({
-            batches,
+            batches: multiplyBatches(batches, scale),
             pointer: simulationHasFinished ? -1 : pointer + limit,
         }, { status: 200 });
     } catch (e) {

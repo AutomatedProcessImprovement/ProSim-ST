@@ -11,6 +11,7 @@ import {SimulationData} from "@definitions/api/types";
 import {groupEvents} from "@utils/events";
 import {LifecycleTypes} from "@definitions/simulation/enums";
 import {formatDateString} from "@utils/dateHelpers";
+import {multiplyBatches, multiplyFrames} from "@utils/multiplySimulationData";
 
 export const GET = async (
     request: Request,
@@ -19,6 +20,8 @@ export const GET = async (
     try {
         const params = await context.params;
         const processId = params.id;
+        const { searchParams } = new URL(request.url);
+        const scale = parseInt(searchParams.get("scale") ?? "1", 10);
         const limit = 15;
 
         const appDataSource = await createMySQLConnection();
@@ -103,8 +106,8 @@ export const GET = async (
 
         return NextResponse.json({
             processId,
-            batches,
-            frames,
+            batches: multiplyBatches(batches, scale),
+            frames: multiplyFrames(frames, scale),
             file,
             startDate: simulationProcess.startDate,
             endDate: simulationProcess.endDate,
