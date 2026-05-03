@@ -44,7 +44,7 @@ const config: Config = {
     '^@assets/(.*)$': '<rootDir>/assets/$1',
   },
   setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
-  testPathIgnorePatterns: ['/node_modules/', '/.next/'],
+  testPathIgnorePatterns: ['/node_modules/', '/.next/', '/__integration__/'],
   testEnvironment: 'jsdom',
 };
 

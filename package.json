@@ -12,7 +12,8 @@
     "test:coverage": "jest --coverage",
     "migration": "ts-node db/scripts/generateMigration.js",
     "migrate:run": "ts-node db/scripts/runMigrations.js",
-    "cleanup": "node db/scripts/cleanupProcesses.js"
+    "cleanup": "node db/scripts/cleanupProcesses.js",
+    "test:integration": "jest --config jest.integration.config.ts --runInBand --forceExit"
   },
   "dependencies": {
     "@headlessui/react": "^2.1.8",
@@ -50,6 +51,7 @@
     "jest-environment-jsdom": "^30.3.0",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.13",
+    "testcontainers": "^11.14.0",
     "ts-jest": "^29.4.6",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
