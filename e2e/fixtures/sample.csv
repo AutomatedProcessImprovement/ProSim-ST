@@ -1,0 +1,4 @@
+case_id,activity,start_time,end_time,resource
+1,check_application,2023-01-01 08:00:00,2023-01-01 09:00:00,Bob
+1,evaluate,2023-01-01 09:30:00,2023-01-01 10:30:00,Alice
+2,check_application,2023-01-01 10:00:00,2023-01-01 11:00:00,Bob

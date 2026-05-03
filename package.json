@@ -13,7 +13,9 @@
     "migration": "ts-node db/scripts/generateMigration.js",
     "migrate:run": "ts-node db/scripts/runMigrations.js",
     "cleanup": "node db/scripts/cleanupProcesses.js",
-    "test:integration": "jest --config jest.integration.config.ts --runInBand --forceExit"
+    "test:integration": "jest --config jest.integration.config.ts --runInBand --forceExit",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@headlessui/react": "^2.1.8",
@@ -37,6 +39,7 @@
     "uuid": "^10.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
