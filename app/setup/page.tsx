@@ -204,7 +204,6 @@ const Setup = () => {
             >
                 <p className = 'mb-4 px-4 text-justify text-sm font-medium italic text-slate-400'>
                     Please, check that the files, mapping and configuration specified are correct.
-                    Also, if you want to receive a notification in your email when the results are available, please introduce your address below.
                 </p>
                 <div className = 'flex flex-col gap-2 p-4'>
                     <div className='mb-4 grid grid-cols-3 gap-2'>
