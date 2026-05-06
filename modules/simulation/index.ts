@@ -184,7 +184,7 @@ const simulation = (
 
             function createToken(activeElementId: string, caseId: number, tokenId: string, color: string, fadeIn: boolean = false, show: boolean = true): Token {
                 if (!tokens[caseId]) tokens[caseId] = {};
-                const token = document.createElementNS("http://www.w3.org/2000/svg", "circle"); // this should be installed locally
+                const token = document.createElementNS("http://www.w3.org/2000/svg", "circle");
                 token.setAttribute("r", "10");
                 token.setAttribute("fill", color);
                 token.classList.add("token");
