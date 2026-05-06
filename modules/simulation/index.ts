@@ -1,5 +1,5 @@
 import {Canvas, ElementRegistry, Node, Waypoint} from "@definitions/simulation/interfaces";
-import {getRandomColor} from "@utils/colors";
+import {getRandomColor, resetColorCycle} from "@utils/colors";
 import {
     AnimationData,
     Batch,
@@ -50,6 +50,7 @@ const simulation = (
             let tokens: Tokens = {};
             const tokenColors: TokenColors = {};
             let coordinateMap: Record<string, Record<string, Array<Token>>> = {};
+            resetColorCycle();
             let totalDuration: number;
             let viewport: HTMLDivElement;
             const timeline = document.getElementById('timeline');

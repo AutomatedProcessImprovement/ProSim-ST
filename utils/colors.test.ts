@@ -1,29 +1,33 @@
-import {getRandomColor} from "@utils/colors";
+import { getRandomColor, resetColorCycle, TOKEN_COLOR_PALETTE } from "@utils/colors";
 
 describe("getRandomColor", () => {
-    afterEach(() => {
-        jest.restoreAllMocks();
+    beforeEach(() => {
+        resetColorCycle();
     });
 
-    it("returns a hex color string with six uppercase digits", () => {
-        jest.spyOn(Math, "random")
-            .mockReturnValueOnce(0)
-            .mockReturnValueOnce(1 / 16)
-            .mockReturnValueOnce(2 / 16)
-            .mockReturnValueOnce(10 / 16)
-            .mockReturnValueOnce(14 / 16)
-            .mockReturnValueOnce(15 / 16);
-
-        expect(getRandomColor()).toBe("#012AEF");
+    it("returns the first palette color on first call", () => {
+        expect(getRandomColor()).toBe(TOKEN_COLOR_PALETTE[0]);
     });
 
-    it("handles lower and upper random boundaries", () => {
-        jest.spyOn(Math, "random").mockReturnValue(0);
-        expect(getRandomColor()).toBe("#000000");
+    it("cycles sequentially through the palette", () => {
+        const first5 = [getRandomColor(), getRandomColor(), getRandomColor(), getRandomColor(), getRandomColor()];
+        expect(first5).toEqual(TOKEN_COLOR_PALETTE.slice(0, 5));
+    });
 
-        jest.spyOn(Math, "random").mockReturnValue(1 - Number.EPSILON);
-        expect(getRandomColor()).toBe("#FFFFFF");
+    it("wraps around after exhausting the palette", () => {
+        for (let i = 0; i < TOKEN_COLOR_PALETTE.length; i += 1) getRandomColor();
+        expect(getRandomColor()).toBe(TOKEN_COLOR_PALETTE[0]);
+    });
+
+    it("returns only colors from the curated palette", () => {
+        const seen = new Set<string>();
+        for (let i = 0; i < 200; i += 1) seen.add(getRandomColor());
+        seen.forEach(color => expect(TOKEN_COLOR_PALETTE).toContain(color));
+    });
+
+    it("resetColorCycle restarts from the first color", () => {
+        getRandomColor(); getRandomColor(); getRandomColor();
+        resetColorCycle();
+        expect(getRandomColor()).toBe(TOKEN_COLOR_PALETTE[0]);
     });
 });
-
-
