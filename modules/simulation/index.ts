@@ -148,7 +148,7 @@ const simulation = (
                     }
                 });
 
-                const newSize = 10 + (totalTokens - 1) * 0.15;
+                const newSize = Math.min(10 + (totalTokens - 1) * 0.15, 27);
                 affectedCoordinateKeys.forEach((coordinatesKey) => {
                     Object.values(coordinateMap[coordinatesKey]).forEach((caseTokens) => {
                         caseTokens.forEach((token) => {
