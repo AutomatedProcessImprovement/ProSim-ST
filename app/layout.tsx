@@ -14,7 +14,7 @@ const RootLayout = ({ children }: Readonly<{ children: ReactNode; }>) => {
   return (
     <html lang="en">
       <body className={'antialiased2'}>
-        <h1>Business Processes Simulator</h1>
+        <h1>Short-term Business Process Simulation</h1>
 
         <DataProvider>
           <CsvProvider>
