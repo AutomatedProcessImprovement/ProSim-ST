@@ -10,7 +10,9 @@ import {Canvas} from "bpmn-js/lib/features/context-pad/ContextPadProvider";
 import {NodeTypes} from "@definitions/simulation/enums";
 import {WTPTState} from "@definitions/simulation/types";
 import { QueueMetricsState } from "@definitions/simulation/networkMetrics";
+import { BatchQueueChart } from "@components/BatchQueueChart";
 import { NetworkActivityChart } from "@components/NetworkActivityChart";
+import { NetworkActivityState, INITIAL_NETWORK_ACTIVITY_STATE, measureResponseBytes } from "@definitions/simulation/networkActivity";
 import { SmoothAnimationPanel } from "@components/SmoothAnimationPanel";
 import { SmoothAnimationState, INITIAL_SMOOTH_ANIMATION_STATE } from "@definitions/simulation/smoothAnimation";
 
@@ -35,6 +37,7 @@ const Simulation = () => {
     });
     const [waitingProcessingTimes, setWaitingProcessingTimes] = useState<WTPTState>({});
     const [networkMetrics, setNetworkMetrics] = useState<QueueMetricsState | null>(null);
+    const [networkActivity, setNetworkActivity] = useState<NetworkActivityState>(INITIAL_NETWORK_ACTIVITY_STATE);
     const [smoothAnimation, setSmoothAnimation] = useState<SmoothAnimationState>(INITIAL_SMOOTH_ANIMATION_STATE);
     const rafIdRef = useRef<number>(0);
     const frameCountRef = useRef<number>(0);
@@ -81,6 +84,7 @@ const Simulation = () => {
         setWorkload(undefined);
         setCycleTimeData([]);
         setNetworkMetrics(null);
+        setNetworkActivity(INITIAL_NETWORK_ACTIVITY_STATE);
         setSmoothAnimation(INITIAL_SMOOTH_ANIMATION_STATE);
         frameCountRef.current = 0;
         lastSecondRef.current = performance.now();
@@ -93,6 +97,12 @@ const Simulation = () => {
         const fetchSimulationData = async () => {
             try {
                 const res = await axios.get(`/api/simulation/${processId}`);
+                const bytes = measureResponseBytes(res);
+                setNetworkActivity(prev => ({
+                    totalBytes: prev.totalBytes + bytes,
+                    requestCount: prev.requestCount + 1,
+                    samples: [...prev.samples, { t: Date.now(), bytes }],
+                }));
                 return res.data;
             } catch {
                 router.replace('/');
@@ -153,7 +163,7 @@ const Simulation = () => {
 
             const viewer = new NavigatedViewer({
                 container: viewerRef.current,
-                additionalModules: [simulation(simulationData, setNumberOfCases, setWaitingProcessingTimes, setNetworkMetrics)]
+                additionalModules: [simulation(simulationData, setNumberOfCases, setWaitingProcessingTimes, setNetworkMetrics, setNetworkActivity)]
             });
             viewerInstanceRef.current = viewer;
 
@@ -383,7 +393,9 @@ const Simulation = () => {
                     })}
                 </div>
                 </div>
-                {networkMetrics && <NetworkActivityChart metrics={networkMetrics} />}
+                <h2>Diagnostics</h2>
+                <NetworkActivityChart state={networkActivity} />
+                {networkMetrics && <BatchQueueChart metrics={networkMetrics} />}
                 <SmoothAnimationPanel
                     state={smoothAnimation}
                     onReset={() => {

@@ -151,12 +151,13 @@ function setupPlugin(
     };
 
     const networkMetricsSetter = jest.fn();
-    const pluginDef = simulation(simulationData, caseNumberSetter, wtptSetter, networkMetricsSetter) as unknown as SimulationPluginDefinition;
+    const networkActivitySetter = jest.fn();
+    const pluginDef = simulation(simulationData, caseNumberSetter, wtptSetter, networkMetricsSetter, networkActivitySetter) as unknown as SimulationPluginDefinition;
     const ctor = pluginDef.tokenSimulation[1];
     const instance: SimulationPluginInstance = {};
     ctor.call(instance, canvas, elementRegistry);
 
-    return {instance, caseNumberSetter, wtptSetter, networkMetricsSetter, container, elementRegistry};
+    return {instance, caseNumberSetter, wtptSetter, networkMetricsSetter, networkActivitySetter, container, elementRegistry};
 }
 
 describe("modules/simulation/index", () => {

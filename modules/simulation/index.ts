@@ -33,6 +33,7 @@ import {
 } from "@modules/simulation/runSimulationHelpers";
 import {applyBatchFrameUpdatesIfNeeded} from "@modules/simulation/frameUpdateHelpers";
 import { QueueMetricsState } from "@definitions/simulation/networkMetrics";
+import { NetworkActivityState, measureResponseBytes } from "@definitions/simulation/networkActivity";
 
 const simulation = (
     simulationData: SimulationData,
@@ -41,7 +42,8 @@ const simulation = (
         finished: number
     }>>,
     wtptSetter: Dispatch<SetStateAction<WTPTState>>,
-    queueMetricsSetter: Dispatch<SetStateAction<QueueMetricsState>>
+    queueMetricsSetter: Dispatch<SetStateAction<QueueMetricsState>>,
+    networkActivitySetter: Dispatch<SetStateAction<NetworkActivityState>>
 ) => {
     const tokenSimulation = function(canvas: Canvas, elementRegistry: ElementRegistry) {
             let processId: string;
@@ -637,6 +639,13 @@ const simulation = (
                         samples: [{ batchIndex: currentBatchIndex, queueLength: patch.batchesQueue.length }],
                     }));
 
+                    const resumptionBytes = measureResponseBytes(res);
+                    networkActivitySetter({
+                        totalBytes: resumptionBytes,
+                        requestCount: 1,
+                        samples: [{ t: Date.now(), bytes: resumptionBytes }],
+                    });
+
                     caseNumberSetter(patch.caseNumbers);
 
                     wtptSetter(prev => buildResumedWTPT(prev, res.data.wtpt));
@@ -658,6 +667,12 @@ const simulation = (
 
                 try {
                     const res = await axios.get(`/api/simulation/${processId}/polling?pointer=${batchesPointer}&limit=${limit}`);
+                    const bytes = measureResponseBytes(res);
+                    networkActivitySetter(prev => ({
+                        totalBytes: prev.totalBytes + bytes,
+                        requestCount: prev.requestCount + 1,
+                        samples: [...prev.samples, { t: Date.now(), bytes }],
+                    }));
                     batchesQueue.push(...res.data.batches);
                     batchesPointer = res.data.pointer;
                     emitQueueSample(batchesQueue.length);
