@@ -55,6 +55,7 @@ const getSimulationData = async (body: FormData): Promise<SimulationSeedData> =>
     const endDate = calculateEndDate(configInput).toISOString()
 
     const reqBody = new FormData();
+    console.log("process id: ", body.get("id"));
     reqBody.append("process_id", body.get("id"));
     reqBody.append("start_time", startDate);
     reqBody.append("simulation_horizon", endDate);

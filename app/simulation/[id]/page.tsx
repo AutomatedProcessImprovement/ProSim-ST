@@ -48,6 +48,9 @@ const Simulation = () => {
     const scaleRef = useRef<number>(1);
     const [stressTestState, setStressTestState] = useState<StressTestState>(INITIAL_STRESS_TEST_STATE);
     const numberOfCasesRef = useRef(numberOfCases);
+    const activeAnimationsRef = useRef<number>(0);
+    const stressSamplesRef = useRef<Array<{ elapsed_s: number; scale: number; cases: number; tokens: number; animating_tokens: number; fps: number }>>([]);
+    const stressStartMsRef = useRef<number>(0);
     const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
     const router = useRouter();
     const { id } = useParams();
@@ -96,6 +99,9 @@ const Simulation = () => {
         frameCountRef.current = 0;
         lastSecondRef.current = performance.now();
         setStressTestState(INITIAL_STRESS_TEST_STATE);
+        stressSamplesRef.current = [];
+        stressStartMsRef.current = performance.now();
+        activeAnimationsRef.current = 0;
 
         if (viewerInstanceRef.current) {
             viewerInstanceRef.current.destroy();
@@ -171,7 +177,7 @@ const Simulation = () => {
 
             const viewer = new NavigatedViewer({
                 container: viewerRef.current,
-                additionalModules: [simulation(simulationData, setNumberOfCases, setWaitingProcessingTimes, setNetworkMetrics, setNetworkActivity, scaleRef.current)]
+                additionalModules: [simulation(simulationData, setNumberOfCases, setWaitingProcessingTimes, setNetworkMetrics, setNetworkActivity, scaleRef.current, activeAnimationsRef)]
             });
             viewerInstanceRef.current = viewer;
 
@@ -199,6 +205,7 @@ const Simulation = () => {
 
     useEffect(() => {
         lastSecondRef.current = performance.now();
+        if (stressStartMsRef.current === 0) stressStartMsRef.current = performance.now();
 
         function tick(now: number) {
             frameCountRef.current += 1;
@@ -219,6 +226,15 @@ const Simulation = () => {
                         averageFps: Math.round(newHistory.reduce((s, f) => s + f, 0) / newHistory.length),
                         fpsHistory: newHistory,
                     };
+                });
+
+                stressSamplesRef.current.push({
+                    elapsed_s: Math.round((now - stressStartMsRef.current) / 1000),
+                    scale: scaleRef.current,
+                    cases: numberOfCasesRef.current.ongoing,
+                    tokens: document.querySelectorAll(".token").length,
+                    animating_tokens: Math.max(0, activeAnimationsRef.current),
+                    fps,
                 });
             }
 
@@ -247,6 +263,22 @@ const Simulation = () => {
     const handleScaleChange = (s: ScaleFactor) => {
         scaleRef.current = s;
         setScale(s);
+    };
+
+    const handleDownloadStressCsv = () => {
+        const samples = stressSamplesRef.current;
+        if (samples.length === 0) return;
+        const header = "elapsed_s,scale,cases,tokens,animating_tokens,fps\n";
+        const rows = samples
+            .map(s => `${s.elapsed_s},${s.scale},${s.cases},${s.tokens},${s.animating_tokens},${s.fps}`)
+            .join("\n");
+        const blob = new Blob([header + rows + "\n"], { type: "text/csv;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `stress-samples-${Date.now()}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
     };
 
     const workloadBars = useMemo(() => {
@@ -436,7 +468,12 @@ const Simulation = () => {
                     state={stressTestState}
                     scale={scale}
                     onScaleChange={handleScaleChange}
-                    onReset={() => setStressTestState(INITIAL_STRESS_TEST_STATE)}
+                    onReset={() => {
+                        setStressTestState(INITIAL_STRESS_TEST_STATE);
+                        stressSamplesRef.current = [];
+                        stressStartMsRef.current = performance.now();
+                    }}
+                    onDownloadCsv={handleDownloadStressCsv}
                 />
             </div>
         </div>

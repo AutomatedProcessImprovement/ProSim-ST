@@ -15,7 +15,7 @@ import {FlowTypes, LifecycleTypes, NodeTypes} from "@definitions/simulation/enum
 import axios from "axios";
 import {SimulationData} from "@definitions/api/types";
 import {formatDateString} from "@utils/dateHelpers";
-import {Dispatch, SetStateAction} from "react";
+import {Dispatch, MutableRefObject, SetStateAction} from "react";
 import {buildPathMap, calculateDurations, calculatePathLength} from "@modules/simulation/pathDurationHelpers";
 import {buildResumedWTPT, buildTimelineResumptionPatch} from "@modules/simulation/timelineResumptionHelpers";
 import {
@@ -44,7 +44,8 @@ const simulation = (
     wtptSetter: Dispatch<SetStateAction<WTPTState>>,
     queueMetricsSetter: Dispatch<SetStateAction<QueueMetricsState>>,
     networkActivitySetter: Dispatch<SetStateAction<NetworkActivityState>>,
-    scale: number = 1
+    scale: number = 1,
+    activeAnimationsRef?: MutableRefObject<number>
 ) => {
     const tokenSimulation = function(canvas: Canvas, elementRegistry: ElementRegistry) {
             let processId: string;
@@ -393,8 +394,13 @@ const simulation = (
                 );
                 const pathLength = calculatePathLength(path);
 
+                if (activeAnimationsRef) activeAnimationsRef.current += 1;
+
                 function animate() {
-                    if (abortController.signal.aborted) return;
+                    if (abortController.signal.aborted) {
+                        if (activeAnimationsRef) activeAnimationsRef.current -= 1;
+                        return;
+                    }
 
                     const elapsedTime = performance.now() - startTime;
                     const progress = Math.min(elapsedTime / duration, 1);
@@ -423,7 +429,10 @@ const simulation = (
                     tokenProgresses[caseId][tokenId] = progress;
 
                     if (progress < 1) requestAnimationFrame(animate);
-                    else onComplete();
+                    else {
+                        if (activeAnimationsRef) activeAnimationsRef.current -= 1;
+                        onComplete();
+                    }
                 }
 
                 requestAnimationFrame(animate);

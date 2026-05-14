@@ -9,9 +9,10 @@ type Props = {
     scale: ScaleFactor;
     onScaleChange: (s: ScaleFactor) => void;
     onReset: () => void;
+    onDownloadCsv: () => void;
 };
 
-export function StressTestPanel({ state, scale, onScaleChange, onReset }: Props) {
+export function StressTestPanel({ state, scale, onScaleChange, onReset, onDownloadCsv }: Props) {
     const { currentConcurrent, peakConcurrent, totalFinished, concurrencyHistory } = state;
     const hasData = concurrencyHistory.length > 0;
     const yMax = Math.max(peakConcurrent, 1);
@@ -85,6 +86,20 @@ export function StressTestPanel({ state, scale, onScaleChange, onReset }: Props)
                 )}
             </svg>
 
+            <button
+                onClick={onDownloadCsv}
+                style={{
+                    fontSize: 11,
+                    padding: "3px 10px",
+                    cursor: "pointer",
+                    borderRadius: 4,
+                    border: "1px solid #ccc",
+                    background: "#f5f5f5",
+                    marginRight: 6,
+                }}
+            >
+                Download CSV
+            </button>
             <button
                 onClick={onReset}
                 style={{
