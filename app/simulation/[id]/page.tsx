@@ -16,12 +16,6 @@ import {DEFAULT_HOURS_PER_SECOND, SPEEDS} from "@modules/simulation/speed";
 import {sampleIndexAt} from "@utils/processAnalysis";
 import TaskPanel from "@components/simulation/TaskPanel";
 import DiagramControls from "@components/simulation/DiagramControls";
-import { QueueMetricsState } from "@definitions/simulation/networkMetrics";
-import { BatchQueueChart } from "@components/BatchQueueChart";
-import { NetworkActivityChart } from "@components/NetworkActivityChart";
-import { NetworkActivityState, INITIAL_NETWORK_ACTIVITY_STATE, measureResponseBytes } from "@definitions/simulation/networkActivity";
-import { SmoothAnimationPanel } from "@components/SmoothAnimationPanel";
-import { SmoothAnimationState, INITIAL_SMOOTH_ANIMATION_STATE } from "@definitions/simulation/smoothAnimation";
 
 const Simulation = () => {
     const viewerRef = useRef(null);
@@ -32,7 +26,7 @@ const Simulation = () => {
     const [simulationData, setSimulationData] = useState<SimulationData>();
     const [workload, setWorkload] = useState<Array<number>>();
     const [cycleTimeData, setCycleTimeData] = useState<Array<number>>([]);
-    const [statsVisible, setStatsVisible] = useState(false);
+    const [statsVisible, setStatsVisible] = useState(true);
     const [numberOfCases, setNumberOfCases] = useState<{
         ongoing: number;
         finished: number;
@@ -41,12 +35,6 @@ const Simulation = () => {
         finished: 0,
     });
     const [waitingProcessingTimes, setWaitingProcessingTimes] = useState<WTPTState>({});
-    const [networkMetrics, setNetworkMetrics] = useState<QueueMetricsState | null>(null);
-    const [networkActivity, setNetworkActivity] = useState<NetworkActivityState>(INITIAL_NETWORK_ACTIVITY_STATE);
-    const [smoothAnimation, setSmoothAnimation] = useState<SmoothAnimationState>(INITIAL_SMOOTH_ANIMATION_STATE);
-    const rafIdRef = useRef<number>(0);
-    const frameCountRef = useRef<number>(0);
-    const lastSecondRef = useRef<number>(0);
     const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
     const [loadError, setLoadError] = useState<"missing" | "failed" | null>(null);
     const [analysis, setAnalysis] = useState<ProcessAnalysis | null>(null);
@@ -95,13 +83,8 @@ const Simulation = () => {
         setSimulationData(undefined);
         setWorkload(undefined);
         setCycleTimeData([]);
-        setNetworkMetrics(null);
         setAnalysis(null);
         setSelectedTaskId(null);
-        setNetworkActivity(INITIAL_NETWORK_ACTIVITY_STATE);
-        setSmoothAnimation(INITIAL_SMOOTH_ANIMATION_STATE);
-        frameCountRef.current = 0;
-        lastSecondRef.current = performance.now();
 
         if (viewerInstanceRef.current) {
             viewerInstanceRef.current.destroy();
@@ -111,12 +94,6 @@ const Simulation = () => {
         const fetchSimulationData = async () => {
             try {
                 const res = await axios.get(`/api/simulation/${processId}`);
-                const bytes = measureResponseBytes(res);
-                setNetworkActivity(prev => ({
-                    totalBytes: prev.totalBytes + bytes,
-                    requestCount: prev.requestCount + 1,
-                    samples: [...prev.samples, { t: Date.now(), bytes }],
-                }));
                 return res.data;
             } catch (error) {
                 const status = error?.response?.status;
@@ -205,7 +182,7 @@ const Simulation = () => {
 
             const viewer = new NavigatedViewer({
                 container: viewerRef.current,
-                additionalModules: [simulation(simulationData, setNumberOfCases, setWaitingProcessingTimes, setNetworkMetrics, setNetworkActivity, hooksRef.current)]
+                additionalModules: [simulation(simulationData, setNumberOfCases, setWaitingProcessingTimes, hooksRef.current)]
             });
             viewerInstanceRef.current = viewer;
 
@@ -302,38 +279,6 @@ const Simulation = () => {
                 viewerInstanceRef.current = null;
             }
         };
-    }, []);
-
-    useEffect(() => {
-        lastSecondRef.current = performance.now();
-
-        function tick(now: number) {
-            frameCountRef.current += 1;
-            const elapsed = now - lastSecondRef.current;
-
-            if (elapsed >= 1000) {
-                const fps = Math.round(frameCountRef.current * 1000 / elapsed);
-                frameCountRef.current = 0;
-                lastSecondRef.current = now;
-
-                setSmoothAnimation(prev => {
-                    const isFirst = prev.fpsHistory.length === 0;
-                    const newHistory = [...prev.fpsHistory, fps].slice(-30);
-                    return {
-                        currentFps: fps,
-                        minFps: isFirst ? fps : Math.min(prev.minFps, fps),
-                        maxFps: Math.max(prev.maxFps, fps),
-                        averageFps: Math.round(newHistory.reduce((s, f) => s + f, 0) / newHistory.length),
-                        fpsHistory: newHistory,
-                    };
-                });
-            }
-
-            rafIdRef.current = requestAnimationFrame(tick);
-        }
-
-        rafIdRef.current = requestAnimationFrame(tick);
-        return () => cancelAnimationFrame(rafIdRef.current);
     }, []);
 
     const workloadBars = useMemo(() => {
@@ -574,19 +519,6 @@ const Simulation = () => {
                     })}
                 </div>
                 </div>
-                <details className="diagnostics">
-                    <summary>Diagnostics <span className="stats-unit">(for developers)</span></summary>
-                    <NetworkActivityChart state={networkActivity} />
-                    {networkMetrics && <BatchQueueChart metrics={networkMetrics} />}
-                    <SmoothAnimationPanel
-                        state={smoothAnimation}
-                        onReset={() => {
-                            setSmoothAnimation(INITIAL_SMOOTH_ANIMATION_STATE);
-                            frameCountRef.current = 0;
-                            lastSecondRef.current = performance.now();
-                        }}
-                    />
-                </details>
             </div>
         </div>
     </>;

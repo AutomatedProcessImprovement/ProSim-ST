@@ -32,6 +32,8 @@ export const DOT_RADIUS = 6;
 const DOT_SPACING = 14;
 // Distance of the first waiting dot from the arrowhead
 const QUEUE_OFFSET = 10;
+// Room kept between the dots in work and the task's border
+const TASK_INSET = 4;
 
 export const isTaskType = (type?: string) => Boolean(type && /Task$/.test(type));
 
@@ -65,9 +67,28 @@ export function pointBeforeEnd(waypoints: Waypoint[], distance: number): Waypoin
     return waypoints[0];
 }
 
+export function polylineLength(waypoints: Waypoint[]): number {
+    let length = 0;
+    for (let i = 1; i < waypoints.length; i++) {
+        length += Math.hypot(waypoints[i].x - waypoints[i - 1].x, waypoints[i].y - waypoints[i - 1].y);
+    }
+    return length;
+}
+
+// How many dots fit on the element: as many as the arrow is long or the task is wide, at most five, at least one
+export function slotCapacity(element: LayoutElement): number {
+    let fitting = MAX_VISIBLE_DOTS;
+    if (element.type === FlowTypes.FLOW) {
+        fitting = Math.floor((polylineLength(element.waypoints ?? []) - QUEUE_OFFSET - DOT_RADIUS) / DOT_SPACING) + 1;
+    } else if (isTaskType(element.type)) {
+        fitting = Math.floor(((element.width ?? 0) - 2 * (TASK_INSET + DOT_RADIUS)) / DOT_SPACING) + 1;
+    }
+    return Math.max(1, Math.min(MAX_VISIBLE_DOTS, fitting));
+}
+
 // Position of dot number `index` out of `count` visible dots resting on the element. Queues line up on the arrow
-// from the arrowhead backwards (first in line nearest to the task), dots in work sit in a row under the task, and
-// anything else gathers around the element's centre.
+// from the arrowhead backwards (first in line nearest to the task), dots in work sit in a row inside the task along
+// its bottom edge, and anything else gathers around the element's centre.
 export function slotPosition(element: LayoutElement, index: number, count: number): Waypoint {
     if (element.type === FlowTypes.FLOW) {
         const waypoints = element.waypoints ?? [];
@@ -79,7 +100,7 @@ export function slotPosition(element: LayoutElement, index: number, count: numbe
     const centreX = x + width / 2;
 
     if (isTaskType(element.type)) {
-        return {x: centreX + (index - (count - 1) / 2) * DOT_SPACING, y: y + height + DOT_SPACING / 2 + 2};
+        return {x: centreX + (index - (count - 1) / 2) * DOT_SPACING, y: y + height - DOT_RADIUS - TASK_INSET};
     }
 
     if (index === 0) return {x: centreX, y: y + height / 2};

@@ -39,8 +39,8 @@ import {
     DOT_RADIUS,
     heatOpacity,
     isTaskType,
-    MAX_VISIBLE_DOTS,
     RestPlace,
+    slotCapacity,
     slotPosition,
     STATE_COLORS,
 } from "@modules/simulation/restLayout";
@@ -52,8 +52,6 @@ import {
     msPerSimulatedHour,
 } from "@modules/simulation/speed";
 import {toUtcMs} from "@utils/processAnalysis";
-import { QueueMetricsState } from "@definitions/simulation/networkMetrics";
-import { NetworkActivityState, measureResponseBytes } from "@definitions/simulation/networkActivity";
 
 const HOUR = 3600000;
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -77,8 +75,6 @@ const simulation = (
         finished: number
     }>>,
     wtptSetter: Dispatch<SetStateAction<WTPTState>>,
-    queueMetricsSetter: Dispatch<SetStateAction<QueueMetricsState>>,
-    networkActivitySetter: Dispatch<SetStateAction<NetworkActivityState>>,
     hooks: SimulationHooks = {},
 ) => {
     const tokenSimulation = function(canvas: Canvas, elementRegistry: ElementRegistry, eventBus?: EventBus) {
@@ -118,7 +114,6 @@ const simulation = (
             let utcOffset = "+00:00";
             let abortController: AbortController = new AbortController();
             let hasEnded = false;
-            let currentBatchIndex = 0;
             let colorMode: ColorMode = "state";
             let agePaintInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -128,6 +123,8 @@ const simulation = (
             const animating = new Set<string>();
             const taskCounts = new Map<string, {waiting: number; inWork: number}>();
             const dirtyGroups = new Set<string>();
+            // Places with more dots than fit on them; their task shows a count instead
+            const overflowing = new Map<string, RestPlace>();
             let layoutScheduled = false;
             const pills = new Map<string, {waiting: SVGGElement; inWork: SVGGElement}>();
             const shadedTasks = new Set<string>();
@@ -268,17 +265,24 @@ const simulation = (
                 const members = [...(groups.get(groupId) ?? [])]
                     .map(key => rests.get(key))
                     .filter((rest): rest is Rest => Boolean(rest));
+                overflowing.delete(groupId);
                 if (!members.length) groups.delete(groupId);
                 if (!element || !members.length) return;
 
                 // First in line nearest to the task
                 members.sort((a, b) => (sinceOf(a) ?? 0) - (sinceOf(b) ?? 0));
-                const visible = Math.min(members.length, MAX_VISIBLE_DOTS);
+                // Only as many dots as the arrow is long or the task is wide; when cases in work do not all fit,
+                // the task's count replaces their dots
+                const capacity = slotCapacity(element);
+                const fits = members.length <= capacity;
+                const hideAll = !fits && members[0].place.kind === "working";
+                const visible = Math.min(members.length, capacity);
+                if (!fits) overflowing.set(groupId, members[0].place);
                 members.forEach((rest, index) => {
                     const token = tokens[rest.caseId]?.[rest.tokenId];
                     if (!token) return;
                     setTokenPosition(token, slotPosition(element, Math.min(index, visible - 1), visible));
-                    token.style.visibility = index < MAX_VISIBLE_DOTS ? "" : "hidden";
+                    token.style.visibility = !hideAll && index < capacity ? "" : "hidden";
                 });
             }
 
@@ -327,6 +331,11 @@ const simulation = (
                 let maxWaiting = 0;
                 taskCounts.forEach(({waiting}) => { maxWaiting = Math.max(maxWaiting, waiting); });
 
+                const overflowingTasks = {waiting: new Set<string>(), working: new Set<string>()};
+                overflowing.forEach(place => {
+                    if (place.taskId && (place.kind === "waiting" || place.kind === "working")) overflowingTasks[place.kind].add(place.taskId);
+                });
+
                 const taskIds = new Set([...taskCounts.keys(), ...shadedTasks, ...pills.keys()]);
                 taskIds.forEach(taskId => {
                     const shape = getElement(taskId) as Node | undefined;
@@ -342,16 +351,20 @@ const simulation = (
                     if (opacity) shadedTasks.add(taskId);
                     else shadedTasks.delete(taskId);
 
+                    // A count as soon as some of the task's dots do not fit: above the task for the queue, inside
+                    // it along the bottom (where its dots would be) for the cases in work
+                    const showWaiting = overflowingTasks.waiting.has(taskId);
+                    const showInWork = overflowingTasks.working.has(taskId);
                     let taskPills = pills.get(taskId);
-                    if (!taskPills && (waiting > MAX_VISIBLE_DOTS || inWork > MAX_VISIBLE_DOTS)) {
+                    if (!taskPills && (showWaiting || showInWork)) {
                         taskPills = {waiting: createPill(taskId, "waiting"), inWork: createPill(taskId, "in-work")};
                         pills.set(taskId, taskPills);
                     }
                     if (!taskPills) return;
-                    updatePill(taskPills.waiting, waiting > MAX_VISIBLE_DOTS ? `${waiting} waiting` : null,
+                    updatePill(taskPills.waiting, showWaiting ? `${waiting} waiting` : null,
                         shape.x + shape.width / 2, shape.y - 23, true);
-                    updatePill(taskPills.inWork, inWork > MAX_VISIBLE_DOTS ? `${inWork} in work` : null,
-                        shape.x + shape.width / 2, shape.y + shape.height + 18, true);
+                    updatePill(taskPills.inWork, showInWork ? `${inWork} in work` : null,
+                        shape.x + shape.width / 2, shape.y + shape.height - 23, true);
                 });
 
                 reportLoad();
@@ -527,6 +540,7 @@ const simulation = (
                 animating.clear();
                 taskCounts.clear();
                 dirtyGroups.clear();
+                overflowing.clear();
                 renderLoad();
             }
 
@@ -557,6 +571,8 @@ const simulation = (
                         if (!animating.has(key) && rests.get(key)?.elementId !== elementId) settle(caseId, tokenId, elementId);
                     });
                 });
+                // Line the dots up before the next paint, so new ones never show piled up for a frame
+                flushLayout();
             }
 
             function handleBatchEvents({caseId, batchEvents, batchDuration}: { caseId: number; batchEvents: Array<BatchEvent>; batchDuration: number }): Promise<void> {
@@ -940,11 +956,19 @@ const simulation = (
                 batchesQueue = action.nextQueue;
                 currentBatchUnfinished = false;
                 playPauseButton.innerHTML = "⏸";
-                clearTokens();
                 isPaused = false;
                 isResumed = action.resetPatch.isResumed;
                 abortController = new AbortController();
-                setTimeout(runSimulation, 10);
+                restartFromFrames();
+            }
+
+            // Redraws the dots from the case positions and plays on. The old dots go in the same step as the new
+            // ones are drawn, so the diagram never shows empty in between.
+            function restartFromFrames() {
+                setTimeout(() => {
+                    clearTokens();
+                    runSimulation();
+                }, 10);
             }
 
             function updatePlaybackSpeed(newSpeed: number) {
@@ -962,11 +986,10 @@ const simulation = (
                     setTimeout(() => {
                         batchesQueue = action.nextQueue;
                         currentBatchUnfinished = false;
-                        clearTokens();
                         isResumed = action.resetPatch.isResumed;
                         delta = calculatePlaybackDelta(defaultDelta, newSpeed);
                         abortController = new AbortController();
-                        setTimeout(runSimulation, 10);
+                        restartFromFrames();
                     }, 300);
                 } else {
                     delta = calculatePlaybackDelta(defaultDelta, newSpeed);
@@ -982,7 +1005,6 @@ const simulation = (
                     const patch = buildTimelineResumptionPatch(res.data, isPaused);
 
                     queueGeneration++;
-                    clearTokens();
                     tokenProgresses = patch.tokenProgresses;
                     localProgress = patch.localProgress;
                     batchesQueue = patch.batchesQueue;
@@ -990,20 +1012,6 @@ const simulation = (
                     frames = patch.frames;
                     batchesPointer = patch.batchesPointer;
                     seedTaskTimes(res.data.wtpt);
-
-                    currentBatchIndex = Math.round((progress / 100) * Math.ceil(totalDuration / HOUR));
-                    queueMetricsSetter(prev => ({
-                        totalBatches: prev.totalBatches,
-                        totalDuration: prev.totalDuration,
-                        samples: [{ batchIndex: currentBatchIndex, queueLength: patch.batchesQueue.length }],
-                    }));
-
-                    const resumptionBytes = measureResponseBytes(res);
-                    networkActivitySetter({
-                        totalBytes: resumptionBytes,
-                        requestCount: 1,
-                        samples: [{ t: Date.now(), bytes: resumptionBytes }],
-                    });
 
                     caseNumberSetter(patch.caseNumbers);
 
@@ -1015,23 +1023,13 @@ const simulation = (
                     }
                     hasEnded = false;
                     abortController = new AbortController();
-                    setTimeout(runSimulation, 10);
+                    restartFromFrames();
                 } catch (error) {
                     console.log(error);
                 }
             }
 
             // ---- Loading batches ----
-
-            function emitQueueSample(queueLength: number) {
-                queueMetricsSetter(prev => ({
-                    ...prev,
-                    samples: [...prev.samples.slice(-49), {
-                        batchIndex: currentBatchIndex,
-                        queueLength,
-                    }],
-                }));
-            }
 
             function topBatchesQueueUp(): Promise<void> {
                 if (fetchPromise) return fetchPromise;
@@ -1040,16 +1038,9 @@ const simulation = (
                 fetchPromise = (async () => {
                     try {
                         const res = await axios.get(`/api/simulation/${processId}/polling?pointer=${batchesPointer}&limit=${batchFetchLimit(delta)}`);
-                        const bytes = measureResponseBytes(res);
-                        networkActivitySetter(prev => ({
-                            totalBytes: prev.totalBytes + bytes,
-                            requestCount: prev.requestCount + 1,
-                            samples: [...prev.samples, { t: Date.now(), bytes }],
-                        }));
                         if (generation !== queueGeneration) return;
                         batchesQueue.push(...res.data.batches);
                         batchesPointer = res.data.pointer;
-                        emitQueueSample(batchesQueue.length);
                     } catch (error) {
                         console.log(error);
                     } finally {
@@ -1105,8 +1096,6 @@ const simulation = (
 
                     currentBatch = batchesQueue.shift()!;
                     currentBatchUnfinished = true;
-                    currentBatchIndex++;
-                    emitQueueSample(batchesQueue.length);
                     topUpIfNeeded();
 
                     const batchDuration = toUtcMs(currentBatch.endDate) - toUtcMs(currentBatch.startDate);
@@ -1169,16 +1158,12 @@ const simulation = (
 
                         while (batchesQueue.length && toUtcMs(batchesQueue[0].endDate) <= applyUntil) {
                             currentBatch = batchesQueue.shift()!;
-                            currentBatchIndex++;
                             noteBatchEvents(currentBatch.events);
                             applyBatch(currentBatch);
                             appliedUntil = toUtcMs(currentBatch.endDate);
                             applied = true;
                         }
-                        if (applied) {
-                            reconcileWithFrames();
-                            emitQueueSample(batchesQueue.length);
-                        }
+                        if (applied) reconcileWithFrames();
                         topUpIfNeeded();
 
                         const moreToLoad = batchesPointer > 0;
@@ -1263,14 +1248,6 @@ const simulation = (
                     abortController.abort();
                     if (agePaintInterval) clearInterval(agePaintInterval);
                     if (loadReportTimeout) clearTimeout(loadReportTimeout);
-                });
-
-                currentBatchIndex = 0;
-                const totalBatches = Math.ceil(totalDuration / HOUR);
-                queueMetricsSetter({
-                    totalBatches,
-                    totalDuration,
-                    samples: [{ batchIndex: 0, queueLength: simulationData.batches.length }],
                 });
 
                 runSimulation();

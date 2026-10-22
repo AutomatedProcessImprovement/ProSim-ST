@@ -128,7 +128,6 @@ describe("Simulation page", () => {
 
         expect(screen.getByText("Statistics")).toBeInTheDocument();
         expect(screen.getByText("Task One")).toBeInTheDocument();
-        fireEvent.click(screen.getByRole("button", {name: "◀"}));
         fireEvent.click(screen.getByRole("button", {name: "A→Z"}));
         expect(screen.getByRole("button", {name: "Z→A"})).toBeInTheDocument();
     });
@@ -328,23 +327,23 @@ describe("Simulation page", () => {
             expect(screen.getByRole("link", {name: "← New simulation"})).toHaveAttribute("href", "/");
         });
 
-        it("labels the cycle-time chart, marks tasks without data, and keeps diagnostics collapsed", async () => {
+        it("labels the cycle-time chart, marks tasks without data, and shows no diagnostics", async () => {
             await renderLoaded();
 
             expect(await screen.findByText("2.0")).toBeInTheDocument();
             expect(screen.getByText("1 Jan")).toBeInTheDocument();
             expect(screen.getByText("8 Jan")).toBeInTheDocument();
             expect(screen.getAllByText("No data yet").length).toBeGreaterThan(0);
-            expect(screen.getByText("Diagnostics").closest("details")).not.toHaveAttribute("open");
+            expect(screen.queryByText("Diagnostics")).not.toBeInTheDocument();
         });
 
-        it("refits the diagram when the stats panel is opened", async () => {
+        it("opens the stats panel by default and refits the diagram when it is toggled", async () => {
             jest.useFakeTimers();
             try {
                 await renderLoaded();
                 canvasZoomMock.mockClear();
 
-                fireEvent.click(screen.getByRole("button", {name: "◀"}));
+                fireEvent.click(screen.getByRole("button", {name: "▶"}));
                 jest.advanceTimersByTime(400);
 
                 expect(canvasResizedMock).toHaveBeenCalled();
@@ -401,7 +400,7 @@ describe("Simulation page", () => {
             });
             render(<Simulation />);
             await waitFor(() => expect(importXMLMock).toHaveBeenCalled());
-            const hooks = (simulationModule as jest.Mock).mock.calls[0][5];
+            const hooks = (simulationModule as jest.Mock).mock.calls[0][3];
             // The analysis has loaded once the simulation can read from it
             await waitFor(() => expect(hooks.getAverageCycleTime()).toBe(48 * HOUR));
             return hooks;

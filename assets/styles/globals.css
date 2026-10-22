@@ -670,14 +670,6 @@ h1 {
   right: 0;
 }
 
-.diagnostics > summary {
-  cursor: pointer;
-  font-weight: bold;
-  font-size: 18px;
-  padding: 8px 0;
-  border-top: 2px dashed #888888;
-}
-
 .stats-element-chart > .x-axis-label {
     position: absolute;
     right: 0;

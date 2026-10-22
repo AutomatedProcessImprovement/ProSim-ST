@@ -132,7 +132,7 @@ function setup({
         file: Buffer.from(""),
         pointer,
     };
-    const pluginDef = simulation(simulationData, caseNumberSetter, wtptSetter, jest.fn(), jest.fn(), hooks) as unknown as {
+    const pluginDef = simulation(simulationData, caseNumberSetter, wtptSetter, hooks) as unknown as {
         tokenSimulation: [string, (this: TokenSimulationApi, canvas: Canvas, registry: ElementRegistry, bus: EventBus) => void];
     };
     const api = {} as TokenSimulationApi;
@@ -170,7 +170,7 @@ describe("modules/simulation/index", () => {
     });
 
     describe("where the dots rest", () => {
-        it("queues waiting cases on the arrow into the task and counts them once there are more than five", async () => {
+        it("queues waiting cases on the arrow into the task, as many as fit, and counts them when some do not fit", async () => {
             const {api, dots, position, visible, container, graphics} = setup({frames: waitingAt(7), batches: emptyBatches(0, 6)});
             api.start();
             await play(50);
@@ -180,7 +180,8 @@ describe("modules/simulation/index", () => {
             // First in line next to the arrowhead, the next ones further back on the arrow
             expect(position(dots()[0])).toEqual([90, 38]);
             expect(position(dots()[1])).toEqual([76, 38]);
-            expect(dots().filter(visible)).toHaveLength(5);
+            // The 64 long arrow has room for four dots
+            expect(dots().filter(visible)).toHaveLength(4);
 
             const pill = container.querySelector(".load-pill.waiting");
             expect(pill.textContent).toBe("7 waiting");
@@ -191,7 +192,7 @@ describe("modules/simulation/index", () => {
             expect((graphics.Task_A.querySelector("rect") as SVGRectElement).style.fill).toContain("rgba(245, 158, 11");
         });
 
-        it("puts cases in work in a row under the task, off its label", async () => {
+        it("puts cases in work in a row inside the task along its bottom edge", async () => {
             const {api, dots, position} = setup({
                 frames: [{caseId: 1, activeElements: {token_0: "Task_A"}}, {caseId: 2, activeElements: {token_0: "Task_A"}}],
                 batches: emptyBatches(0, 6),
@@ -199,8 +200,41 @@ describe("modules/simulation/index", () => {
             api.start();
             await play(50);
 
-            expect(dots().map(position)).toEqual([[143, 89], [157, 89]]);
+            expect(dots().map(position)).toEqual([[143, 70], [157, 70]]);
             expect(dots().every(dot => dot.getAttribute("fill") === STATE_COLORS.working)).toBe(true);
+        });
+
+        it("shows the count instead of the dots when the cases in work do not fit in the task", async () => {
+            const {api, dots, visible, container} = setup({
+                frames: Array.from({length: 7}, (_, i) => ({caseId: i + 1, activeElements: {token_0: "Task_A"}})),
+                batches: emptyBatches(0, 6),
+            });
+            api.start();
+            await play(50);
+
+            expect(dots().filter(visible)).toHaveLength(0);
+            const pill = container.querySelector(".load-pill.in-work");
+            expect(pill.textContent).toBe("7 in work");
+            // Inside the task (y 0-80), along its bottom
+            expect(Number(pill.querySelector("rect").getAttribute("y"))).toBe(57);
+            expect((container.querySelector(".load-pill.waiting") as SVGGElement).style.display).toBe("none");
+        });
+
+        it("counts a short queue as soon as one of its dots does not fit", async () => {
+            const {api, dots, visible, container} = setup({frames: waitingAt(5), batches: emptyBatches(0, 6)});
+            api.start();
+            await play(50);
+
+            expect(dots().filter(visible)).toHaveLength(4);
+            expect(container.querySelector(".load-pill.waiting").textContent).toBe("5 waiting");
+        });
+
+        it("shows no count while every dot fits", async () => {
+            const {api, container} = setup({frames: waitingAt(4), batches: emptyBatches(0, 6)});
+            api.start();
+            await play(50);
+
+            expect(container.querySelector(".load-pill")).toBeNull();
         });
 
         it("gives a task its own fill back once its queue is empty", async () => {
@@ -429,7 +463,7 @@ describe("modules/simulation/index", () => {
             // 1 day/s: two simulated hours pass in about 85 ms
             await play(100);
             expect(dotsOf(1)).toHaveLength(1);
-            expect(position(dotsOf(1)[0])).toEqual([150, 89]);
+            expect(position(dotsOf(1)[0])).toEqual([150, 70]);
             expect(dotsOf(1)[0].getAttribute("fill")).toBe(STATE_COLORS.working);
             expect(counters.ongoing).toBe(1);
 
@@ -466,6 +500,23 @@ describe("modules/simulation/index", () => {
             expect(button.innerHTML).toBe("⏸");
             await play(1500);
             expect(document.getElementById("simulated-time-box").textContent).not.toBe(pausedAt);
+        });
+
+        it("keeps the dots lined up while resuming, without an empty or piled-up frame", async () => {
+            const {api, dots, visible} = setup({frames: waitingAt(7), batches: emptyBatches(0, 6)});
+            api.start();
+            await play(500);
+            const button = document.getElementById("play-pause-btn");
+            button.click();
+            await play(500);
+
+            button.click();
+            expect(dots().filter(visible)).toHaveLength(4);
+            // The dots are redrawn without waiting for an animation frame
+            jest.advanceTimersByTime(10);
+            await flush();
+            expect(dots()).toHaveLength(7);
+            expect(dots().filter(visible)).toHaveLength(4);
         });
 
         it("jumps to a moment: redraws the cases from the server's state with their waiting times", async () => {

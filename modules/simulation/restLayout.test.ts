@@ -5,6 +5,8 @@ import {
     heatOpacity,
     isTaskType,
     pointBeforeEnd,
+    polylineLength,
+    slotCapacity,
     slotPosition,
 } from "@modules/simulation/restLayout";
 import {FlowTypes, NodeTypes} from "@definitions/simulation/enums";
@@ -45,10 +47,28 @@ describe("slot positions", () => {
     it("queues on arrows, lines up under tasks and gathers around other elements", () => {
         expect(slotPosition(flowTo("bpmn:Task"), 0, 3)).toEqual({x: 40, y: 20});
         expect(slotPosition(flowTo("bpmn:Task"), 1, 3)).toEqual({x: 26, y: 20});
-        expect(slotPosition(task, 0, 1)).toEqual({x: 150, y: 89});
-        expect(slotPosition(task, 0, 3)).toEqual({x: 136, y: 89});
+        expect(slotPosition(task, 0, 1)).toEqual({x: 150, y: 70});
+        expect(slotPosition(task, 0, 3)).toEqual({x: 136, y: 70});
         expect(slotPosition({type: NodeTypes.EXCLUSIVE_GATEWAY, x: 0, y: 0, width: 50, height: 50}, 0, 2)).toEqual({x: 25, y: 25});
         expect(slotPosition({type: FlowTypes.FLOW, waypoints: []}, 0, 1)).toEqual({x: 0, y: 0});
+    });
+});
+
+describe("slot capacity", () => {
+    it("fits as many dots as the arrow is long, at least one and at most five", () => {
+        const arrow = (length: number) => ({type: FlowTypes.FLOW, waypoints: [{x: 0, y: 0}, {x: length, y: 0}]});
+        expect(polylineLength(flowTo("bpmn:Task").waypoints)).toBe(70);
+        expect(slotCapacity(arrow(10))).toBe(1);
+        expect(slotCapacity(arrow(30))).toBe(2);
+        expect(slotCapacity(arrow(64))).toBe(4);
+        expect(slotCapacity(arrow(500))).toBe(5);
+    });
+
+    it("fits as many dots as the task is wide", () => {
+        expect(slotCapacity(task)).toBe(5);
+        expect(slotCapacity({...task, width: 50})).toBe(3);
+        expect(slotCapacity({...task, width: 10})).toBe(1);
+        expect(slotCapacity({type: NodeTypes.EXCLUSIVE_GATEWAY})).toBe(5);
     });
 });
 
