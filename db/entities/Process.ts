@@ -14,6 +14,10 @@ export class Process {
     @Column({ type: "datetime" })
     endDate: string;
 
+    // UTC offset of the uploaded log (e.g. "+02:00"), used to show times as they appear in the log
+    @Column({ type: "varchar", length: 6, nullable: true })
+    utcOffset: string | null;
+
     @Column({ type: "datetime", default: () => "CURRENT_TIMESTAMP" })
     lastAccessedAt: Date;
 

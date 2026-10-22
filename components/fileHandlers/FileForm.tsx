@@ -5,6 +5,9 @@ import FileItem from "@components/fileHandlers/FileItem";
 import FileInput from "@components/fileHandlers/FileInput";
 import FilePreview from "@components/fileHandlers/FilePreview";
 import {PlayIcon} from "@heroicons/react/24/solid";
+import {BeakerIcon} from "@heroicons/react/24/outline";
+import {toast} from "sonner";
+import {SAMPLE_FILES, SAMPLE_PROCESSES} from "@definitions/samples";
 import {DataContext} from "@context/DataContext";
 import {parseCsvFile} from "@utils/fileHelpers";
 import {useRouter} from "next/navigation";
@@ -14,6 +17,7 @@ import {CsvContext} from "@context/CsvContext";
 const FileForm = () => {
     const [files, setFiles] = useState<File[]>([]);
     const [preview, setPreview] = useState<File | null>(null)
+    const [loadingSample, setLoadingSample] = useState<string | null>(null);
     const { setData } = useContext(DataContext);
     const { setCsvData } = useContext(CsvContext);
     const router = useRouter();
@@ -30,35 +34,53 @@ const FileForm = () => {
         setFiles([...files, ..._files.filter(file => !filenames.includes(file.name))]);
     };
 
-    const onFormSubmit = async (e) => {
-        e.preventDefault();
+    // Starts the setup for a new log. The mapping and starting point of a previous log no longer apply.
+    const startSetup = async (logFile: File, configFiles: { bpmnFile?: File, jsonFile?: File } = {}) => {
+        const { fileHeaders, fileFirstLine, fileLastLine } = await parseCsvFile(logFile);
 
-        let headers = new Array<string>();
-        let firstLine = new Array<string>();
-        let lastLine = new Array<string>();
-
-        for (const file of files) {
-            const { fileHeaders, fileFirstLine, fileLastLine } = await parseCsvFile(file);
-
-            headers = Array.from(
-                new Set([...headers, ...fileHeaders])
-            );
-            firstLine = fileFirstLine;
-            lastLine = fileLastLine;
-        }
         setData(prevData => ({
             ...prevData,
             id: uuid(),
-            logFile: files[0],
+            mapping: {},
+            config: { ...prevData.config, startingPoint: '' },
+            logFile,
+            bpmnFile: configFiles.bpmnFile ?? null,
+            jsonFile: configFiles.jsonFile ?? null,
         }));
         setCsvData(prevData => ({
             ...prevData,
-            headers,
-            firstLine,
-            lastLine,
+            headers: fileHeaders,
+            firstLine: fileFirstLine,
+            lastLine: fileLastLine,
         }));
 
         router.push('/setup');
+    }
+
+    const onFormSubmit = async (e) => {
+        e.preventDefault();
+        if (files.length === 0) return;
+        await startSetup(files[0]);
+    }
+
+    const onSampleSelected = async (name: string) => {
+        if (loadingSample) return;
+        setLoadingSample(name);
+
+        try {
+            const [logFile, bpmnFile, jsonFile] = await Promise.all(
+                [SAMPLE_FILES.log, SAMPLE_FILES.bpmn, SAMPLE_FILES.json].map(async ({ fileName, contentType }) => {
+                    const response = await fetch(`/api/samples/${name}/${fileName}`);
+                    if (!response.ok) throw new Error(`Could not load ${fileName}`);
+                    return new File([await response.blob()], fileName, { type: contentType });
+                })
+            );
+            await startSetup(logFile, { bpmnFile, jsonFile });
+        } catch (error) {
+            console.log(error);
+            toast.error('Could not load the sample', { description: 'Please try again in a moment.' });
+            setLoadingSample(null);
+        }
     }
 
     return (
@@ -79,6 +101,19 @@ const FileForm = () => {
                   disabled = { files.length === 0 } type = 'submit'>
               Configure & Run <PlayIcon className = 'size-4'/>
           </button>
+          <div className='flex flex-wrap items-center justify-center gap-2 text-sm text-slate-600'>
+              <BeakerIcon className='size-4'/>
+              <span>No log at hand? Try with sample data:</span>
+              {
+                  SAMPLE_PROCESSES.map(sample =>
+                      <button key={sample.name} type='button' onClick={() => onSampleSelected(sample.name)}
+                              disabled={loadingSample !== null}
+                              className='rounded-2xl border border-slate-300 bg-white px-3 py-1 font-semibold hover:bg-slate-100 disabled:text-slate-300'>
+                          {loadingSample === sample.name ? 'Loading…' : `${sample.label} (${sample.size})`}
+                      </button>
+                  )
+              }
+          </div>
       </form>
     );
 }

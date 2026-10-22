@@ -19,6 +19,8 @@ jest.mock("axios", () => ({
 const destroyMock = jest.fn();
 const importXMLMock = jest.fn();
 const getMock = jest.fn();
+const canvasZoomMock = jest.fn();
+const canvasResizedMock = jest.fn();
 
 jest.mock("bpmn-js/lib/NavigatedViewer", () => {
     return jest.fn().mockImplementation(() => ({
@@ -66,7 +68,7 @@ describe("Simulation page", () => {
 
         getMock.mockImplementation((name: string) => {
             if (name === "canvas") {
-                return {zoom: jest.fn()};
+                return {zoom: canvasZoomMock, resized: canvasResizedMock};
             }
             if (name === "tokenSimulation") {
                 return {start: jest.fn()};
@@ -131,19 +133,32 @@ describe("Simulation page", () => {
         expect(screen.getByRole("button", {name: "Z→A"})).toBeInTheDocument();
     });
 
-    it("redirects to home when initial simulation fetch fails", async () => {
+    it("says the simulation was not found or expired when the API returns 404", async () => {
         (axios.get as jest.Mock).mockImplementation((url: string) => {
             if (url === "/api/simulation/p1") {
-                return Promise.reject(new Error("not found"));
+                return Promise.reject({response: {status: 404}});
             }
             return Promise.resolve({data: []});
         });
 
         render(<Simulation />);
 
-        await waitFor(() => {
-            expect(replaceMock).toHaveBeenCalledWith("/");
+        expect(await screen.findByText("Simulation not found or expired")).toBeInTheDocument();
+        expect(screen.getByRole("link", {name: "Start a new simulation"})).toHaveAttribute("href", "/");
+        expect(replaceMock).not.toHaveBeenCalled();
+    });
+
+    it("asks to reload when the simulation fails to load for another reason", async () => {
+        (axios.get as jest.Mock).mockImplementation((url: string) => {
+            if (url === "/api/simulation/p1") {
+                return Promise.reject(new Error("network down"));
+            }
+            return Promise.resolve({data: []});
         });
+
+        render(<Simulation />);
+
+        expect(await screen.findByText("The simulation could not be loaded")).toBeInTheDocument();
     });
 
     it("does not fetch when route id is missing", () => {
@@ -256,6 +271,87 @@ describe("Simulation page", () => {
             expect(destroyMock).toHaveBeenCalled();
         });
     });
+
+    describe("toolbar, shortcuts and stats panel", () => {
+        const mockLoadedSimulation = () => {
+            (axios.get as jest.Mock).mockImplementation((url: string) => {
+                if (url === "/api/simulation/p1") {
+                    return Promise.resolve({
+                        data: {
+                            processId: "p1",
+                            batches: [],
+                            frames: [],
+                            file: Buffer.from("<xml />"),
+                            startDate: "2024-01-01 00:00:00",
+                            endDate: "2024-01-08 00:00:00",
+                            utcOffset: "+02:00",
+                            pointer: 0,
+                        },
+                    });
+                }
+                if (url === "/api/simulation/p1/cycle-time") {
+                    return Promise.resolve({data: [3600000, 7200000]});
+                }
+                return Promise.resolve({data: [1, 2]});
+            });
+        };
+
+        const renderLoaded = async () => {
+            mockLoadedSimulation();
+            render(<Simulation />);
+            await waitFor(() => expect(importXMLMock).toHaveBeenCalled());
+        };
+
+        it("plays/pauses with Space and jumps with Home/End, but not while typing in a control", async () => {
+            await renderLoaded();
+            const clicks: string[] = [];
+            ["play-pause-btn", "go-to-start-btn", "go-to-end-btn"].forEach(id =>
+                document.getElementById(id)!.addEventListener("click", () => clicks.push(id)));
+
+            fireEvent.keyDown(window, {key: " "});
+            fireEvent.keyDown(window, {key: "Home"});
+            fireEvent.keyDown(window, {key: "End"});
+            fireEvent.keyDown(document.getElementById("speed-select")!, {key: " "});
+            fireEvent.keyDown(screen.getByRole("button", {name: "Copy link"}), {key: " "});
+
+            expect(clicks).toEqual(["play-pause-btn", "go-to-start-btn", "go-to-end-btn"]);
+        });
+
+        it("copies the simulation link and links to a new simulation", async () => {
+            const writeText = jest.fn().mockResolvedValue(undefined);
+            Object.defineProperty(navigator, "clipboard", {value: {writeText}, configurable: true});
+            await renderLoaded();
+
+            fireEvent.click(screen.getByRole("button", {name: "Copy link"}));
+
+            await waitFor(() => expect(writeText).toHaveBeenCalledWith(window.location.href));
+            expect(screen.getByRole("link", {name: "← New simulation"})).toHaveAttribute("href", "/");
+        });
+
+        it("labels the cycle-time chart, marks tasks without data, and keeps diagnostics collapsed", async () => {
+            await renderLoaded();
+
+            expect(await screen.findByText("2.0")).toBeInTheDocument();
+            expect(screen.getByText("1 Jan")).toBeInTheDocument();
+            expect(screen.getByText("8 Jan")).toBeInTheDocument();
+            expect(screen.getAllByText("No data yet").length).toBeGreaterThan(0);
+            expect(screen.getByText("Diagnostics").closest("details")).not.toHaveAttribute("open");
+        });
+
+        it("refits the diagram when the stats panel is opened", async () => {
+            jest.useFakeTimers();
+            try {
+                await renderLoaded();
+                canvasZoomMock.mockClear();
+
+                fireEvent.click(screen.getByRole("button", {name: "◀"}));
+                jest.advanceTimersByTime(400);
+
+                expect(canvasResizedMock).toHaveBeenCalled();
+                expect(canvasZoomMock).toHaveBeenCalledWith("fit-viewport");
+            } finally {
+                jest.useRealTimers();
+            }
+        });
+    });
 });
-
-

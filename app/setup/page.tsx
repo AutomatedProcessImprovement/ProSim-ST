@@ -1,6 +1,6 @@
 "use client";
 
-import {useContext, useEffect, useState} from "react";
+import {useContext, useEffect, useRef, useState} from "react";
 import {DataContext} from "@context/DataContext";
 import {useRouter} from "next/navigation";
 import {
@@ -19,9 +19,20 @@ import {ConfigInput, SimulationHorizonInput, StartingPointInput} from "@componen
 import {CsvContext} from "@context/CsvContext";
 import {clsx} from "clsx/lite";
 import axios from "axios";
-import {calculateEndDate} from "@utils/dateHelpers";
+import {calculateEndDate, formatHorizon, formatReadableDate, formatUtcOffset, logTimeToUtc} from "@utils/dateHelpers";
 import Loader from "@components/Loader";
-import {getCellByHeader, normalizeLogDate} from "@utils/fileHelpers";
+import {getCellByHeader, getLogUtcOffset, normalizeLogDate} from "@utils/fileHelpers";
+import {clearSetup, loadSetup, saveSetup} from "@utils/setupStorage";
+import {CaseSpans, countOngoingCases, readCaseSpans} from "@utils/ongoingCases";
+
+const MAPPING_LABELS: Record<string, string> = {
+    case: 'Case ID',
+    activity: 'Activity',
+    enablement: 'Enablement',
+    start: 'Start',
+    end: 'End',
+    resource: 'Resource',
+};
 
 const Setup = () => {
     const { data, setData } = useContext(DataContext);
@@ -30,17 +41,82 @@ const Setup = () => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const router = useRouter();
 
+    const [isRestoring, setIsRestoring] = useState(!data.id);
+    const [caseSpans, setCaseSpans] = useState<CaseSpans | null>(null);
+    const saveTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+    // After a refresh the in-memory setup is gone: restore it from this browser, or go back to the upload page
     useEffect(() => {
-        if (!data.id) {
-            router.replace('/');
-        }
-    }, [data.id, router]);
+        if (data.id) return;
+
+        let cancelled = false;
+        loadSetup()
+            .then((saved) => {
+                if (cancelled) return;
+                if (saved && (saved.data as typeof data)?.id) {
+                    setData(saved.data);
+                    setCsvData(saved.csvData);
+                    setIsRestoring(false);
+                } else {
+                    router.replace('/');
+                }
+            })
+            .catch(() => {
+                if (!cancelled) router.replace('/');
+            });
+
+        return () => { cancelled = true; };
+        // Only on the first render: later changes of data.id come from the restore itself
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    useEffect(() => {
+        if (!data.id) return;
+
+        clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = setTimeout(() => {
+            saveSetup({data, csvData}).catch(() => {});
+        }, 500);
+
+        return () => clearTimeout(saveTimeoutRef.current);
+    }, [data, csvData]);
 
     useEffect(() => {
         if (data.config.startingPoint) {
             setEndDate(calculateEndDate(data.config));
         }
     }, [ data.config ]);
+
+    // Spans of the cases in the log, to tell how many are in progress at the chosen starting point
+    const { case: caseColumn, start: startColumn, end: endColumn } = data.mapping as Record<string, string>;
+    useEffect(() => {
+        if (!data.logFile || !caseColumn || !endColumn) return;
+
+        let cancelled = false;
+        setCaseSpans(null);
+        readCaseSpans(data.logFile, caseColumn, startColumn, endColumn)
+            .then(spans => { if (!cancelled) setCaseSpans(spans); })
+            .catch(() => {});
+
+        return () => { cancelled = true; };
+    }, [data.logFile, caseColumn, startColumn, endColumn]);
+
+    const ongoingCases = (caseSpans && data.config.startingPoint)
+        ? countOngoingCases(caseSpans, logTimeToUtc(data.config.startingPoint, csvData.logUtcOffset).getTime())
+        : null;
+
+    const ongoingCasesNote = ongoingCases === null
+        ? null
+        : ongoingCases === 0
+            ? <p className='rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900'>
+                No case in the uploaded log is in progress at this starting point, so the simulation starts
+                without ongoing work and only shows new arrivals. Choose an earlier starting point to start from
+                a busy process.
+            </p>
+            : <p className='text-sm text-slate-600'>
+                {ongoingCases} {ongoingCases === 1 ? 'case is' : 'cases are'} in progress in the uploaded log at
+                this starting point.
+            </p>;
 
     const onMappingCompleted = (data: FormData) => {
         const logMapping: LogMapping = {
@@ -62,12 +138,14 @@ const Setup = () => {
         }));
 
         const startLog = normalizeLogDate(getCellByHeader(csvData.firstLine, csvData.headers, logMapping.start));
-        const endLog = normalizeLogDate(getCellByHeader(csvData.lastLine, csvData.headers, logMapping.end));
+        const rawEndLog = getCellByHeader(csvData.lastLine, csvData.headers, logMapping.end);
+        const endLog = normalizeLogDate(rawEndLog);
 
         setCsvData((prev) => ({
             ...prev,
             logStartDate: startLog ?? "",
             logEndDate: endLog ?? "",
+            logUtcOffset: getLogUtcOffset(rawEndLog),
         }))
 
         if (new Set(Object.keys(logMapping)).size === new Set(Object.values(logMapping)).size) {
@@ -83,6 +161,7 @@ const Setup = () => {
             simulationHorizonValue: data.has('simulationHorizonValue') ? Number(data.get('simulationHorizonValue')) : undefined,
             simulationHorizonUnit: data.has('simulationHorizonUnit') ? data.get('simulationHorizonUnit') as TimeUnits : undefined,
             startingPoint: data.has('startingPoint') ? data.get('startingPoint') as string : undefined,
+            utcOffset: csvData.logUtcOffset,
         }
 
         setData((prev) => ({
@@ -129,10 +208,19 @@ const Setup = () => {
         try {
             const res = await axios.post('/api/simulation', formData);
 
+            clearTimeout(saveTimeoutRef.current);
+            await clearSetup().catch(() => {});
             router.push(`/simulation/${res.data.id}`);
         } catch (error) {
-            toast.error("Error occurred!", {description: error.response.data.error});
+            setIsSubmitting(false);
+            toast.error("Error occurred!", {
+                description: error?.response?.data?.error ?? "The simulation could not be started. Please try again.",
+            });
         }
+    }
+
+    if (isRestoring || !data.id) {
+        return <p className="p-16 text-center text-sm text-slate-400">Restoring your setup…</p>;
     }
 
     return <div className={'max-w-screen-lg mx-auto p-4'}>
@@ -174,9 +262,11 @@ const Setup = () => {
                     </ConfigInput>
                     <small>
                         With the current configuration, ProST will compute the state of the process
-                        at {data.config.startingPoint.slice(0, 16).replace("T", ", ")} and
-                        simulate the execution of the process until {endDate.toISOString().slice(0, 16).replace("T", ", ")}
+                        at {formatReadableDate(data.config.startingPoint)} and
+                        simulate the execution of the process until {formatReadableDate(endDate)}
+                        {" "}({formatUtcOffset(csvData.logUtcOffset)}, the time zone of the uploaded log)
                     </small>
+                    {ongoingCasesNote}
                 </div>
             </Step>
             <Step label='Upload the BPMN model and JSON file'
@@ -227,7 +317,7 @@ const Setup = () => {
                                         .filter((entry) => entry[0] !== 'attributes')
                                         .map(([key, value]) =>
                                             <tr key={key}>
-                                                <td>{key}</td>
+                                                <td className='font-sans'>{MAPPING_LABELS[key] ?? key}</td>
                                                 <td className = 'px-2'>
                                                     <ArrowRightIcon className='size-3'/>
                                                 </td>
@@ -241,16 +331,23 @@ const Setup = () => {
                             </table>
                         </Preview>
                         <Preview label = 'Setup'>
-                            <ul className='flex w-full flex-col font-mono'>
+                            <dl className='grid grid-cols-[auto_1fr] gap-x-3 gap-y-1'>
                                 {
-                                    Object.entries(data.config).map(([key, value]) =>
-                                        <li key={key} className = 'flex flex-row justify-between'>
-                                            <span>{key}</span>
-                                            <span className = 'text-right italic text-slate-400'>{value}</span>
-                                        </li>
+                                    [
+                                        ['Starting point', formatReadableDate(data.config.startingPoint)],
+                                        ['Horizon', formatHorizon(data.config.simulationHorizonValue, data.config.simulationHorizonUnit)],
+                                        ['Simulated until', formatReadableDate(endDate)],
+                                        ['Time zone', formatUtcOffset(csvData.logUtcOffset)],
+                                        ['Cases in progress', ongoingCases ?? '…'],
+                                    ].map(([label, value]) =>
+                                        <div key={label as string} className='contents'>
+                                            <dt>{label}</dt>
+                                            <dd className='whitespace-nowrap text-right text-slate-500'>{value}</dd>
+                                        </div>
                                     )
                                 }
-                            </ul>
+                            </dl>
+                            {ongoingCases === 0 && <div className='mt-3'>{ongoingCasesNote}</div>}
                         </Preview>
                     </div>
                 </div>

@@ -1,7 +1,10 @@
 "use client";
 
 import {useEffect, useMemo, useRef, useState} from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useParams } from "next/navigation";
+import Link from "next/link";
+import {toast} from "sonner";
+import {formatInLogTime} from "@utils/dateHelpers";
 import NavigatedViewer from 'bpmn-js/lib/NavigatedViewer';
 import simulation from "@modules/simulation";
 import axios from "axios";
@@ -43,7 +46,7 @@ const Simulation = () => {
     const frameCountRef = useRef<number>(0);
     const lastSecondRef = useRef<number>(0);
     const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
-    const router = useRouter();
+    const [loadError, setLoadError] = useState<"missing" | "failed" | null>(null);
     const { id } = useParams();
     const processId = Array.isArray(id) ? id[0] : id;
     const chartWidth = 226;
@@ -104,8 +107,9 @@ const Simulation = () => {
                     samples: [...prev.samples, { t: Date.now(), bytes }],
                 }));
                 return res.data;
-            } catch {
-                router.replace('/');
+            } catch (error) {
+                const status = error?.response?.status;
+                setLoadError(status === 404 || status === 410 ? "missing" : "failed");
             }
         }
 
@@ -155,7 +159,7 @@ const Simulation = () => {
             .then((data: Array<number>) => {
                 setCycleTimeData(data);
             });
-    }, [processId, router]);
+    }, [processId]);
 
     useEffect(() => {
         if (xml !== null && simulationData && typeof window !== "undefined") {
@@ -179,6 +183,58 @@ const Simulation = () => {
             });
         }
     }, [xml, simulationData]);
+
+    // The open stats panel takes space from the diagram: refit it to the remaining width once the panel has moved
+    const statsToggledRef = useRef(false);
+    useEffect(() => {
+        if (!statsToggledRef.current) {
+            statsToggledRef.current = true;
+            return;
+        }
+        const timeout = setTimeout(() => {
+            const viewer = viewerInstanceRef.current;
+            if (!viewer) return;
+            const canvas = viewer.get('canvas') as Canvas & { resized: () => void };
+            canvas.resized();
+            canvas.zoom('fit-viewport');
+        }, 320);
+        return () => clearTimeout(timeout);
+    }, [statsVisible]);
+
+    // Keyboard shortcuts: Space plays/pauses, Home and End jump to the start and end
+    useEffect(() => {
+        const actions: Record<string, string> = {" ": "play-pause-btn", Home: "go-to-start-btn", End: "go-to-end-btn"};
+
+        const handleKey = (event: KeyboardEvent) => {
+            const buttonId = actions[event.key];
+            if (!buttonId || event.ctrlKey || event.metaKey || event.altKey) return;
+
+            // Leave other controls alone (e.g. Space on a focused button or in the speed menu), except the playback
+            // buttons, which would otherwise repeat the last one clicked
+            const target = event.target as HTMLElement;
+            const inPlayControls = Boolean(target.closest?.('#play-controls'));
+            if (!inPlayControls && target.closest?.('input, select, textarea, button, a, [contenteditable="true"]')) return;
+
+            event.preventDefault();
+            if (event.type === "keydown" && !event.repeat) document.getElementById(buttonId)?.click();
+        };
+
+        window.addEventListener("keydown", handleKey);
+        window.addEventListener("keyup", handleKey);
+        return () => {
+            window.removeEventListener("keydown", handleKey);
+            window.removeEventListener("keyup", handleKey);
+        };
+    }, []);
+
+    const copyLink = async () => {
+        try {
+            await navigator.clipboard.writeText(window.location.href);
+            toast.success("Link copied", {description: "Anyone with the link can open this simulation."});
+        } catch {
+            toast.error("Could not copy the link", {description: window.location.href});
+        }
+    };
 
     useEffect(() => {
         return () => {
@@ -257,6 +313,12 @@ const Simulation = () => {
             .join(" ");
     }, [cycleTimeData]);
 
+    const ctMaxHours = cycleTimeData && cycleTimeData.length > 0 ? Math.max(...cycleTimeData) / 3600000 : null;
+    // "8 Jan", in the time zone of the uploaded log
+    const formatChartDate = (date: string) =>
+        new Intl.DateTimeFormat("en-GB", {day: "numeric", month: "short", timeZone: "UTC"}).format(
+            new Date(formatInLogTime(new Date(date + "Z"), simulationData?.utcOffset ?? "+00:00").replace(" ", "T") + "Z"));
+
     const wtptList = useMemo(() => {
         return Object.entries(waitingProcessingTimes)
             .map(([nodeId, stats]) => ({ nodeId, stats }))
@@ -266,8 +328,29 @@ const Simulation = () => {
             });
     }, [waitingProcessingTimes, sortOrder]);
 
+    if (loadError) {
+        return <div className="mx-auto mt-16 max-w-xl rounded-2xl border-2 border-slate-300 bg-slate-100 p-8 text-center">
+            <h2 className="mb-2 text-xl font-semibold">
+                {loadError === "missing" ? "Simulation not found or expired" : "The simulation could not be loaded"}
+            </h2>
+            <p className="mb-6 text-sm text-slate-600">
+                {loadError === "missing"
+                    ? "This link does not point to an existing simulation. Simulations are deleted after 30 days without being opened."
+                    : "Something went wrong while loading this simulation. Please reload the page in a moment."}
+            </p>
+            <Link href="/" className="rounded-2xl border-2 border-emerald-800 bg-emerald-600 px-6 py-2 font-bold text-green-50">
+                Start a new simulation
+            </Link>
+        </div>;
+    }
+
     return <>
-        <div ref={viewerRef} style={{ height: '600px', width: '100%' }}></div>
+        <div className="simulation-toolbar">
+            <Link href="/" className="toolbar-btn">← New simulation</Link>
+            <button type="button" className="toolbar-btn" onClick={copyLink}>Copy link</button>
+            <span className="toolbar-hint">Space: play/pause · Home/End: jump</span>
+        </div>
+        <div ref={viewerRef} className={statsVisible ? 'bpmn-viewer with-stats' : 'bpmn-viewer'}></div>
         <div id={'timeline'} className={'timeline'}>
             <div className="timeline-shade-wrapper">
                 {workloadBars}
@@ -279,9 +362,9 @@ const Simulation = () => {
         </div>
         <div id={'timeline-tooltip'} className={'timeline-tooltip'}></div>
         <div id={'play-controls'} className={'play-controls'}>
-            <button id={'go-to-start-btn'} className={'control-btn'}>⏮</button>
-            <button id={'play-pause-btn'} className={'control-btn'}>⏸</button>
-            <button id={'go-to-end-btn'} className={'control-btn'}>⏭</button>
+            <button id={'go-to-start-btn'} className={'control-btn'} title="Go to start (Home)">⏮</button>
+            <button id={'play-pause-btn'} className={'control-btn'} title="Play/pause (Space)">⏸</button>
+            <button id={'go-to-end-btn'} className={'control-btn'} title="Go to end (End)">⏭</button>
         </div>
         <div id={'simulated-time-box'} className={'simulated-time-box'}>--</div>
         <select id={'speed-select'} className={'speed-select'} defaultValue={1}>
@@ -307,13 +390,19 @@ const Simulation = () => {
                     <p><i>Finished:</i> {numberOfCases.finished}</p>
                 </div>
                 <div className={'stats-element'}>
-                    <h3>Average CT</h3>
+                    <h3>Average cycle time <span className="stats-unit">(hours)</span></h3>
                     <div className="stats-element-chart">
                         <div className="y-axis"></div>
-                        <div className="y-axis-label">CT</div>
+                        {ctMaxHours !== null && <>
+                            <div className="y-tick y-tick-max">{ctMaxHours >= 10 ? Math.round(ctMaxHours) : ctMaxHours.toFixed(1)}</div>
+                            <div className="y-tick y-tick-zero">0</div>
+                        </>}
 
                         <div className="x-axis"></div>
-                        <div className="x-axis-label">Time</div>
+                        {simulationData && <>
+                            <div className="x-tick x-tick-start">{formatChartDate(simulationData.startDate)}</div>
+                            <div className="x-tick x-tick-end">{formatChartDate(simulationData.endDate)}</div>
+                        </>}
 
                         <svg className="line-svg" viewBox={`0 0 ${chartWidth} ${chartHeight}`} preserveAspectRatio="none">
                             <polyline
@@ -361,7 +450,9 @@ const Simulation = () => {
 
                                 <div className="wtpt-bar-track">
                                     {!hasData ? (
-                                        <div className="wtpt-bar wtpt-bar-empty" />
+                                        <div className="wtpt-bar wtpt-bar-empty">
+                                            <span className="wtpt-bar-empty-label">No data yet</span>
+                                        </div>
                                     ) : (
                                         <>
                                             <div
@@ -393,17 +484,19 @@ const Simulation = () => {
                     })}
                 </div>
                 </div>
-                <h2>Diagnostics</h2>
-                <NetworkActivityChart state={networkActivity} />
-                {networkMetrics && <BatchQueueChart metrics={networkMetrics} />}
-                <SmoothAnimationPanel
-                    state={smoothAnimation}
-                    onReset={() => {
-                        setSmoothAnimation(INITIAL_SMOOTH_ANIMATION_STATE);
-                        frameCountRef.current = 0;
-                        lastSecondRef.current = performance.now();
-                    }}
-                />
+                <details className="diagnostics">
+                    <summary>Diagnostics <span className="stats-unit">(for developers)</span></summary>
+                    <NetworkActivityChart state={networkActivity} />
+                    {networkMetrics && <BatchQueueChart metrics={networkMetrics} />}
+                    <SmoothAnimationPanel
+                        state={smoothAnimation}
+                        onReset={() => {
+                            setSmoothAnimation(INITIAL_SMOOTH_ANIMATION_STATE);
+                            frameCountRef.current = 0;
+                            lastSecondRef.current = performance.now();
+                        }}
+                    />
+                </details>
             </div>
         </div>
     </>;

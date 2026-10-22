@@ -1,6 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
+  // The sample processes are read from disk by the samples API route
+  outputFileTracingIncludes: {
+    '/api/samples/[name]/[file]': ['./sampleProcesses/**/*'],
+  },
   webpack: (config, { isServer }) => {
     if (isServer) {
       // Externalize typeorm on server side to avoid bundling optional drivers

@@ -133,6 +133,7 @@ describe("GET /api/simulation/[id]", () => {
                 file: Buffer.from("xml"),
                 startDate: "2024-01-01 00:00:00",
                 endDate: "2024-01-01 20:00:00",
+                utcOffset: "+00:00",
                 pointer: 15,
             },
             status: 200,
@@ -145,6 +146,7 @@ describe("GET /api/simulation/[id]", () => {
             fileName: "model.bpmn",
             startDate: "2024-01-01 00:00:00",
             endDate: "2024-01-01 02:00:00",
+            utcOffset: "+02:00",
             setToDelete: false,
         }));
         (groupEvents as jest.Mock).mockReturnValue([]);
@@ -171,6 +173,7 @@ describe("GET /api/simulation/[id]", () => {
                 file: Buffer.from("xml"),
                 startDate: "2024-01-01 00:00:00",
                 endDate: "2024-01-01 02:00:00",
+                utcOffset: "+02:00",
                 pointer: -1,
             },
             status: 200,

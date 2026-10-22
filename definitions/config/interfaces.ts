@@ -17,4 +17,6 @@ export interface AlgorithmConfiguration {
     simulationHorizonValue?: number,
     simulationHorizonUnit?: TimeUnits,
     startingPoint?: string,
+    // UTC offset of the uploaded log, e.g. "+02:00"; startingPoint is wall-clock time in this offset
+    utcOffset?: string,
 }

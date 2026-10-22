@@ -14,7 +14,7 @@ import {
 import {FlowTypes, LifecycleTypes, NodeTypes} from "@definitions/simulation/enums";
 import axios from "axios";
 import {SimulationData} from "@definitions/api/types";
-import {formatDateString} from "@utils/dateHelpers";
+import {formatInLogTime, formatUtcOffset} from "@utils/dateHelpers";
 import {Dispatch, SetStateAction} from "react";
 import {buildPathMap, calculateDurations, calculatePathLength} from "@modules/simulation/pathDurationHelpers";
 import {buildResumedWTPT, buildTimelineResumptionPatch} from "@modules/simulation/timelineResumptionHelpers";
@@ -76,6 +76,7 @@ const simulation = (
             let isFetchingBatches = false;
             let initialDate: Date;
             let finalDate: Date;
+            let utcOffset = "+00:00";
             let abortController: AbortController = new AbortController();
             let hasEnded = false;
             let simulationStartMs = 0;
@@ -427,11 +428,21 @@ const simulation = (
                 requestAnimationFrame(animate);
             }
 
+            // Times are shown as they appear in the uploaded log, i.e. in its UTC offset
+            function formatTime(date: Date) {
+                return formatInLogTime(date, utcOffset);
+            }
+
+            function showCurrentTime(progress: number) {
+                currentDateTime = new Date(initialDate.getTime() + progress * totalDuration);
+                currentDateTimeBox.textContent = `${formatTime(currentDateTime)} ${formatUtcOffset(utcOffset)}`;
+            }
+
             function enableTimeline() {
                 const startDate = document.getElementById("start-date");
-                startDate.textContent = formatDateString(initialDate);
+                startDate.textContent = formatTime(initialDate);
                 const endDate = document.getElementById("end-date");
-                endDate.textContent = formatDateString(finalDate);
+                endDate.textContent = formatTime(finalDate);
 
                 const goToStartButton = document.getElementById('go-to-start-btn');
                 goToStartButton.addEventListener("click", () => handleRewindButtonClick(0));
@@ -468,9 +479,7 @@ const simulation = (
                     pointer.style.left = progressPercentage;
                     ctTimeBar.style.width = `calc((100% - 24px) * ${progress})`;
 
-                    const totalElapsedTime = progress * totalDuration;
-                    currentDateTime = new Date(initialDate.getTime() + totalElapsedTime);
-                    currentDateTimeBox.textContent = formatDateString(currentDateTime);
+                    showCurrentTime(progress);
 
                     if (innerProgress < 1) {
                         localProgress = innerProgress;
@@ -498,6 +507,7 @@ const simulation = (
                     pointer.style.left = `${progress}%`;
                     ctTimeBar.style.width = `calc((100% - 24px) * ${progress / 100})`;
                     currentProgress = progress / 100;
+                    showCurrentTime(currentProgress);
                 }
 
                 function handleDragStart(event: MouseEvent | TouchEvent) {
@@ -530,7 +540,7 @@ const simulation = (
                     const rect = timeline.getBoundingClientRect();
                     const progress = Math.max(0, Math.min(100, ((event.clientX - rect.left) / rect.width) * 100));
 
-                    tooltip.textContent = formatDateString(new Date(initialDate.getTime() + (progress / 100) * totalDuration));
+                    tooltip.textContent = formatTime(new Date(initialDate.getTime() + (progress / 100) * totalDuration));
                     tooltip.style.left = `${event.clientX + 10}px`;
                     tooltip.style.top = `${event.clientY - 30}px`;
                     tooltip.style.display = "block";
@@ -551,6 +561,7 @@ const simulation = (
                 pointer.style.left = `${progress}%`;
                 ctTimeBar.style.width = `calc((100% - 24px) * ${progress / 100})`;
                 currentProgress = progress / 100;
+                showCurrentTime(currentProgress);
 
                 handleTimelineRequest(progress);
             }
@@ -574,6 +585,7 @@ const simulation = (
                 if (action.kind === "restart") {
                     hasEnded = false;
                     currentProgress = 0.0;
+                    showCurrentTime(0);
                     handleTimelineRequest(0);
                     return;
                 }
@@ -764,6 +776,7 @@ const simulation = (
                 processId = simulationData.processId;
                 initialDate = new Date(simulationData.startDate + 'Z');
                 finalDate = new Date(simulationData.endDate + 'Z');
+                utcOffset = simulationData.utcOffset ?? "+00:00";
                 batchesQueue = simulationData.batches;
                 frames = [...simulationData.frames];
                 batchesPointer = simulationData.pointer;

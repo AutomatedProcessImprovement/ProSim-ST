@@ -9,6 +9,7 @@ export const CsvContext = createContext({
         lastLine: new Array<string>(),
         logStartDate: '',
         logEndDate: '',
+        logUtcOffset: '+00:00',
     },
     setCsvData: (value:unknown) => value,
 });
@@ -20,6 +21,7 @@ export const CsvProvider = ({ children }) => {
         lastLine: new Array<string>(),
         logStartDate: '',
         logEndDate: '',
+        logUtcOffset: '+00:00',
     });
 
     return (

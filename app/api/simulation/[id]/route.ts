@@ -31,6 +31,7 @@ export const GET = async (
                 "process.fileName AS fileName",
                 "CAST(process.endDate AS CHAR) AS endDate",
                 "CAST(process.startDate AS CHAR) AS startDate",
+                "process.utcOffset AS utcOffset",
                 "process.setToDelete AS setToDelete"
             ])
             .where("process.id = :id", { id: processId })
@@ -108,6 +109,7 @@ export const GET = async (
             file,
             startDate: simulationProcess.startDate,
             endDate: simulationProcess.endDate,
+            utcOffset: simulationProcess.utcOffset ?? "+00:00",
             pointer: simulationHasFinished ? -1 : limit,
         }, { status: 200 });
     } catch (e) {

@@ -4,12 +4,13 @@ import {ChangeEvent, useContext, useEffect, useState} from "react";
 import {DataContext} from "@context/DataContext";
 import {Listbox, ListboxButton, ListboxOption, ListboxOptions} from "@headlessui/react";
 import {CheckIcon, ChevronDownIcon} from "@heroicons/react/24/outline";
-import {floor} from "@floating-ui/utils";
 import {TimeUnits} from "@definitions/config/enums";
 
 const SimulationHorizonInput = () => {
     const { data: { config: { simulationHorizonValue, simulationHorizonUnit } }, setData } = useContext(DataContext);
     const [value, setValue] = useState(simulationHorizonValue || 8);
+    // What the user is typing; may be temporarily empty or invalid while `value` keeps the last valid number
+    const [draft, setDraft] = useState(String(value));
     const [unit, setUnit] = useState(simulationHorizonUnit || TimeUnits.WEEKS);
     const units: Array<TimeUnits> = [TimeUnits.DAYS, TimeUnits.WEEKS, TimeUnits.MONTHS];
 
@@ -28,7 +29,13 @@ const SimulationHorizonInput = () => {
     }, [unit, setData]);
 
     const handleValueChange = (e: ChangeEvent<HTMLInputElement>) => {
-        setValue(Math.max(1, floor(Number(e.target.value))));
+        setDraft(e.target.value);
+        const parsed = Math.floor(Number(e.target.value));
+        if (e.target.value !== "" && Number.isFinite(parsed) && parsed >= 1) setValue(parsed);
+    };
+
+    const handleValueBlur = () => {
+        setDraft(String(value));
     };
 
     const handleUnitChange = (val: TimeUnits) => {
@@ -36,7 +43,9 @@ const SimulationHorizonInput = () => {
     }
 
     return <>
-        <input type="number" name="simulationHorizonValue" value={value} onChange={handleValueChange} min={1}
+        <input type="hidden" name="simulationHorizonValue" value={value}/>
+        <input type="number" aria-label="Simulation horizon value" value={draft} onChange={handleValueChange}
+               onBlur={handleValueBlur} min={1} step={1}
                className='w-1/2 rounded-2xl bg-white px-4 py-1 me-0.5 text-left data-[invalid]:border-2 data-[invalid]:border-red-500 data-[focused]:bg-slate-200'/>
         <Listbox name="simulationHorizonUnit" value={unit} onChange={handleUnitChange}>
             <ListboxButton className = {`group flex w-1/2 flex-row items-center 

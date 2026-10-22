@@ -61,4 +61,13 @@ export const normalizeLogDate = (raw?: string) => {
     return new Date(isoish).toISOString().slice(0, 19);
 };
 
+// UTC offset of a log timestamp such as "2025-04-04 15:46:14.387685+02:00", as "+02:00".
+// Timestamps without an offset (or with "Z") are treated as UTC.
+export const getLogUtcOffset = (raw?: string) => {
+    const match = raw?.trim().match(/([+-])(\d{2}):?(\d{2})$/);
+    if (!match || !/\d[T ]\d/.test(raw)) return "+00:00";
+
+    return `${match[1]}${match[2]}:${match[3]}`;
+};
+
 const splitCsvLine = (line: string) => line.split(/[;,]/);

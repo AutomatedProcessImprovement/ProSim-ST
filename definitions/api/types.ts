@@ -37,12 +37,19 @@ export type SimulationData = {
     batches: Array<Batch>,
     startDate: string,
     endDate: string,
+    utcOffset?: string | null,
     file: Buffer,
     pointer: number,
 }
 
 export type SimulationSeedData = {
     id: string;
+    // The configured simulation window and the UTC offset of the uploaded log
+    window: {
+        startDate: Date;
+        endDate: Date;
+        utcOffset: string;
+    };
     data: {
         frames: Array<FrameCase>;
         events: Array<BatchEvent>;

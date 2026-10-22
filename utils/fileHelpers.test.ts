@@ -1,4 +1,4 @@
-import {getCellByHeader, normalizeLogDate, parseCsvFile, readLines} from "@utils/fileHelpers";
+import {getCellByHeader, getLogUtcOffset, normalizeLogDate, parseCsvFile, readLines} from "@utils/fileHelpers";
 
 const fileContents = new Map<string, string>();
 let readerMode: "success" | "error" | "abort" = "success";
@@ -76,5 +76,13 @@ describe("fileHelpers", () => {
         expect(normalizeLogDate("2024-01-02 13:14:15.999")).toBe("2024-01-02T13:14:15");
         expect(normalizeLogDate()).toBeUndefined();
     });
-});
 
+    it("reads the UTC offset of a log timestamp, defaulting to UTC", () => {
+        expect(getLogUtcOffset("2025-04-04 15:46:14.387685+02:00")).toBe("+02:00");
+        expect(getLogUtcOffset("2025-04-04T15:46:14-0330")).toBe("-03:30");
+        expect(getLogUtcOffset("2025-04-04 15:46:14")).toBe("+00:00");
+        expect(getLogUtcOffset("2025-04-04T15:46:14Z")).toBe("+00:00");
+        expect(getLogUtcOffset("2025-04-04")).toBe("+00:00");
+        expect(getLogUtcOffset(undefined)).toBe("+00:00");
+    });
+});

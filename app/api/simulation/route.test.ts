@@ -143,7 +143,7 @@ describe("POST /api/simulation", () => {
         expect(response).toEqual({body: {id: "process-1"}, status: 201});
     });
 
-    it("rolls back the transaction when the bulk insert fails but still releases resources", async () => {
+    it("rolls back the transaction, releases resources and returns 500 when the bulk insert fails", async () => {
         const body = buildBody();
         (existsSync as jest.Mock).mockReturnValue(true);
         (axios.post as jest.Mock).mockResolvedValue({
@@ -163,14 +163,73 @@ describe("POST /api/simulation", () => {
         });
         queryRunner.query.mockRejectedValueOnce(new Error("insert failed"));
         const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => {});
 
         const response = await POST({formData: jest.fn().mockResolvedValue(body)} as unknown as Request);
 
         expect(mkdirSync).not.toHaveBeenCalled();
         expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
         expect(queryRunner.release).toHaveBeenCalled();
-        expect(response).toEqual({body: {id: "process-1"}, status: 201});
+        expect(redis.set).not.toHaveBeenCalled();
+        expect(response).toEqual({body: {error: "Failed to get simulation data."}, status: 500});
         errorSpy.mockRestore();
+        logSpy.mockRestore();
+    });
+
+    it("skips the frame insert when no cases are in progress at the starting point", async () => {
+        const body = buildBody();
+        (axios.post as jest.Mock).mockResolvedValue({
+            data: {
+                events: [{
+                    case_id: 1,
+                    lifecycle: "CASE_ARRIVAL",
+                    timestamp: "2024-01-01T01:00:00",
+                    node_id: "Start_1",
+                    paths: {token: ["Start_1"]},
+                }],
+                frames: [],
+            },
+        });
+
+        const response = await POST({formData: jest.fn().mockResolvedValue(body)} as unknown as Request);
+
+        expect(queryRunner.query).toHaveBeenCalledTimes(2);
+        expect(queryRunner.query).not.toHaveBeenCalledWith(expect.stringContaining("INSERT INTO frame"), expect.anything());
+        expect(queryRunner.commitTransaction).toHaveBeenCalled();
+        expect(response).toEqual({body: {id: "process-1"}, status: 201});
+    });
+
+    it("converts the starting point with the log's UTC offset and keeps only events inside the window", async () => {
+        const body = buildBody();
+        const config = JSON.stringify({
+            startingPoint: "2024-01-01T10:00:00",
+            simulationHorizonValue: 1,
+            simulationHorizonUnit: "days",
+            utcOffset: "+02:00",
+        });
+        const get = body.get as jest.Mock;
+        const originalGet = get.getMockImplementation();
+        get.mockImplementation((key: string) => key === "config" ? config : originalGet(key));
+        (axios.post as jest.Mock).mockResolvedValue({
+            data: {
+                events: [
+                    {case_id: 1, lifecycle: "START", timestamp: "2024-01-01T09:00:00Z", node_id: "Task_1", paths: {}},
+                    {case_id: 1, lifecycle: "COMPLETE", timestamp: "2024-01-03T09:00:00Z", node_id: "Task_1", paths: {}},
+                ],
+                frames: [],
+            },
+        });
+
+        const response = await POST({formData: jest.fn().mockResolvedValue(body)} as unknown as Request);
+
+        const pythonBody = (axios.post as jest.Mock).mock.calls[0][1] as FormData;
+        expect(pythonBody.get("start_time")).toBe("2024-01-01T08:00:00.000Z");
+        expect(pythonBody.get("simulation_horizon")).toBe("2024-01-02T08:00:00.000Z");
+        expect(queryRunner.query).toHaveBeenNthCalledWith(1, expect.stringContaining("INSERT INTO process"),
+            ["process-1", "process-1_model_file.bpmn", "2024-01-01 08:00:00", "2024-01-02 08:00:00", "+02:00"]);
+        expect(queryRunner.query).toHaveBeenNthCalledWith(2, expect.stringContaining("INSERT INTO event"),
+            [1, "START", "2024-01-01 09:00:00", "Task_1", "{}", "process-1"]);
+        expect(response).toEqual({body: {id: "process-1"}, status: 201});
     });
 
     it("returns 500 when simulation data retrieval fails", async () => {

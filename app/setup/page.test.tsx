@@ -112,6 +112,7 @@ describe("Setup page", () => {
         lastLine: ["2", "B", "2024-01-02 00:00:00", "2024-01-02 01:00:00", "2024-01-02 02:00:00", "R", "y"],
         logStartDate: "2024-01-01T00:00:00",
         logEndDate: "2024-01-02T02:00:00",
+        logUtcOffset: "+00:00",
     };
 
     beforeEach(() => {
@@ -139,9 +140,9 @@ describe("Setup page", () => {
         return {setData, setCsvData};
     };
 
-    it("redirects to home when process id is missing", () => {
+    it("redirects to home when process id is missing and no setup is saved in the browser", async () => {
         renderPage({id: ""});
-        expect(replaceMock).toHaveBeenCalledWith("/");
+        await waitFor(() => expect(replaceMock).toHaveBeenCalledWith("/"));
     });
 
     it("submits data and navigates to the simulation page", async () => {
