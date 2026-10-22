@@ -1,6 +1,8 @@
 import {buildProcessAnalysis, readFlowTargets, sampleIndexAt, toUtcMs} from "@utils/processAnalysis";
 import {LifecycleTypes} from "@definitions/simulation/enums";
 
+const HOUR = 3600000;
+
 const event = (caseId: number, lifecycle: LifecycleTypes, timestamp: string, nodeId: string | null = null) =>
     ({caseId, lifecycle, timestamp, nodeId});
 
@@ -49,7 +51,7 @@ describe("buildProcessAnalysis", () => {
         expect(analysis.averageCycleTimeMs).toBe(2 * 3600000);
     });
 
-    it("counts cases already running at the start, from frames and from arrivals at the start", () => {
+    it("counts the cases running at the start apart from the ones arriving at it", () => {
         const analysis = buildProcessAnalysis([
             event(5, LifecycleTypes.CASE_ARRIVAL, start, "Start"),
             event(5, LifecycleTypes.ENABLE, start, "Task_A"),
@@ -63,16 +65,35 @@ describe("buildProcessAnalysis", () => {
             {caseId: 7, activeElements: {token_0: "Flow_to_A"}},
         ], {Flow_to_A: "Task_A"}, start, end);
 
-        expect(analysis.openAtStart).toBe(3);
-        expect(analysis.openAtStartFinished).toBe(1);
-        expect(analysis.arrived).toBe(0);
+        expect(analysis.openAtStart).toBe(2);
+        expect(analysis.openAtStartFinished).toBe(0);
+        expect(analysis.arrived).toBe(1);
         expect(analysis.open[0]).toBe(3);
         expect(analysis.tasks.Task_A.waiting).toEqual([1, 1, 0, 0, 0]);
         expect(analysis.tasks.Task_A.inWork).toEqual([1, 0, 1, 1, 1]);
         expect(analysis.tasks.Task_B.inWork).toEqual([1, 1, 1, 0, 0]);
-        expect(analysis.caseArrivals[6]).toBe(toUtcMs(start));
-        // Only case 5 arrived at the start; no case both arrived after the start and finished
-        expect(analysis.averageCycleTimeMs).toBeNull();
+        // The log does not say when cases 6 and 7 started
+        expect(analysis.caseArrivals[6]).toBeUndefined();
+        expect(analysis.caseArrivals[5]).toBe(toUtcMs(start));
+        expect(analysis.averageCycleTimeMs).toBe(HOUR);
+    });
+
+    it("dates the cases running at the start from the event log, and counts them in the cycle time once finished", () => {
+        const analysis = buildProcessAnalysis([
+            event(6, LifecycleTypes.COMPLETE, "2024-01-01 03:00:00", "Task_B"),
+            event(6, LifecycleTypes.CASE_END, "2024-01-01 03:00:00", "End"),
+        ], [
+            {caseId: 6, activeElements: {token_0: "Task_B"}, arrivalTime: "2023-12-31T21:00:00.000Z"},
+            {caseId: 7, activeElements: {token_0: "Flow_to_A"}, arrivalTime: "2023-12-30T00:00:00.000Z"},
+        ], {Flow_to_A: "Task_A"}, start, end);
+
+        expect(analysis.caseArrivals[6]).toBe(Date.UTC(2023, 11, 31, 21));
+        expect(analysis.caseArrivals[7]).toBe(Date.UTC(2023, 11, 30));
+        expect(analysis.openAtStart).toBe(2);
+        expect(analysis.openAtStartFinished).toBe(1);
+        expect(analysis.openAtEnd).toBe(1);
+        // Case 6: from 21:00 the day before to 03:00
+        expect(analysis.averageCycleTimeMs).toBe(6 * HOUR);
     });
 
     it("clears every task of a case when it ends", () => {

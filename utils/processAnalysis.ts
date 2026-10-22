@@ -39,7 +39,7 @@ type TaskState = "waiting" | "inWork";
  */
 export const buildProcessAnalysis = (
     events: AnalysisEvent[],
-    frames: Array<{caseId: number; activeElements: Record<string, string>}>,
+    frames: Array<{caseId: number; activeElements: Record<string, string>; arrivalTime?: string | null}>,
     flowTargets: Record<string, string>,
     processStart: string,
     processEnd: string,
@@ -83,10 +83,14 @@ export const buildProcessAnalysis = (
         caseTasks.delete(caseId);
     };
 
+    // Cases open at the start arrived when the log says they started; without that, their arrival is unknown
     const caseArrivals: Record<string, number> = {};
     const caseEnds: Record<string, number> = {};
+    const openAtStartIds = new Set(frames.map(frame => String(frame.caseId)));
+    const arrivedIds = new Set<string>();
     frames.forEach(frame => {
-        caseArrivals[frame.caseId] = startMs;
+        const arrival = frame.arrivalTime ? toUtcMs(frame.arrivalTime) : NaN;
+        if (!isNaN(arrival)) caseArrivals[frame.caseId] = Math.min(arrival, startMs);
         Object.values(frame.activeElements).forEach(elementId => {
             if (taskIds.has(elementId)) setTaskState(frame.caseId, elementId, "inWork");
             else if (taskIds.has(flowTargets[elementId])) setTaskState(frame.caseId, flowTargets[elementId], "waiting");
@@ -111,7 +115,8 @@ export const buildProcessAnalysis = (
             const timestamp = toUtcMs(event.timestamp);
             switch (event.lifecycle) {
                 case LifecycleTypes.CASE_ARRIVAL:
-                    if (caseArrivals[event.caseId] === undefined) {
+                    if (!openAtStartIds.has(String(event.caseId)) && !arrivedIds.has(String(event.caseId))) {
+                        arrivedIds.add(String(event.caseId));
                         caseArrivals[event.caseId] = timestamp;
                         openCases++;
                     }
@@ -137,11 +142,11 @@ export const buildProcessAnalysis = (
         sample();
     }
 
-    const arrivalEntries = Object.entries(caseArrivals);
-    const openAtStartIds = arrivalEntries.filter(([, arrival]) => arrival <= startMs).map(([caseId]) => caseId);
-    const cycleTimes = arrivalEntries
-        .filter(([caseId, arrival]) => arrival > startMs && caseEnds[caseId] !== undefined)
+    // Every finished case whose arrival is known, including the ones open at the start
+    const cycleTimes = Object.entries(caseArrivals)
+        .filter(([caseId]) => caseEnds[caseId] !== undefined)
         .map(([caseId, arrival]) => caseEnds[caseId] - arrival);
+    const openIds = [...openAtStartIds, ...arrivedIds];
 
     return {
         startDate: new Date(startMs).toISOString(),
@@ -150,10 +155,10 @@ export const buildProcessAnalysis = (
         open,
         tasks: series,
         caseArrivals,
-        openAtStart: openAtStartIds.length,
-        openAtStartFinished: openAtStartIds.filter(caseId => caseEnds[caseId] !== undefined).length,
-        openAtEnd: arrivalEntries.filter(([caseId]) => caseEnds[caseId] === undefined).length,
-        arrived: arrivalEntries.length - openAtStartIds.length,
+        openAtStart: openAtStartIds.size,
+        openAtStartFinished: [...openAtStartIds].filter(caseId => caseEnds[caseId] !== undefined).length,
+        openAtEnd: openIds.filter(caseId => caseEnds[caseId] === undefined).length,
+        arrived: arrivedIds.size,
         completed: Object.keys(caseEnds).length,
         averageCycleTimeMs: cycleTimes.length ? cycleTimes.reduce((sum, value) => sum + value, 0) / cycleTimes.length : null,
     };

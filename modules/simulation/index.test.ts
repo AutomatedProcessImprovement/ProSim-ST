@@ -258,6 +258,40 @@ describe("modules/simulation/index", () => {
 
             expect(dots()[0].getAttribute("fill")).toBe(STATE_COLORS.sync);
         });
+
+        it("counts the branches waiting at a join, over all its arrows, once some of their dots do not fit", async () => {
+            const onTaskClick = jest.fn();
+            const {api, dots, visible, container} = setup({
+                frames: [...waitingAt(6, "Flow_B_J"), ...waitingAt(2, "Flow_C_J", 7)],
+                batches: emptyBatches(0, 6),
+                hooks: {onTaskClick},
+            });
+            api.start();
+            await play(50);
+
+            expect(dots().filter(visible)).toHaveLength(7);
+            const pill = container.querySelector<SVGGElement>(".load-pill.other");
+            expect(pill.textContent).toBe("8 waiting");
+            expect(pill.getAttribute("data-element")).toBe("J");
+            // Centred above the join (x 575-625, y 15-65)
+            const rect = pill.querySelector("rect");
+            expect(Number(rect.getAttribute("x")) + Number(rect.getAttribute("width")) / 2).toBe(600);
+            expect(Number(rect.getAttribute("y"))).toBe(-8);
+            // A gateway has no task panel
+            pill.dispatchEvent(new MouseEvent("click"));
+            expect(onTaskClick).not.toHaveBeenCalled();
+        });
+
+        it("shows no count at a join while every dot fits", async () => {
+            const {api, container} = setup({
+                frames: [...waitingAt(5, "Flow_B_J"), ...waitingAt(5, "Flow_C_J", 6)],
+                batches: emptyBatches(0, 6),
+            });
+            api.start();
+            await play(50);
+
+            expect(container.querySelector(".load-pill.other")).toBeNull();
+        });
     });
 
     describe("moving cases", () => {
@@ -364,6 +398,23 @@ describe("modules/simulation/index", () => {
 
             dotsOf(3)[0].dispatchEvent(new MouseEvent("mouseout", {bubbles: true}));
             expect(tooltip.style.display).toBe("none");
+        });
+
+        it("tells how long a case open at the start has been open, when the analysis knows when it started", async () => {
+            const {api, dotsOf} = setup({
+                frames: [...waitingAt(1), {caseId: 2, activeElements: {token_0: "Flow_S_A"}}],
+                batches: emptyBatches(0, 6),
+                hooks: {getCaseArrival: caseId => (caseId === 1 ? START - 50 * HOUR : undefined)},
+            });
+            api.start();
+            await play(50);
+            const tooltip = document.getElementById("token-tooltip");
+
+            dotsOf(1)[0].dispatchEvent(new MouseEvent("mouseover", {bubbles: true}));
+            expect(tooltip.lastElementChild.textContent).toMatch(/^Case open 2 d/);
+
+            dotsOf(2)[0].dispatchEvent(new MouseEvent("mouseover", {bubbles: true}));
+            expect(tooltip.lastElementChild.textContent).toMatch(/^Open since before /);
         });
 
         it("lists the cases at a task, waiting first and longest waiting first", async () => {

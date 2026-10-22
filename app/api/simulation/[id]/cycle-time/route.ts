@@ -5,6 +5,7 @@ import {Process} from "@db/entities/Process";
 import {Event} from "@db/entities/Event";
 import {LifecycleTypes} from "@definitions/simulation/enums";
 import {buildCycleTimeSeries} from "@utils/cycleTime";
+import {loadInitialFrames} from "@db/mysql/frames";
 
 export const GET = async (
     request: Request,
@@ -37,7 +38,8 @@ export const GET = async (
             .orderBy("event.timestamp", "ASC")
             .getMany();
 
-        const result = buildCycleTimeSeries(events, process.startDate, process.endDate);
+        const frames = await loadInitialFrames(redis, appDataSource, processId);
+        const result = buildCycleTimeSeries(events, process.startDate, process.endDate, undefined, frames);
 
         await redis.set(redisKeyCycleTime, JSON.stringify(result), 'EX', 60 * 60 * 24);
         redis.disconnect();

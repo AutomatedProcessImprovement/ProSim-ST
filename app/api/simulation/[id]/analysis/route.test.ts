@@ -12,8 +12,11 @@ jest.mock("@db/mysql/typeorm", () => ({
 
 jest.mock("@db/redis/redis", () => ({
     getRedisInstance: jest.fn(),
-    REDIS_KEY_PREFIX_FRAMES: "frames:",
-    REDIS_KEY_PREFIX_ANALYSIS: "analysis:",
+    REDIS_KEY_PREFIX_ANALYSIS: "analysis-v2:",
+}));
+
+jest.mock("@db/mysql/frames", () => ({
+    loadInitialFrames: jest.fn(),
 }));
 
 jest.mock("fs/promises", () => ({
@@ -31,7 +34,7 @@ import {getRedisInstance} from "@db/redis/redis";
 import {readFile} from "fs/promises";
 import {buildProcessAnalysis, readFlowTargets} from "@utils/processAnalysis";
 import {Process} from "@db/entities/Process";
-import {Frame} from "@db/entities/Frame";
+import {loadInitialFrames} from "@db/mysql/frames";
 
 describe("GET /api/simulation/[id]/analysis", () => {
     const redis = {
@@ -43,17 +46,16 @@ describe("GET /api/simulation/[id]/analysis", () => {
 
     const mockDatabase = (process: unknown, events: unknown[] = [], frames: unknown[] = []) => {
         const processRepo = {createQueryBuilder: jest.fn().mockReturnValue(createQueryBuilderMock(process))};
-        const frameRepo = {find: jest.fn().mockResolvedValue(frames)};
         const dataSource = {
             getRepository: jest.fn((entity) => {
                 if (entity === Process) return processRepo;
-                if (entity === Frame) return frameRepo;
                 throw new Error("unexpected repository");
             }),
             query: jest.fn().mockResolvedValue(events),
         };
         (createMySQLConnection as jest.Mock).mockResolvedValue(dataSource);
-        return {dataSource, frameRepo};
+        (loadInitialFrames as jest.Mock).mockResolvedValue(frames);
+        return {dataSource};
     };
 
     beforeEach(() => {
@@ -70,12 +72,12 @@ describe("GET /api/simulation/[id]/analysis", () => {
 
     it("builds the analysis from events, frames and the model's flows, and caches it", async () => {
         const events = [{caseId: 1, lifecycle: "CASE_ARRIVAL", nodeId: "Start", timestamp: "2024-01-01 00:10:00"}];
-        const frames = [{caseId: 2, activeElements: {token_0: "Flow_1"}}];
-        const {dataSource, frameRepo} = mockDatabase(
+        const frames = [{caseId: 2, activeElements: {token_0: "Flow_1"}, arrivalTime: "2023-12-31T08:00:00.000Z"}];
+        const {dataSource} = mockDatabase(
             {fileName: "p1_bpmn_model.bpmn", startDate: "2024-01-01 00:00:00", endDate: "2024-01-01 02:00:00", setToDelete: false},
             events, frames,
         );
-        redis.get.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+        redis.get.mockResolvedValueOnce(null);
         (readFile as jest.Mock).mockResolvedValue("<bpmn/>");
         (readFlowTargets as jest.Mock).mockReturnValue({Flow_1: "Task_A"});
         (buildProcessAnalysis as jest.Mock).mockReturnValue({open: [1, 2]});
@@ -83,17 +85,17 @@ describe("GET /api/simulation/[id]/analysis", () => {
         const response = await call();
 
         expect(dataSource.query).toHaveBeenCalledWith(expect.stringContaining("ORDER BY timestamp ASC, id ASC"), ["p1"]);
-        expect(frameRepo.find).toHaveBeenCalledWith({where: {processId: "p1"}});
+        expect(loadInitialFrames).toHaveBeenCalledWith(redis, dataSource, "p1");
         expect(readFile).toHaveBeenCalledWith(expect.stringContaining("p1_bpmn_model.bpmn"), "utf-8");
         expect(buildProcessAnalysis).toHaveBeenCalledWith(events, frames, {Flow_1: "Task_A"}, "2024-01-01 00:00:00", "2024-01-01 02:00:00");
-        expect(redis.set).toHaveBeenCalledWith("analysis:p1", JSON.stringify({open: [1, 2]}), "EX", 60 * 60 * 24);
+        expect(redis.set).toHaveBeenCalledWith("analysis-v2:p1", JSON.stringify({open: [1, 2]}), "EX", 60 * 60 * 24);
         expect(response).toEqual({body: {open: [1, 2]}, status: 200});
     });
 
     it("still answers when the model file cannot be read", async () => {
         const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
         mockDatabase({fileName: "gone.bpmn", startDate: "2024-01-01 00:00:00", endDate: "2024-01-01 02:00:00", setToDelete: false});
-        redis.get.mockResolvedValueOnce(null).mockResolvedValueOnce(JSON.stringify([]));
+        redis.get.mockResolvedValueOnce(null);
         (readFile as jest.Mock).mockRejectedValue(new Error("ENOENT"));
         (buildProcessAnalysis as jest.Mock).mockReturnValue({open: []});
 

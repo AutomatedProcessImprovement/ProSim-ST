@@ -21,10 +21,15 @@ jest.mock("@utils/cycleTime", () => ({
     buildCycleTimeSeries: jest.fn(),
 }));
 
+jest.mock("@db/mysql/frames", () => ({
+    loadInitialFrames: jest.fn(),
+}));
+
 import {GET} from "./route";
 import {createMySQLConnection} from "@db/mysql/typeorm";
 import {getRedisInstance} from "@db/redis/redis";
 import {buildCycleTimeSeries} from "@utils/cycleTime";
+import {loadInitialFrames} from "@db/mysql/frames";
 import {NextResponse} from "next/server";
 import {Process} from "@db/entities/Process";
 import {Event} from "@db/entities/Event";
@@ -76,6 +81,8 @@ describe("GET /api/simulation/[id]/cycle-time", () => {
             }),
         });
         redis.get.mockResolvedValueOnce(null);
+        const frames = [{caseId: 2, activeElements: {token_0: "Task_A"}, arrivalTime: "2023-12-31T08:00:00.000Z"}];
+        (loadInitialFrames as jest.Mock).mockResolvedValue(frames);
         (buildCycleTimeSeries as jest.Mock).mockReturnValue([10, 20]);
 
         const response = await GET({} as Request, {
@@ -83,10 +90,13 @@ describe("GET /api/simulation/[id]/cycle-time", () => {
         });
 
         expect(eventRepo.createQueryBuilder).toHaveBeenCalledWith("event");
+        // Cases open at the start count once finished, from when the log says they started
         expect(buildCycleTimeSeries).toHaveBeenCalledWith(
             expect.any(Array),
             "2024-01-01 00:00:00",
             "2024-01-01 02:00:00",
+            undefined,
+            frames,
         );
         expect(redis.set).toHaveBeenCalledWith("cycle-time:p1", JSON.stringify([10, 20]), "EX", 60 * 60 * 24);
         expect(redis.disconnect).toHaveBeenCalled();

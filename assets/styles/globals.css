@@ -78,6 +78,19 @@ h1 {
   fill: #115e59;
 }
 
+.load-pill.other {
+  cursor: default;
+}
+
+.load-pill.other rect {
+  fill: #f8fafc;
+  stroke: #94a3b8;
+}
+
+.load-pill.other text {
+  fill: #334155;
+}
+
 .token-tooltip {
   position: fixed;
   display: none;

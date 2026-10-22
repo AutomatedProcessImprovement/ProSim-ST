@@ -127,6 +127,8 @@ const simulation = (
             const overflowing = new Map<string, RestPlace>();
             let layoutScheduled = false;
             const pills = new Map<string, {waiting: SVGGElement; inWork: SVGGElement}>();
+            // Counts in front of gateways and events, by element
+            const otherPills = new Map<string, SVGGElement>();
             const shadedTasks = new Set<string>();
             // bpmn-js styles shapes inline, so the task's own fill is kept to put back when its queue empties
             const originalFills = new Map<string, string>();
@@ -136,6 +138,8 @@ const simulation = (
             // What is known about each case: when it arrived, and when it started waiting for or working on a task
             const taskTimes = new Map<number, Map<string, {enabled?: number; started?: number}>>();
             const seenArrivals = new Map<number, number>();
+            // Cases already open at the start of the simulation
+            const openAtStart = new Set(simulationData.frames.map(frame => frame.caseId));
 
             const tokenKey = (caseId: number, tokenId: string) => `${caseId}|${tokenId}`;
 
@@ -295,13 +299,13 @@ const simulation = (
 
             // ---- Counts and shading per task ----
 
-            function createPill(taskId: string, className: string): SVGGElement {
+            function createPill(elementId: string, className: string, clickable = true): SVGGElement {
                 const group = document.createElementNS(SVG_NS, "g");
                 group.classList.add("load-pill", className);
-                group.setAttribute("data-task", taskId);
+                group.setAttribute(clickable ? "data-task" : "data-element", elementId);
                 group.appendChild(document.createElementNS(SVG_NS, "rect"));
                 group.appendChild(document.createElementNS(SVG_NS, "text"));
-                group.addEventListener("click", () => hooks.onTaskClick?.(taskId));
+                if (clickable) group.addEventListener("click", () => hooks.onTaskClick?.(elementId));
                 badgeLayer.appendChild(group);
                 return group;
             }
@@ -367,7 +371,41 @@ const simulation = (
                         shape.x + shape.width / 2, shape.y + shape.height - 23, true);
                 });
 
+                renderOtherLoad();
                 reportLoad();
+            }
+
+            // The element a place's dots are in front of (for an arrow) or at
+            function placeTarget(groupId: string): string | undefined {
+                const element = getElement(groupId);
+                return element?.type === FlowTypes.FLOW ? element.target?.id : groupId;
+            }
+
+            // Cases waiting in front of or at a gateway or an event, such as branches waiting at a parallel join: a
+            // count above the element as soon as some of their dots do not fit
+            function renderOtherLoad() {
+                const overflowingTargets = new Set<string>();
+                overflowing.forEach((place, groupId) => {
+                    if (place.kind !== "sync" && place.kind !== "other") return;
+                    const target = placeTarget(groupId);
+                    if (target) overflowingTargets.add(target);
+                });
+
+                const counts = new Map<string, number>();
+                if (overflowingTargets.size) rests.forEach(rest => {
+                    if (rest.place.kind !== "sync" && rest.place.kind !== "other") return;
+                    const target = placeTarget(rest.place.groupId);
+                    if (target && overflowingTargets.has(target)) counts.set(target, (counts.get(target) ?? 0) + 1);
+                });
+
+                new Set([...overflowingTargets, ...otherPills.keys()]).forEach(elementId => {
+                    const shape = getElement(elementId) as Node | undefined;
+                    if (!shape) return;
+                    let pill = otherPills.get(elementId);
+                    if (!pill) otherPills.set(elementId, pill = createPill(elementId, "other", false));
+                    const count = counts.get(elementId);
+                    updatePill(pill, count ? `${count} waiting` : null, shape.x + shape.width / 2, shape.y - 23, true);
+                });
             }
 
             // Tells the page how busy every task is, at most four times a second
@@ -431,11 +469,8 @@ const simulation = (
                 else lines.push(`At ${elementName(rest.elementId)}`);
 
                 const arrival = caseArrival(caseId);
-                if (arrival !== null && arrival <= initialDate.getTime()) {
-                    lines.push(`Open since before ${formatShortDate(initialDate, utcOffset, true)}`);
-                } else if (arrival !== null) {
-                    lines.push(`Case open ${formatDuration(now() - arrival)}`);
-                }
+                if (arrival !== null) lines.push(`Case open ${formatDuration(now() - arrival)}`);
+                else if (openAtStart.has(caseId)) lines.push(`Open since before ${formatShortDate(initialDate, utcOffset, true)}`);
                 return lines;
             }
 

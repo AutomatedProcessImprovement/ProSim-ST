@@ -14,6 +14,8 @@ export type FrameCase = {
     activeElements: {
         [tokenId: string]: string,
     },
+    // When a case open at the starting point started, in UTC, as found in the event log; null when unknown
+    arrivalTime?: string | null,
 }
 
 export type BatchEvent = {

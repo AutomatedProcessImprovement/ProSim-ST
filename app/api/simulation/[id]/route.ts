@@ -1,12 +1,12 @@
 import {NextResponse} from "next/server";
-import {getRedisInstance, REDIS_KEY_PREFIX_FRAMES} from "@db/redis/redis";
+import {getRedisInstance} from "@db/redis/redis";
 import {join} from "path";
 import {readFile} from "fs/promises";
 import {createMySQLConnection} from "@db/mysql/typeorm";
 import {Process} from "@db/entities/Process";
-import {Frame} from "@db/entities/Frame";
+import {loadInitialFrames} from "@db/mysql/frames";
 import {Event} from "@db/entities/Event";
-import {BatchEvent, FrameCase} from "@definitions/simulation/types";
+import {BatchEvent} from "@definitions/simulation/types";
 import {SimulationData} from "@definitions/api/types";
 import {groupEvents} from "@utils/events";
 import {LifecycleTypes} from "@definitions/simulation/enums";
@@ -78,25 +78,7 @@ export const GET = async (
         const batches = groupEvents(batchEvents, startDate.toISOString(), endDate.toISOString());
 
         const redis = getRedisInstance();
-        const redisKey = REDIS_KEY_PREFIX_FRAMES + processId;
-        const stringFrames = await redis.get(redisKey);
-        let frames: Array<FrameCase>;
-
-        if (!stringFrames) {
-            frames = await appDataSource.getRepository(Frame)
-                .createQueryBuilder("frame")
-                .select([
-                    "frame.caseId as caseId",
-                    "frame.activeElements as activeElements"
-                ])
-                .where("frame.processId = :processId", { processId })
-                .getRawMany();
-
-            await redis.set(redisKey, JSON.stringify(frames), 'EX', 60*60*24);
-        } else {
-            frames = JSON.parse(stringFrames) as Array<FrameCase>;
-        }
-
+        const frames = await loadInitialFrames(redis, appDataSource, processId);
         redis.disconnect();
 
         const filePath = join(process.cwd(), 'public/assets', simulationProcess.fileName);

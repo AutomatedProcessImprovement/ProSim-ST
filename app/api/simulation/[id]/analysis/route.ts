@@ -1,11 +1,10 @@
 import {NextResponse} from "next/server";
 import {readFile} from "fs/promises";
 import {join} from "path";
-import {getRedisInstance, REDIS_KEY_PREFIX_ANALYSIS, REDIS_KEY_PREFIX_FRAMES} from "@db/redis/redis";
+import {getRedisInstance, REDIS_KEY_PREFIX_ANALYSIS} from "@db/redis/redis";
 import {createMySQLConnection} from "@db/mysql/typeorm";
 import {Process} from "@db/entities/Process";
-import {Frame} from "@db/entities/Frame";
-import {FrameCase} from "@definitions/simulation/types";
+import {loadInitialFrames} from "@db/mysql/frames";
 import {ProcessAnalysis} from "@definitions/api/types";
 import {AnalysisEvent, buildProcessAnalysis, readFlowTargets} from "@utils/processAnalysis";
 
@@ -49,10 +48,7 @@ export const GET = async (
             ORDER BY timestamp ASC, id ASC
         `, [processId]);
 
-        const frameCache = await redis.get(REDIS_KEY_PREFIX_FRAMES + processId);
-        const frames: Array<FrameCase> = frameCache
-            ? JSON.parse(frameCache)
-            : await appDataSource.getRepository(Frame).find({ where: { processId } });
+        const frames = await loadInitialFrames(redis, appDataSource, processId);
 
         // Only needed to tell which task a running case waits for; without it those cases are left out
         let flowTargets: Record<string, string> = {};
