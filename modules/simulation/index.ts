@@ -349,7 +349,7 @@ const simulation = (
                     }
                     if (!taskPills) return;
                     updatePill(taskPills.waiting, waiting > MAX_VISIBLE_DOTS ? `${waiting} waiting` : null,
-                        shape.x, shape.y - 23, false);
+                        shape.x + shape.width / 2, shape.y - 23, true);
                     updatePill(taskPills.inWork, inWork > MAX_VISIBLE_DOTS ? `${inWork} in work` : null,
                         shape.x + shape.width / 2, shape.y + shape.height + 18, true);
                 });

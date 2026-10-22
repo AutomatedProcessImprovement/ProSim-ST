@@ -129,108 +129,70 @@ h1 {
   height: 100%;
 }
 
+/* Same look as the Statistics panel: grey background, bold headings, italic labels, dashed dividers */
 .summary-strip {
   display: flex;
-  gap: 8px;
-  align-items: stretch;
-  flex-wrap: wrap;
+  background-color: #f0f0f0;
+  border-radius: 5px;
+  padding: 6px 0;
+  font-size: 14px;
 }
 
-.summary-card {
-  min-width: 110px;
-  padding: 5px 10px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  background: #f8fafc;
+.summary-item {
+  min-width: 0;
+  padding: 0 16px;
+  border-left: 2px dashed #bbbbbb;
+  white-space: nowrap;
 }
 
-.summary-card-wide {
+.summary-item:first-child {
+  border-left: none;
+}
+
+.summary-item > h3 {
+  font-weight: bold;
+  font-size: 14px;
+}
+
+.summary-queues {
   flex: 1;
-  min-width: 260px;
 }
 
-.summary-label {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-  color: #64748b;
+.summary-muted {
+  color: #777777;
 }
 
-.summary-value {
-  font-size: 20px;
-  font-weight: 700;
-  line-height: 1.2;
-  color: #0f172a;
-  font-variant-numeric: tabular-nums;
-}
-
-.summary-value-small {
-  font-size: 15px;
-  padding-top: 3px;
-}
-
-.summary-sub,
-.summary-trend {
-  font-size: 12px;
-  font-weight: 400;
-  color: #64748b;
-}
-
-.bottleneck-list {
+.queue-list {
   display: flex;
-  flex-wrap: nowrap;
-  gap: 6px;
-  margin-top: 3px;
+  gap: 14px;
   overflow: hidden;
 }
 
-/* One row only, so the diagram does not jump while the queues change */
-.bottleneck-list li {
-  min-width: 0;
-  flex-shrink: 1;
-}
-
-.bottleneck-chip {
+.queue-list li {
   display: flex;
-  gap: 6px;
-  align-items: baseline;
-  max-width: 100%;
   min-width: 0;
-  padding: 2px 8px;
-  border: 1px solid #fcd34d;
-  border-radius: 999px;
-  background: #fffbeb;
-  font-size: 12px;
 }
 
-.bottleneck-chip:hover {
-  background: #fef3c7;
-}
-
-.bottleneck-name {
-  min-width: 70px;
-  max-width: 190px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  font-weight: 600;
-  color: #0f172a;
-}
-
-.bottleneck-count {
-  color: #92400e;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.bottleneck-wait {
+.queue-link {
+  display: flex;
+  gap: 5px;
   min-width: 0;
-  flex-shrink: 4;
+  text-align: left;
+}
+
+.queue-name {
   overflow: hidden;
   text-overflow: ellipsis;
-  color: #64748b;
-  white-space: nowrap;
+}
+
+.queue-link:hover .queue-name {
+  text-decoration: underline;
+}
+
+.queue-count {
+  flex-shrink: 0;
+  font-weight: bold;
+  color: #b45309;
 }
 
 .diagram-toolbar {

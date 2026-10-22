@@ -422,7 +422,6 @@ const Simulation = () => {
                 analysis={analysis}
                 taskLoad={taskLoad}
                 wtpt={waitingProcessingTimes}
-                utcOffset={utcOffset}
                 onSelectTask={setSelectedTaskId}
             />
         </div>

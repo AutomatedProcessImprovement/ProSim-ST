@@ -185,6 +185,9 @@ describe("modules/simulation/index", () => {
             const pill = container.querySelector(".load-pill.waiting");
             expect(pill.textContent).toBe("7 waiting");
             expect(pill.getAttribute("data-task")).toBe("Task_A");
+            // Centred over the task (x 100-200)
+            const rect = pill.querySelector("rect");
+            expect(Number(rect.getAttribute("x")) + Number(rect.getAttribute("width")) / 2).toBe(150);
             expect((graphics.Task_A.querySelector("rect") as SVGRectElement).style.fill).toContain("rgba(245, 158, 11");
         });
 

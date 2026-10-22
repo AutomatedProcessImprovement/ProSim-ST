@@ -401,24 +401,23 @@ describe("Simulation page", () => {
             });
             render(<Simulation />);
             await waitFor(() => expect(importXMLMock).toHaveBeenCalled());
-            await screen.findByText(/Forecast at/);
+            await screen.findByText("(69 at the start)");
             return (simulationModule as jest.Mock).mock.calls[0][5];
         };
 
-        it("summarises the forecast at the horizon", async () => {
+        it("summarises open cases and says when no case is waiting, without a forecast", async () => {
             await renderWithAnalysis();
 
-            expect(screen.getByText("Forecast at 8 Jan")).toBeInTheDocument();
-            expect(screen.getByText(/158 open/)).toBeInTheDocument();
-            expect(screen.getByText(/61 of 69 open at the start finished/)).toBeInTheDocument();
+            expect(screen.getByText("(69 at the start)")).toBeInTheDocument();
             expect(screen.getByText("No case is waiting")).toBeInTheDocument();
+            expect(screen.queryByText(/Forecast/)).not.toBeInTheDocument();
         });
 
         it("lists the longest queues reported by the simulation and opens a task's details from them", async () => {
             const hooks = await renderWithAnalysis();
             act(() => hooks.onTaskLoad({Task_1: {waiting: 12, inWork: 2}}));
 
-            const chip = screen.getByRole("button", {name: /Task One\s*12 waiting/});
+            const chip = screen.getByRole("button", {name: /12 waiting\s*Task One/});
             fireEvent.click(chip);
 
             const panel = screen.getByRole("complementary", {name: "Task Task One"});
