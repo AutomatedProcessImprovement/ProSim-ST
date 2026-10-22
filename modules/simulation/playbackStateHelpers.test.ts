@@ -37,13 +37,23 @@ describe("prependCurrentBatchIfNeeded", () => {
     });
 });
 
+describe("prependCurrentBatchIfNeeded with an explicit flag", () => {
+    const current = {startDate: "a", endDate: "b", events: []};
+
+    it("replays a batch that was taken from the queue but not applied, even before any of it was played", () => {
+        expect(prependCurrentBatchIfNeeded([], current, 0, true)).toEqual([current]);
+    });
+
+    it("does not replay an applied batch", () => {
+        expect(prependCurrentBatchIfNeeded([], current, 0.5, false)).toEqual([]);
+    });
+});
+
 describe("buildVisualResetPatch", () => {
     it("builds a reset patch and marks resume based on local progress", () => {
         const patch = buildVisualResetPatch(0.25);
 
-        expect(patch.tokens).toEqual({});
-        expect(patch.coordinateMap).toEqual({});
-        expect(patch.isResumed).toBe(true);
+        expect(patch).toEqual({isResumed: true});
     });
 
     it("marks isResumed false when local progress is zero", () => {

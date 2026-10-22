@@ -1,24 +1,22 @@
-import {Batch, Token, Tokens} from "@definitions/simulation/types";
+import {Batch} from "@definitions/simulation/types";
 
-export type CoordinateMap = Record<string, Record<string, Array<Token>>>;
-
+// The batch being played goes back to the front of the queue unless it was fully applied. Without the explicit
+// flag, a batch counts as unfinished when its time was partly played.
 export function prependCurrentBatchIfNeeded(
     batchesQueue: Batch[],
     currentBatch: Batch,
     localProgress: number,
+    currentBatchUnfinished?: boolean,
 ): Batch[] {
-    if (!localProgress) return [...batchesQueue];
+    if (!currentBatch || !(currentBatchUnfinished ?? localProgress)) return [...batchesQueue];
     return [currentBatch, ...batchesQueue];
 }
 
+// The dots are cleared and redrawn on resume; a batch interrupted half-way is replayed from where it stopped
 export function buildVisualResetPatch(localProgress: number): {
-    tokens: Tokens;
-    coordinateMap: CoordinateMap;
     isResumed: boolean;
 } {
     return {
-        tokens: {} as Tokens,
-        coordinateMap: {},
         isResumed: localProgress !== 0,
     };
 }
@@ -33,6 +31,7 @@ export type PlayPauseDecisionInput = {
     batchesQueue: Batch[];
     currentBatch: Batch;
     localProgress: number;
+    currentBatchUnfinished?: boolean;
 };
 
 export type PlayPauseDecision =
@@ -49,6 +48,7 @@ export type PlaybackSpeedDecisionInput = {
     batchesQueue: Batch[];
     currentBatch: Batch;
     localProgress: number;
+    currentBatchUnfinished?: boolean;
 };
 
 export type PlaybackSpeedDecision =
@@ -70,7 +70,7 @@ export function decidePlayPauseResumeAction(input: PlayPauseDecisionInput): Play
 
     return {
         kind: "resume",
-        nextQueue: prependCurrentBatchIfNeeded(input.batchesQueue, input.currentBatch, input.localProgress),
+        nextQueue: prependCurrentBatchIfNeeded(input.batchesQueue, input.currentBatch, input.localProgress, input.currentBatchUnfinished),
         resetPatch: buildVisualResetPatch(input.localProgress),
     };
 }
@@ -82,7 +82,7 @@ export function decidePlaybackSpeedUpdateAction(input: PlaybackSpeedDecisionInpu
 
     return {
         kind: "running",
-        nextQueue: prependCurrentBatchIfNeeded(input.batchesQueue, input.currentBatch, input.localProgress),
+        nextQueue: prependCurrentBatchIfNeeded(input.batchesQueue, input.currentBatch, input.localProgress, input.currentBatchUnfinished),
         resetPatch: buildVisualResetPatch(input.localProgress),
     };
 }

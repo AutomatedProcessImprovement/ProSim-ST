@@ -8,6 +8,8 @@ import {LifecycleTypes} from "@definitions/simulation/enums";
 import {groupEvents} from "@utils/events";
 import {formatDateString} from "@utils/dateHelpers";
 
+const MAX_POLLING_HOURS = 720;
+
 export const GET = async (
     request: Request,
     context: { params: Promise<{ id: string }> }
@@ -17,7 +19,8 @@ export const GET = async (
         const processId = params.id;
         const { searchParams } = new URL(request.url);
         const pointer = parseInt(searchParams.get("pointer") || "0", 10);
-        const limit = parseInt(searchParams.get("limit") || "10", 10);
+        // Fast playback asks for weeks of hourly batches at once; a month is the most one request may load
+        const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "10", 10) || 10, 1), MAX_POLLING_HOURS);
 
         const appDataSource = await createMySQLConnection();
         const processRepository = appDataSource.getRepository(Process);

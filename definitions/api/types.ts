@@ -61,6 +61,26 @@ export type PollingData = {
     pointer: number,
 }
 
+// What the simulation forecasts, for the analyst: samples every stepMs from startDate
+export type ProcessAnalysis = {
+    startDate: string;
+    endDate: string;
+    stepMs: number;
+    // Cases in progress at every sample
+    open: number[];
+    // Per task: cases waiting for it and cases being worked on at every sample
+    tasks: Record<string, {waiting: number[]; inWork: number[]}>;
+    // When each case arrived (ms since epoch); cases already running at the start have the start time
+    caseArrivals: Record<string, number>;
+    openAtStart: number;
+    openAtStartFinished: number;
+    openAtEnd: number;
+    arrived: number;
+    completed: number;
+    // Average duration of the cases that both arrived and finished within the simulation
+    averageCycleTimeMs: number | null;
+}
+
 export type ResumeSimulationRequestBodyPython = {
     process_id: string;
     timestamp: string;

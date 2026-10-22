@@ -1,4 +1,4 @@
-import {render, screen, waitFor, fireEvent} from "@testing-library/react";
+import {render, screen, waitFor, fireEvent, act, within} from "@testing-library/react";
 import Simulation from "./page";
 import axios from "axios";
 import simulationModule from "@modules/simulation";
@@ -352,6 +352,120 @@ describe("Simulation page", () => {
             } finally {
                 jest.useRealTimers();
             }
+        });
+    });
+
+    describe("analyst view", () => {
+        const HOUR = 3600000;
+        const start = Date.UTC(2024, 0, 1);
+        const analysis = {
+            startDate: new Date(start).toISOString(),
+            endDate: new Date(start + 7 * 24 * HOUR).toISOString(),
+            stepMs: 24 * HOUR,
+            open: [69, 80, 90, 100, 120, 140, 150, 158],
+            tasks: {Task_1: {waiting: [0, 4, 8, 12, 9, 6, 3, 1], inWork: [1, 1, 2, 2, 1, 1, 1, 0]}},
+            caseArrivals: {1: start},
+            openAtStart: 69,
+            openAtStartFinished: 61,
+            openAtEnd: 158,
+            arrived: 300,
+            completed: 211,
+            averageCycleTimeMs: 48 * HOUR,
+        };
+        const tokenSimulation = {
+            start: jest.fn(),
+            setColorMode: jest.fn(),
+            getTaskQueue: jest.fn(() => [
+                {caseId: 974, state: "waiting", since: start + 2 * HOUR, arrival: start},
+                {caseId: 975, state: "working", since: start + 5 * HOUR, arrival: start + 3 * HOUR},
+            ]),
+            getCurrentTime: jest.fn(() => start + 6 * HOUR),
+        };
+
+        const renderWithAnalysis = async () => {
+            getMock.mockImplementation((name: string) => {
+                if (name === "canvas") return {zoom: canvasZoomMock, resized: canvasResizedMock};
+                if (name === "tokenSimulation") return tokenSimulation;
+                if (name === "elementRegistry") return {getAll: () => [{id: "Task_1", businessObject: {$type: "bpmn:UserTask", name: "Task One"}}]};
+                return {};
+            });
+            (axios.get as jest.Mock).mockImplementation((url: string) => {
+                if (url === "/api/simulation/p1") {
+                    return Promise.resolve({data: {
+                        processId: "p1", batches: [], frames: [], file: Buffer.from("<xml />"),
+                        startDate: "2024-01-01 00:00:00", endDate: "2024-01-08 00:00:00", utcOffset: "+00:00", pointer: 0,
+                    }});
+                }
+                if (url === "/api/simulation/p1/analysis") return Promise.resolve({data: analysis});
+                return Promise.resolve({data: [1, 2]});
+            });
+            render(<Simulation />);
+            await waitFor(() => expect(importXMLMock).toHaveBeenCalled());
+            await screen.findByText(/Forecast at/);
+            return (simulationModule as jest.Mock).mock.calls[0][5];
+        };
+
+        it("summarises the forecast at the horizon", async () => {
+            await renderWithAnalysis();
+
+            expect(screen.getByText("Forecast at 8 Jan")).toBeInTheDocument();
+            expect(screen.getByText(/158 open/)).toBeInTheDocument();
+            expect(screen.getByText(/61 of 69 open at the start finished/)).toBeInTheDocument();
+            expect(screen.getByText("No case is waiting")).toBeInTheDocument();
+        });
+
+        it("lists the longest queues reported by the simulation and opens a task's details from them", async () => {
+            const hooks = await renderWithAnalysis();
+            act(() => hooks.onTaskLoad({Task_1: {waiting: 12, inWork: 2}}));
+
+            const chip = screen.getByRole("button", {name: /Task One\s*12 waiting/});
+            fireEvent.click(chip);
+
+            const panel = screen.getByRole("complementary", {name: "Task Task One"});
+            expect(within(panel).getByText("1 waiting")).toBeInTheDocument();
+            expect(within(panel).getByText("1 in work")).toBeInTheDocument();
+            expect(within(panel).getByText("waiting 4 h · open since before the start")).toBeInTheDocument();
+            expect(within(panel).getByText("in work 1 h · open 3 h")).toBeInTheDocument();
+            expect(within(panel).getByRole("img", {name: "Cases waiting for Task One over the simulation, at most 12"})).toBeInTheDocument();
+
+            fireEvent.keyDown(window, {key: "Escape"});
+            expect(screen.queryByRole("complementary", {name: "Task Task One"})).not.toBeInTheDocument();
+        });
+
+        it("opens a task's details when the simulation reports a click on it", async () => {
+            const hooks = await renderWithAnalysis();
+            act(() => hooks.onTaskClick("Task_1"));
+
+            expect(screen.getByRole("complementary", {name: "Task Task One"})).toBeInTheDocument();
+            fireEvent.click(screen.getByRole("button", {name: "Close task details"}));
+            expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+        });
+
+        it("gives the simulation case arrivals, the average cycle time and the open cases at a moment", async () => {
+            const hooks = await renderWithAnalysis();
+
+            expect(hooks.getCaseArrival(1)).toBe(start);
+            expect(hooks.getAverageCycleTime()).toBe(48 * HOUR);
+            expect(hooks.describeMoment(start + 50 * HOUR)).toBe("90 cases in progress");
+        });
+
+        it("switches the dot colouring, zooms, and offers speeds in simulated time per second", async () => {
+            await renderWithAnalysis();
+
+            fireEvent.click(screen.getByRole("button", {name: "Case age"}));
+            expect(tokenSimulation.setColorMode).toHaveBeenCalledWith("age");
+            expect(screen.getByText("Over 2× the average")).toBeInTheDocument();
+
+            canvasZoomMock.mockReturnValue(1);
+            fireEvent.click(screen.getByRole("button", {name: "Zoom in"}));
+            expect(canvasZoomMock).toHaveBeenCalledWith(1.25, "auto");
+            fireEvent.click(screen.getByRole("button", {name: "Fit diagram"}));
+            expect(canvasZoomMock).toHaveBeenCalledWith("fit-viewport");
+
+            const options = [...(document.getElementById("speed-select") as HTMLSelectElement).options];
+            expect(options.map(option => option.textContent)).toContain("1 week/s");
+            expect((document.getElementById("speed-select") as HTMLSelectElement).value).toBe("1");
+            expect(screen.getByText("Cases in progress")).toBeInTheDocument();
         });
     });
 });

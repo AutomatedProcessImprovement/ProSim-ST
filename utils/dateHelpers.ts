@@ -62,3 +62,24 @@ export const formatReadableDate = (wallClock: string | Date) => {
 
 // "8 weeks", "1 week"
 export const formatHorizon = (value: number, unit: string) => `${value} ${value === 1 ? unit.replace(/s$/, "") : unit}`;
+
+// A duration as an analyst would say it: "45 min", "6 h 12 min", "2 d 4 h"
+export const formatDuration = (ms: number) => {
+    const minutes = Math.max(0, Math.floor(ms / 60000));
+    if (minutes < 60) return `${minutes} min`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return minutes % 60 ? `${hours} h ${minutes % 60} min` : `${hours} h`;
+    const days = Math.floor(hours / 24);
+    return hours % 24 ? `${days} d ${hours % 24} h` : `${days} d`;
+};
+
+// "4 Apr" or "4 Apr 15:46" in the log's own time
+export const formatShortDate = (date: Date, utcOffset: string = "+00:00", withTime = false) => {
+    const wallClock = new Date(formatInLogTime(date, utcOffset).replace(" ", "T") + "Z");
+    return new Intl.DateTimeFormat("en-GB", {
+        day: "numeric",
+        month: "short",
+        ...(withTime ? {hour: "2-digit", minute: "2-digit", hourCycle: "h23"} : {}),
+        timeZone: "UTC",
+    }).format(wallClock).replace(",", "");
+};

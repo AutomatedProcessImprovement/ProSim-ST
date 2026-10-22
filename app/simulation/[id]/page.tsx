@@ -1,6 +1,6 @@
 "use client";
 
-import {useEffect, useMemo, useRef, useState} from "react";
+import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import {toast} from "sonner";
@@ -8,18 +8,21 @@ import {formatInLogTime} from "@utils/dateHelpers";
 import NavigatedViewer from 'bpmn-js/lib/NavigatedViewer';
 import simulation from "@modules/simulation";
 import axios from "axios";
-import {SimulationData} from "@definitions/api/types";
+import {ProcessAnalysis, SimulationData} from "@definitions/api/types";
 import {Canvas} from "bpmn-js/lib/features/context-pad/ContextPadProvider";
-import {NodeTypes} from "@definitions/simulation/enums";
-import {WTPTState} from "@definitions/simulation/types";
+import {ColorMode, SimulationHooks, TaskLoad, TokenSimulationApi, WTPTState} from "@definitions/simulation/types";
+import {isTaskType} from "@modules/simulation/restLayout";
+import {DEFAULT_HOURS_PER_SECOND, SPEEDS} from "@modules/simulation/speed";
+import {sampleIndexAt} from "@utils/processAnalysis";
+import SummaryStrip from "@components/simulation/SummaryStrip";
+import TaskPanel from "@components/simulation/TaskPanel";
+import DiagramControls from "@components/simulation/DiagramControls";
 import { QueueMetricsState } from "@definitions/simulation/networkMetrics";
 import { BatchQueueChart } from "@components/BatchQueueChart";
 import { NetworkActivityChart } from "@components/NetworkActivityChart";
 import { NetworkActivityState, INITIAL_NETWORK_ACTIVITY_STATE, measureResponseBytes } from "@definitions/simulation/networkActivity";
 import { SmoothAnimationPanel } from "@components/SmoothAnimationPanel";
 import { SmoothAnimationState, INITIAL_SMOOTH_ANIMATION_STATE } from "@definitions/simulation/smoothAnimation";
-
-const speeds = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
 
 const Simulation = () => {
     const viewerRef = useRef(null);
@@ -47,6 +50,15 @@ const Simulation = () => {
     const lastSecondRef = useRef<number>(0);
     const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
     const [loadError, setLoadError] = useState<"missing" | "failed" | null>(null);
+    const [analysis, setAnalysis] = useState<ProcessAnalysis | null>(null);
+    const [taskLoad, setTaskLoad] = useState<TaskLoad>({});
+    const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+    const [colorMode, setColorMode] = useState<ColorMode>("state");
+    // Read by the running simulation, so it always sees the latest analysis
+    const hooksRef = useRef<SimulationHooks>({
+        onTaskLoad: setTaskLoad,
+        onTaskClick: setSelectedTaskId,
+    });
     const { id } = useParams();
     const processId = Array.isArray(id) ? id[0] : id;
     const chartWidth = 226;
@@ -61,7 +73,7 @@ const Simulation = () => {
             const bo = el.businessObject;
             if (!bo) continue;
 
-            if (bo.$type !== NodeTypes.TASK) continue;
+            if (!isTaskType(bo.$type)) continue;
 
             map[el.id] = {
                 _count: 0,
@@ -87,6 +99,9 @@ const Simulation = () => {
         setWorkload(undefined);
         setCycleTimeData([]);
         setNetworkMetrics(null);
+        setAnalysis(null);
+        setTaskLoad({});
+        setSelectedTaskId(null);
         setNetworkActivity(INITIAL_NETWORK_ACTIVITY_STATE);
         setSmoothAnimation(INITIAL_SMOOTH_ANIMATION_STATE);
         frameCountRef.current = 0;
@@ -131,6 +146,18 @@ const Simulation = () => {
             }
         }
 
+        const fetchAnalysis = async () => {
+            try {
+                const res = await axios.get(`/api/simulation/${processId}/analysis`);
+                const data = res?.data as ProcessAnalysis | undefined;
+                return Array.isArray(data?.open) && data.open.length && data.tasks ? data : null;
+            } catch (error) {
+                // The page works without it, only the forecast and queue history are missing
+                console.warn("Could not load the simulation analysis", error);
+                return null;
+            }
+        }
+
         fetchSimulationData()
             .then((data: SimulationData) => {
                 setSimulationData(data);
@@ -159,7 +186,22 @@ const Simulation = () => {
             .then((data: Array<number>) => {
                 setCycleTimeData(data);
             });
+        fetchAnalysis().then(setAnalysis);
     }, [processId]);
+
+    useEffect(() => {
+        const hooks = hooksRef.current;
+        hooks.getCaseArrival = caseId => analysis?.caseArrivals[caseId];
+        hooks.getAverageCycleTime = () => analysis?.averageCycleTimeMs ?? null;
+        hooks.describeMoment = moment => {
+            if (analysis) return `${analysis.open[sampleIndexAt(analysis, moment)]} cases in progress`;
+            if (!workload?.length || !simulationData) return null;
+            const start = new Date(simulationData.startDate + "Z").getTime();
+            const end = new Date(simulationData.endDate + "Z").getTime();
+            const index = Math.floor((moment - start) / Math.max(end - start, 1) * workload.length);
+            return `${workload[Math.max(0, Math.min(workload.length - 1, index))]} cases in progress`;
+        };
+    }, [analysis, workload, simulationData]);
 
     useEffect(() => {
         if (xml !== null && simulationData && typeof window !== "undefined") {
@@ -167,7 +209,7 @@ const Simulation = () => {
 
             const viewer = new NavigatedViewer({
                 container: viewerRef.current,
-                additionalModules: [simulation(simulationData, setNumberOfCases, setWaitingProcessingTimes, setNetworkMetrics, setNetworkActivity)]
+                additionalModules: [simulation(simulationData, setNumberOfCases, setWaitingProcessingTimes, setNetworkMetrics, setNetworkActivity, hooksRef.current)]
             });
             viewerInstanceRef.current = viewer;
 
@@ -178,7 +220,7 @@ const Simulation = () => {
                 const activityNodeIdMap = getTaskIdToNameMap(viewer);
                 setWaitingProcessingTimes(activityNodeIdMap);
 
-                const tokenSimulation = viewer.get('tokenSimulation') as Canvas;
+                const tokenSimulation = viewer.get('tokenSimulation') as TokenSimulationApi;
                 tokenSimulation.start();
             });
         }
@@ -200,6 +242,27 @@ const Simulation = () => {
         }, 320);
         return () => clearTimeout(timeout);
     }, [statsVisible]);
+
+    const getTokenSimulation = useCallback(
+        () => viewerInstanceRef.current?.get('tokenSimulation') as TokenSimulationApi | undefined, []);
+
+    const changeColorMode = (mode: ColorMode) => {
+        setColorMode(mode);
+        getTokenSimulation()?.setColorMode?.(mode);
+    };
+
+    const zoom = (factor: number | "fit") => {
+        const canvas = viewerInstanceRef.current?.get('canvas') as (Canvas & { zoom: (scale?: number | string, center?: string) => number }) | undefined;
+        if (!canvas) return;
+        if (factor === "fit") canvas.zoom('fit-viewport');
+        else canvas.zoom(canvas.zoom() * factor, 'auto');
+    };
+
+    const getSelectedQueue = useCallback(
+        () => (selectedTaskId ? getTokenSimulation()?.getTaskQueue?.(selectedTaskId) : null) ?? [],
+        [selectedTaskId, getTokenSimulation]);
+    const getCurrentTime = useCallback(() => getTokenSimulation()?.getCurrentTime?.() ?? null, [getTokenSimulation]);
+    const closeTaskPanel = useCallback(() => setSelectedTaskId(null), []);
 
     // Keyboard shortcuts: Space plays/pauses, Home and End jump to the start and end
     useEffect(() => {
@@ -280,7 +343,7 @@ const Simulation = () => {
     const workloadBars = useMemo(() => {
         if (!workload) return null;
 
-        const max = Math.max(...workload);
+        const max = Math.max(...workload, 1);
 
         return workload.map((count, index) => {
             const heightPercent = count / max * 100;
@@ -319,6 +382,9 @@ const Simulation = () => {
         new Intl.DateTimeFormat("en-GB", {day: "numeric", month: "short", timeZone: "UTC"}).format(
             new Date(formatInLogTime(new Date(date + "Z"), simulationData?.utcOffset ?? "+00:00").replace(" ", "T") + "Z"));
 
+    const workloadMax = workload?.length ? Math.max(...workload) : null;
+    const utcOffset = simulationData?.utcOffset ?? "+00:00";
+
     const wtptList = useMemo(() => {
         return Object.entries(waitingProcessingTimes)
             .map(([nodeId, stats]) => ({ nodeId, stats }))
@@ -350,11 +416,45 @@ const Simulation = () => {
             <button type="button" className="toolbar-btn" onClick={copyLink}>Copy link</button>
             <span className="toolbar-hint">Space: play/pause · Home/End: jump</span>
         </div>
-        <div ref={viewerRef} className={statsVisible ? 'bpmn-viewer with-stats' : 'bpmn-viewer'}></div>
+        <div className={statsVisible ? 'simulation-header with-stats' : 'simulation-header'}>
+            <SummaryStrip
+                numberOfCases={numberOfCases}
+                analysis={analysis}
+                taskLoad={taskLoad}
+                wtpt={waitingProcessingTimes}
+                utcOffset={utcOffset}
+                onSelectTask={setSelectedTaskId}
+            />
+        </div>
+        <DiagramControls
+            className={statsVisible ? 'diagram-toolbar with-stats' : 'diagram-toolbar'}
+            colorMode={colorMode}
+            onColorModeChange={changeColorMode}
+            hasCycleTime={analysis === null || analysis.averageCycleTimeMs !== null}
+            onZoomIn={() => zoom(1.25)}
+            onZoomOut={() => zoom(0.8)}
+            onFit={() => zoom("fit")}
+        />
+        <div className={statsVisible ? 'diagram-area with-stats' : 'diagram-area'}>
+            <div ref={viewerRef} className={'bpmn-viewer'}></div>
+            {selectedTaskId && <TaskPanel
+                key={selectedTaskId}
+                taskId={selectedTaskId}
+                name={waitingProcessingTimes[selectedTaskId]?.name || selectedTaskId}
+                stats={waitingProcessingTimes[selectedTaskId]}
+                analysis={analysis}
+                utcOffset={utcOffset}
+                getQueue={getSelectedQueue}
+                getCurrentTime={getCurrentTime}
+                onClose={closeTaskPanel}
+            />}
+        </div>
+        <div id={'token-tooltip'} className={'token-tooltip'} role="tooltip"></div>
         <div id={'timeline'} className={'timeline'}>
             <div className="timeline-shade-wrapper">
                 {workloadBars}
             </div>
+            {workloadMax !== null && <span className="workload-label">Cases in progress <span className="stats-unit">(highest {workloadMax})</span></span>}
             <div id={'progress-bar'} className={'progress-bar'}></div>
             <div id={'pointer'} className={'pointer'}></div>
             <small id={'start-date'} className={'start-date'}></small>
@@ -367,11 +467,15 @@ const Simulation = () => {
             <button id={'go-to-end-btn'} className={'control-btn'} title="Go to end (End)">⏭</button>
         </div>
         <div id={'simulated-time-box'} className={'simulated-time-box'}>--</div>
-        <select id={'speed-select'} className={'speed-select'} defaultValue={1}>
-            {speeds.map(speed => (
-                <option value={speed} key={speed}>{speed}x</option>
-            ))}
-        </select>
+        <label className="speed-control">
+            <span className="speed-label">Speed</span>
+            <select id={'speed-select'} className={'speed-select'} defaultValue={DEFAULT_HOURS_PER_SECOND}
+                    title="Simulated time per second. From 6 hours/s the dots jump instead of travelling.">
+                {SPEEDS.map(({hoursPerSecond, label}) => (
+                    <option value={hoursPerSecond} key={hoursPerSecond}>{label}</option>
+                ))}
+            </select>
+        </label>
 
         <div className={'stats-sidebar'}
              style={{ transform: statsVisible ? 'translateX(0)' : 'translateX(300px)' }}

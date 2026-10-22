@@ -3,8 +3,8 @@ import {BatchEvent, EventsByCaseId} from "@definitions/simulation/types";
 const QUEUE_TOP_UP_THRESHOLD = 5;
 const MS_PER_HOUR = 3600000;
 
-export function shouldTopUpQueue(queueLength: number, batchesPointer: number): boolean {
-    return queueLength <= QUEUE_TOP_UP_THRESHOLD && batchesPointer > 0;
+export function shouldTopUpQueue(queueLength: number, batchesPointer: number, threshold = QUEUE_TOP_UP_THRESHOLD): boolean {
+    return queueLength <= threshold && batchesPointer > 0;
 }
 
 export function computeProportionalDelta(delta: number, batchDuration: number): number {
@@ -18,25 +18,6 @@ export function groupEventsByCaseId(events: BatchEvent[]): EventsByCaseId {
         result[event.caseId].push(event);
     });
     return result;
-}
-
-export function shouldUpdateFrames(
-    localProgress: number,
-    batchEndDate: string,
-    currentDateTime: Date,
-): boolean {
-    return (
-        localProgress === 0 &&
-        new Date(batchEndDate).getTime() === currentDateTime.getTime()
-    );
-}
-
-export function computeEmptyBatchWaitTime(
-    proportionalDelta: number,
-    isResumed: boolean,
-    localProgress: number,
-): number {
-    return proportionalDelta * (1 - (isResumed ? localProgress : 0));
 }
 
 export function computeTokenAnimationStartTime(

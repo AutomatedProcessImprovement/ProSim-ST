@@ -1,12 +1,10 @@
 import {LifecycleTypes} from "@definitions/simulation/enums";
 import {BatchEvent} from "@definitions/simulation/types";
 import {
-    computeEmptyBatchWaitTime,
     computeProportionalDelta,
     computeTokenAnimationStartTime,
     groupEventsByCaseId,
     shouldTopUpQueue,
-    shouldUpdateFrames,
 } from "@modules/simulation/runSimulationHelpers";
 
 function makeEvent(caseId: number): BatchEvent {
@@ -30,6 +28,11 @@ describe("shouldTopUpQueue", () => {
 
     it("does not trigger when queue exceeds threshold", () => {
         expect(shouldTopUpQueue(6, 10)).toBe(false);
+    });
+
+    it("uses a custom threshold for fast playback", () => {
+        expect(shouldTopUpQueue(40, 3, 48)).toBe(true);
+        expect(shouldTopUpQueue(49, 3, 48)).toBe(false);
     });
 
     it("does not trigger when pointer is zero regardless of queue size", () => {
@@ -58,37 +61,6 @@ describe("groupEventsByCaseId", () => {
 
     it("returns empty object for empty input", () => {
         expect(groupEventsByCaseId([])).toEqual({});
-    });
-});
-
-describe("shouldUpdateFrames", () => {
-    it("returns true when localProgress is zero and batch end matches current time", () => {
-        const date = new Date("2024-01-01T12:00:00.000Z");
-        expect(shouldUpdateFrames(0, "2024-01-01T12:00:00.000Z", date)).toBe(true);
-    });
-
-    it("returns false when localProgress is non-zero", () => {
-        const date = new Date("2024-01-01T12:00:00.000Z");
-        expect(shouldUpdateFrames(0.5, "2024-01-01T12:00:00.000Z", date)).toBe(false);
-    });
-
-    it("returns false when batch end does not match current time", () => {
-        const date = new Date("2024-01-01T13:00:00.000Z");
-        expect(shouldUpdateFrames(0, "2024-01-01T12:00:00.000Z", date)).toBe(false);
-    });
-});
-
-describe("computeEmptyBatchWaitTime", () => {
-    it("returns full proportional delta when not resumed", () => {
-        expect(computeEmptyBatchWaitTime(1000, false, 0)).toBe(1000);
-    });
-
-    it("reduces wait time proportionally when resumed mid-batch", () => {
-        expect(computeEmptyBatchWaitTime(1000, true, 0.4)).toBe(600);
-    });
-
-    it("returns full wait time when resumed but localProgress is zero", () => {
-        expect(computeEmptyBatchWaitTime(1000, true, 0)).toBe(1000);
     });
 });
 

@@ -122,6 +122,28 @@ describe("GET /api/simulation/[id]/polling", () => {
         });
     });
 
+    it("loads at most a month of batches per request", async () => {
+        processRepository.createQueryBuilder.mockReturnValue(createQueryBuilderMock({
+            id: "p1",
+            startDate: "2024-01-01 00:00:00",
+            endDate: "2024-12-31 00:00:00",
+            setToDelete: false,
+        }));
+        (groupEvents as jest.Mock).mockReturnValue([]);
+        const query = jest.fn().mockResolvedValue([]);
+        (createMySQLConnection as jest.Mock).mockResolvedValue({
+            getRepository: jest.fn(() => processRepository),
+            query,
+        });
+
+        const response = await GET({url: "http://localhost/api/simulation/p1/polling?pointer=0&limit=100000"} as Request, {
+            params: Promise.resolve({id: "p1"}),
+        });
+
+        expect(query.mock.calls[0][1]).toEqual(["p1", "2024-01-01 00:00:00", "2024-01-31 00:00:00"]);
+        expect(response.body).toEqual({batches: [], pointer: 720});
+    });
+
     it("uses default pointer and limit values and returns -1 when the fetched window reaches the end", async () => {
         processRepository.createQueryBuilder.mockReturnValue(createQueryBuilderMock({
             id: "p1",

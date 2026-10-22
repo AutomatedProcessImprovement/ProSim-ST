@@ -1,4 +1,4 @@
-import {calculateEndDate, formatDateString, formatHorizon, formatInLogTime, formatReadableDate, formatUtcOffset, getHourDifference, logTimeToUtc} from "@utils/dateHelpers";
+import {calculateEndDate, formatDateString, formatDuration, formatHorizon, formatInLogTime, formatReadableDate, formatShortDate, formatUtcOffset, getHourDifference, logTimeToUtc} from "@utils/dateHelpers";
 import {TimeUnits} from "@definitions/config/enums";
 
 describe("dateHelpers", () => {
@@ -50,5 +50,25 @@ describe("dateHelpers", () => {
         expect(formatReadableDate("")).toBe("");
         expect(formatHorizon(8, "weeks")).toBe("8 weeks");
         expect(formatHorizon(1, "months")).toBe("1 month");
+    });
+});
+
+describe("formatDuration", () => {
+    it("says durations the way an analyst would", () => {
+        expect(formatDuration(-5)).toBe("0 min");
+        expect(formatDuration(45 * 60000)).toBe("45 min");
+        expect(formatDuration(3 * 3600000)).toBe("3 h");
+        expect(formatDuration((6 * 60 + 12) * 60000)).toBe("6 h 12 min");
+        expect(formatDuration(48 * 3600000)).toBe("2 d");
+        expect(formatDuration(52 * 3600000 + 59 * 60000)).toBe("2 d 4 h");
+    });
+});
+
+describe("formatShortDate", () => {
+    it("formats a date in the log's offset, with or without the time", () => {
+        const date = new Date("2025-05-30T22:30:00Z");
+        expect(formatShortDate(date)).toBe("30 May");
+        expect(formatShortDate(date, "+02:00")).toBe("31 May");
+        expect(formatShortDate(date, "+02:00", true)).toBe("31 May 00:30");
     });
 });
