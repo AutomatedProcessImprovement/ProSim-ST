@@ -401,24 +401,15 @@ describe("Simulation page", () => {
             });
             render(<Simulation />);
             await waitFor(() => expect(importXMLMock).toHaveBeenCalled());
-            await screen.findByText("(69 at the start)");
-            return (simulationModule as jest.Mock).mock.calls[0][5];
+            const hooks = (simulationModule as jest.Mock).mock.calls[0][5];
+            // The analysis has loaded once the simulation can read from it
+            await waitFor(() => expect(hooks.getAverageCycleTime()).toBe(48 * HOUR));
+            return hooks;
         };
 
-        it("summarises open cases and says when no case is waiting, without a forecast", async () => {
-            await renderWithAnalysis();
-
-            expect(screen.getByText("(69 at the start)")).toBeInTheDocument();
-            expect(screen.getByText("No case is waiting")).toBeInTheDocument();
-            expect(screen.queryByText(/Forecast/)).not.toBeInTheDocument();
-        });
-
-        it("lists the longest queues reported by the simulation and opens a task's details from them", async () => {
+        it("shows a task's queue, averages and queue history when the simulation reports a click on it", async () => {
             const hooks = await renderWithAnalysis();
-            act(() => hooks.onTaskLoad({Task_1: {waiting: 12, inWork: 2}}));
-
-            const chip = screen.getByRole("button", {name: /12 waiting\s*Task One/});
-            fireEvent.click(chip);
+            act(() => hooks.onTaskClick("Task_1"));
 
             const panel = screen.getByRole("complementary", {name: "Task Task One"});
             expect(within(panel).getByText("1 waiting")).toBeInTheDocument();
@@ -429,6 +420,12 @@ describe("Simulation page", () => {
 
             fireEvent.keyDown(window, {key: "Escape"});
             expect(screen.queryByRole("complementary", {name: "Task Task One"})).not.toBeInTheDocument();
+        });
+
+        it("has no summary strip above the diagram", async () => {
+            await renderWithAnalysis();
+            expect(screen.queryByLabelText("Simulation summary")).not.toBeInTheDocument();
+            expect(screen.queryByText("Longest queues now")).not.toBeInTheDocument();
         });
 
         it("opens a task's details when the simulation reports a click on it", async () => {

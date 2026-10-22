@@ -104,13 +104,7 @@ h1 {
   animation: fadeIn forwards; /* No duration specified here as the duration will be assigned dynamically in the logic */
 }
 
-.simulation-header {
-  padding: 6px 12px 0;
-  transition: width 0.3s ease-in-out;
-}
-
 /* Leaves room for the open stats panel (300px) and its toggle */
-.simulation-header.with-stats,
 .diagram-area.with-stats {
   width: calc(100% - 320px);
 }
@@ -119,80 +113,14 @@ h1 {
   position: relative;
   width: 100%;
   transition: width 0.3s ease-in-out;
-  /* Everything between the summary above and the workload band above the timeline */
-  height: calc(var(--timeline-top) - 240px);
+  /* Everything between the legend above and the workload band above the timeline */
+  height: calc(var(--timeline-top) - 175px);
   min-height: 240px;
 }
 
 .bpmn-viewer {
   width: 100%;
   height: 100%;
-}
-
-/* Same look as the Statistics panel: grey background, bold headings, italic labels, dashed dividers */
-.summary-strip {
-  display: flex;
-  background-color: #f0f0f0;
-  border-radius: 5px;
-  padding: 6px 0;
-  font-size: 14px;
-}
-
-.summary-item {
-  min-width: 0;
-  padding: 0 16px;
-  border-left: 2px dashed #bbbbbb;
-  white-space: nowrap;
-}
-
-.summary-item:first-child {
-  border-left: none;
-}
-
-.summary-item > h3 {
-  font-weight: bold;
-  font-size: 14px;
-}
-
-.summary-queues {
-  flex: 1;
-}
-
-.summary-muted {
-  color: #777777;
-}
-
-.queue-list {
-  display: flex;
-  gap: 14px;
-  overflow: hidden;
-}
-
-.queue-list li {
-  display: flex;
-  min-width: 0;
-}
-
-.queue-link {
-  display: flex;
-  gap: 5px;
-  min-width: 0;
-  text-align: left;
-}
-
-.queue-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.queue-link:hover .queue-name {
-  text-decoration: underline;
-}
-
-.queue-count {
-  flex-shrink: 0;
-  font-weight: bold;
-  color: #b45309;
 }
 
 .diagram-toolbar {

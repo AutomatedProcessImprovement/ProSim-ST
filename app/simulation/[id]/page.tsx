@@ -10,11 +10,10 @@ import simulation from "@modules/simulation";
 import axios from "axios";
 import {ProcessAnalysis, SimulationData} from "@definitions/api/types";
 import {Canvas} from "bpmn-js/lib/features/context-pad/ContextPadProvider";
-import {ColorMode, SimulationHooks, TaskLoad, TokenSimulationApi, WTPTState} from "@definitions/simulation/types";
+import {ColorMode, SimulationHooks, TokenSimulationApi, WTPTState} from "@definitions/simulation/types";
 import {isTaskType} from "@modules/simulation/restLayout";
 import {DEFAULT_HOURS_PER_SECOND, SPEEDS} from "@modules/simulation/speed";
 import {sampleIndexAt} from "@utils/processAnalysis";
-import SummaryStrip from "@components/simulation/SummaryStrip";
 import TaskPanel from "@components/simulation/TaskPanel";
 import DiagramControls from "@components/simulation/DiagramControls";
 import { QueueMetricsState } from "@definitions/simulation/networkMetrics";
@@ -51,12 +50,10 @@ const Simulation = () => {
     const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
     const [loadError, setLoadError] = useState<"missing" | "failed" | null>(null);
     const [analysis, setAnalysis] = useState<ProcessAnalysis | null>(null);
-    const [taskLoad, setTaskLoad] = useState<TaskLoad>({});
     const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
     const [colorMode, setColorMode] = useState<ColorMode>("state");
     // Read by the running simulation, so it always sees the latest analysis
     const hooksRef = useRef<SimulationHooks>({
-        onTaskLoad: setTaskLoad,
         onTaskClick: setSelectedTaskId,
     });
     const { id } = useParams();
@@ -100,7 +97,6 @@ const Simulation = () => {
         setCycleTimeData([]);
         setNetworkMetrics(null);
         setAnalysis(null);
-        setTaskLoad({});
         setSelectedTaskId(null);
         setNetworkActivity(INITIAL_NETWORK_ACTIVITY_STATE);
         setSmoothAnimation(INITIAL_SMOOTH_ANIMATION_STATE);
@@ -415,15 +411,6 @@ const Simulation = () => {
             <Link href="/" className="toolbar-btn">← New simulation</Link>
             <button type="button" className="toolbar-btn" onClick={copyLink}>Copy link</button>
             <span className="toolbar-hint">Space: play/pause · Home/End: jump</span>
-        </div>
-        <div className={statsVisible ? 'simulation-header with-stats' : 'simulation-header'}>
-            <SummaryStrip
-                numberOfCases={numberOfCases}
-                analysis={analysis}
-                taskLoad={taskLoad}
-                wtpt={waitingProcessingTimes}
-                onSelectTask={setSelectedTaskId}
-            />
         </div>
         <DiagramControls
             className={statsVisible ? 'diagram-toolbar with-stats' : 'diagram-toolbar'}
