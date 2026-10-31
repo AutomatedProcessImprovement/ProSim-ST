@@ -1,81 +1,27 @@
-# Nightly Process Cleanup
+# Cleanup of old simulations
 
-This directory contains the cron job setup for nightly cleanup of old processes.
+A simulation is deleted once it has not been opened for `RETENTION_DAYS` days (30 by default):
+its database records (process, events, frames), its uploaded BPMN model, and its folder and n-grams in the Python service.
+Run folders and uploaded models that belong to no simulation (e.g. failed runs) are removed once they are 48 hours old.
+A simulation is first marked for deletion (the API answers 410 for it), so one that fails to delete is retried on the next run.
 
-## Overview
+## On a server
 
-The cleanup process runs daily at midnight and:
-1. Finds processes not accessed in the last 30 days
-2. Marks them for deletion (`setToDelete = true`)
-3. Calls the Python API to delete ngrams (`/delete/{process_id}`)
-4. Upon successful Python deletion, removes the process and related data from the database
-
-## Files
-
-- `cleanup.sh` - Shell script to run the cleanup (executable)
-
-## Setup Instructions
-
-### 1. Test the cleanup script manually first
+The cleanup runs inside the web app, so it also works with the standalone build:
 
 ```bash
-cd /Users/taleh/Desktop/thesis/prost
+curl -X POST -H "Authorization: Bearer $CLEANUP_TOKEN" http://127.0.0.1:3001/api/internal/cleanup
+```
+
+The endpoint answers 404 unless `CLEANUP_TOKEN` is set in the app's environment and sent in the header.
+Do not expose `/api/internal/` publicly. A nightly systemd timer or cron entry calling it is enough, for example:
+
+```
+30 3 * * * curl -sf -X POST -H "Authorization: Bearer <token>" http://127.0.0.1:3001/api/internal/cleanup
+```
+
+## Locally
+
+```bash
 npm run cleanup
 ```
-
-### 2. Add to crontab for daily execution
-
-Open crontab:
-```bash
-crontab -e
-```
-
-Add this line to run at midnight daily:
-```
-0 0 * * * /Users/taleh/Desktop/thesis/prost/cron/cleanup.sh
-```
-
-### 3. Verify cron is working
-
-Check cron logs:
-```bash
-grep CRON /var/log/syslog
-```
-
-Or check if the job is scheduled:
-```bash
-crontab -l
-```
-
-## Manual Execution
-
-You can also run the cleanup manually anytime:
-
-```bash
-# From project root
-npm run cleanup
-
-# Or directly
-npx ts-node db/scripts/cleanupProcesses.ts
-```
-
-## What Gets Cleaned Up
-
-- **Processes**: Records in the `process` table older than 30 days
-- **Events**: All related events in the `event` table
-- **Frames**: All related frames in the `frame` table
-- **Python Ngrams**: Calls `/delete/{process_id}` on the Python service
-
-## Safety Features
-
-- Processes are marked for deletion first (`setToDelete = true`)
-- API access is blocked for marked processes (returns 410 Gone)
-- Only processes successfully deleted from Python are removed from database
-- Failed Python deletions are retried on next run
-
-## Monitoring
-
-The script logs all operations. Check the output for:
-- Number of processes found and marked for deletion
-- Success/failure of Python API calls
-- Database cleanup operations
