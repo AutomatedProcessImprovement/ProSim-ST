@@ -3,7 +3,6 @@ import Redis, {RedisOptions} from "ioredis";
 export const REDIS_KEY_PREFIX_FRAMES = 'frames:';
 export const REDIS_KEY_PREFIX_WORKLOAD = 'workload:';
 export const REDIS_KEY_PREFIX_CYCLE_TIME = 'cycle-time:';
-// v2: arrivals of the cases open at the start come from the event log
 export const REDIS_KEY_PREFIX_ANALYSIS = 'analysis-v2:';
 
 const getRedisConfiguration = () => {

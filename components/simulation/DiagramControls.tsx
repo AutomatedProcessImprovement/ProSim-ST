@@ -13,7 +13,6 @@ type Props = {
 
 const Swatch = ({color}: {color: string}) => <i className="legend-dot" style={{background: color}}/>;
 
-// The key to what the dots mean, the switch between the two colourings, and zoom
 const DiagramControls = ({className = "diagram-toolbar", colorMode, onColorModeChange, hasCycleTime, onZoomIn, onZoomOut, onFit}: Props) => (
     <div className={className}>
         <div className="color-mode" role="group" aria-label="Colour dots by">

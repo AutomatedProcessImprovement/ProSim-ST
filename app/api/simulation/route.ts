@@ -1,6 +1,6 @@
 import {getRedisInstance, REDIS_KEY_PREFIX_FRAMES} from "@db/redis/redis";
 import {NextResponse} from "next/server";
-import {writeFile} from "fs/promises";
+import {unlink, writeFile} from "fs/promises";
 import path from "path";
 import {existsSync, mkdirSync} from "fs";
 import axios from "axios";
@@ -14,6 +14,17 @@ import {
     SimulationSeedData,
 } from "@definitions/api/types";
 import {createMySQLConnection} from "@db/mysql/typeorm";
+import {validateSimulationInputs} from "@utils/inputValidation";
+import {
+    activeJobCount,
+    createJob,
+    failJob,
+    getJob,
+    JobError,
+    MAX_ACTIVE_JOBS,
+    setJobStage,
+    SIMULATION_STAGES,
+} from "@utils/simulationJobs";
 
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 
@@ -25,10 +36,26 @@ export const POST = async (request) => {
         if (!file) {
             return NextResponse.json({ error: "No files received." }, { status: 400 });
         }
-        // The id names files here and in the Python service, so it must not contain path characters
         const id = body.get("id");
         if (typeof id !== "string" || !ID_PATTERN.test(id)) {
             return NextResponse.json({ error: "Invalid simulation id." }, { status: 400 });
+        }
+
+        const jsonFile = body.get("jsonFile");
+        const issues = validateSimulationInputs(await file.text(), jsonFile ? await jsonFile.text() : "");
+        if (issues.length) {
+            return NextResponse.json({ error: "The uploaded files cannot be simulated.", issues }, { status: 400 });
+        }
+
+        const existing = getJob(id);
+        if (existing && existing.stage !== "failed") {
+            return NextResponse.json({ error: "This simulation is already running." }, { status: 409 });
+        }
+        if (activeJobCount() >= MAX_ACTIVE_JOBS) {
+            return NextResponse.json(
+                { error: "The simulator is busy with other runs. Please try again in a few minutes." },
+                { status: 429 },
+            );
         }
 
         const dir = path.join(process.cwd(), "public/assets");
@@ -36,31 +63,62 @@ export const POST = async (request) => {
             mkdirSync(dir, { recursive: true });
         }
 
-        const simulationData = await getSimulationData(body);
-
-        // Keep the upload inside public/assets and always serve it as .bpmn, never as HTML/XML/JS
         const baseName = path.basename(file.name).replace(/[^A-Za-z0-9._-]/g, "_").replace(/\.bpmn$/i, "");
-        const fileName = `${simulationData.id}_${baseName}.bpmn`;
+        const fileName = `${id}_${baseName}.bpmn`;
         const buffer = Buffer.from(await file.arrayBuffer());
         await writeFile(path.join(dir, fileName), buffer);
 
-        await insertSimulationData(simulationData, fileName);
+        createJob(id);
+        void runSimulation(id, body, path.join(dir, fileName));
+
+        return NextResponse.json({ id }, { status: 202 });
+    } catch (error) {
+        console.log(error);
+        return NextResponse.json({ error: "Failed to start the simulation." }, { status: 500 });
+    }
+}
+
+const runSimulation = async (id: string, body: FormData, assetPath: string) => {
+    let simulationData: SimulationSeedData;
+    try {
+        simulationData = await getSimulationData(body);
+    } catch (error) {
+        console.error(`Simulation ${id} failed:`, error?.response?.data ?? error?.message ?? error);
+        failJob(id, simulatorError(error));
+        await unlink(assetPath).catch(() => {});
+        return;
+    }
+
+    setJobStage(id, "saving");
+    try {
+        await insertSimulationData(simulationData, path.basename(assetPath));
 
         const redis = getRedisInstance();
         const redisKey = REDIS_KEY_PREFIX_FRAMES + simulationData.id;
         await redis.set(redisKey, JSON.stringify(simulationData.data.frames), 'EX', 60*60*24);
         redis.disconnect();
 
-        return NextResponse.json({ id: simulationData.id }, { status: 201 });
+        setJobStage(id, "done");
     } catch (error) {
-        console.log(error);
-        return NextResponse.json({ error: "Failed to get simulation data." }, { status: 500 });
+        console.error(`Saving simulation ${id} failed:`, error);
+        failJob(id, {stage: "saving", message: "The results could not be saved. Please try again."});
+        await unlink(assetPath).catch(() => {});
     }
+}
+
+const simulatorError = (error): JobError => {
+    const detail = error?.response?.data?.detail;
+    if (detail && typeof detail === "object" && typeof detail.message === "string") {
+        const stage = SIMULATION_STAGES.includes(detail.stage) ? detail.stage : "simulation";
+        return {stage, message: detail.message};
+    }
+    if (typeof detail === "string") return {stage: "queued", message: detail};
+    if (!error?.response) return {stage: "queued", message: "The simulator could not be reached. Please try again later."};
+    return {stage: "simulation", message: `The simulator answered with status ${error.response.status}.`};
 }
 
 const getSimulationData = async (body: FormData): Promise<SimulationSeedData> => {
     const configInput: AlgorithmConfiguration = JSON.parse(body.get('config') as string);
-    // The starting point is wall-clock time in the log's time zone; the horizon is added to it the same way
     const utcOffset = /^[+-]\d{2}:\d{2}$/.test(configInput.utcOffset ?? "") ? configInput.utcOffset : "+00:00";
     const windowStart = logTimeToUtc(configInput.startingPoint, utcOffset);
     const windowEnd = logTimeToUtc(calculateEndDate(configInput).toISOString().slice(0, 19), utcOffset);
@@ -99,8 +157,6 @@ const insertSimulationData = async (
     fileName: string,
 ) => {
     const { id: processId, window, data: { frames } } = data;
-    // The simulator finishes every case that arrived before the horizon, so it reports events after it; the
-    // simulation only covers the configured window
     const events = data.data.events.filter(event => new Date(event.timestamp) <= window.endDate);
 
     const appDataSource = await createMySQLConnection();
@@ -114,7 +170,6 @@ const insertSimulationData = async (
             VALUES (?, ?, ?, ?, ?)
         `;
 
-        // Normally no event precedes the starting point; if one does, the timeline still has to include it
         let startDate = window.startDate;
         const endDate = window.endDate;
         const eventValues = events.map(event => {
@@ -165,7 +220,6 @@ const insertSimulationData = async (
             endDate.toISOString().slice(0, 19).replace("T", " "),
             window.utcOffset,
         ]);
-        // A bulk INSERT with no rows is invalid SQL, e.g. no cases are in progress at the starting point
         if (eventValues.length > 0) await queryRunner.query(eventSql, flattenedEventValues);
         if (frameValues.length > 0) await queryRunner.query(frameSql, flattenedFrameValues);
 

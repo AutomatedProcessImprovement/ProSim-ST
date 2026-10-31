@@ -72,7 +72,6 @@ describe("buildProcessAnalysis", () => {
         expect(analysis.tasks.Task_A.waiting).toEqual([1, 1, 0, 0, 0]);
         expect(analysis.tasks.Task_A.inWork).toEqual([1, 0, 1, 1, 1]);
         expect(analysis.tasks.Task_B.inWork).toEqual([1, 1, 1, 0, 0]);
-        // The log does not say when cases 6 and 7 started
         expect(analysis.caseArrivals[6]).toBeUndefined();
         expect(analysis.caseArrivals[5]).toBe(toUtcMs(start));
         expect(analysis.averageCycleTimeMs).toBe(HOUR);
@@ -92,7 +91,6 @@ describe("buildProcessAnalysis", () => {
         expect(analysis.openAtStart).toBe(2);
         expect(analysis.openAtStartFinished).toBe(1);
         expect(analysis.openAtEnd).toBe(1);
-        // Case 6: from 21:00 the day before to 03:00
         expect(analysis.averageCycleTimeMs).toBe(6 * HOUR);
     });
 

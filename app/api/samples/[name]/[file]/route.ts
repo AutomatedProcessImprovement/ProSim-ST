@@ -3,7 +3,6 @@ import {readFile} from "fs/promises";
 import {join} from "path";
 import {SAMPLE_FILES, SAMPLE_PROCESSES} from "@definitions/samples";
 
-// Serves the bundled sample processes from sampleProcesses/ (copied into the standalone build by next.config.ts)
 export const GET = async (_request: Request, context: { params: Promise<{ name: string, file: string }> }) => {
     const {name, file} = await context.params;
     const sample = SAMPLE_PROCESSES.find(sample => sample.name === name);

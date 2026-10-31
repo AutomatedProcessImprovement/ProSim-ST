@@ -11,13 +11,11 @@ export type AnalysisEvent = {
     timestamp: string;
 };
 
-// Event timestamps are stored in UTC without an offset ("2025-04-04 13:46:14")
 export const toUtcMs = (timestamp: string): number => {
     const value = timestamp.trim().replace(" ", "T");
     return Date.parse(/(Z|[+-]\d{2}:\d{2})$/.test(value) ? value : value + "Z");
 };
 
-// Sequence flow id -> target element id, read from the BPMN XML
 export const readFlowTargets = (bpmnXml: string): Record<string, string> => {
     const targets: Record<string, string> = {};
     for (const [tag] of bpmnXml.matchAll(/<(?:\w+:)?sequenceFlow\b[^>]*>/g)) {
@@ -30,13 +28,6 @@ export const readFlowTargets = (bpmnXml: string): Record<string, string> => {
 
 type TaskState = "waiting" | "inWork";
 
-/**
- * Summarises a stored simulation for the analyst: how many cases are open over time, how many wait at or are being
- * worked on in every task over time, and what the simulation forecasts at the horizon.
- *
- * Events must be ordered by time (ties in the order the simulator produced them). Frames are the cases that were
- * already running at the start; tokens on a sequence flow wait for the flow's target, tokens on a task are in work.
- */
 export const buildProcessAnalysis = (
     events: AnalysisEvent[],
     frames: Array<{caseId: number; activeElements: Record<string, string>; arrivalTime?: string | null}>,
@@ -83,7 +74,6 @@ export const buildProcessAnalysis = (
         caseTasks.delete(caseId);
     };
 
-    // Cases open at the start arrived when the log says they started; without that, their arrival is unknown
     const caseArrivals: Record<string, number> = {};
     const caseEnds: Record<string, number> = {};
     const openAtStartIds = new Set(frames.map(frame => String(frame.caseId)));
@@ -142,7 +132,6 @@ export const buildProcessAnalysis = (
         sample();
     }
 
-    // Every finished case whose arrival is known, including the ones open at the start
     const cycleTimes = Object.entries(caseArrivals)
         .filter(([caseId]) => caseEnds[caseId] !== undefined)
         .map(([caseId, arrival]) => caseEnds[caseId] - arrival);
@@ -164,7 +153,6 @@ export const buildProcessAnalysis = (
     };
 };
 
-// Index of the sample that covers the moment (clamped to the series)
 export const sampleIndexAt = (analysis: Pick<ProcessAnalysis, "startDate" | "stepMs" | "open">, moment: number): number => {
     const index = Math.floor((moment - Date.parse(analysis.startDate)) / analysis.stepMs);
     return Math.max(0, Math.min(analysis.open.length - 1, index));

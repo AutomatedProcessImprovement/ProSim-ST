@@ -1,6 +1,5 @@
 import {readLines} from "@utils/fileHelpers";
 
-// For every case in the log: when its first activity started and when its last activity ended (ms since epoch)
 export type CaseSpans = {
     starts: Float64Array;
     ends: Float64Array;
@@ -8,7 +7,6 @@ export type CaseSpans = {
 
 const splitCsvLine = (line: string) => line.split(/[;,]/);
 
-// Log timestamps such as "2025-02-17 09:00:00.646000+02:00"; timestamps without an offset are UTC, as elsewhere
 export const parseLogTimestamp = (raw?: string): number => {
     const value = raw?.trim().replace(" ", "T");
     if (!value) return NaN;
@@ -53,7 +51,6 @@ export const readCaseSpans = async (logFile: File, caseColumn: string, startColu
     return buildCaseSpans(lines, caseColumn, startColumn, endColumn);
 };
 
-// Cases that started at or before the moment and still have activities ending after it
 export const countOngoingCases = (spans: CaseSpans, moment: number): number => {
     let count = 0;
     for (let i = 0; i < spans.starts.length; i++) {

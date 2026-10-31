@@ -401,7 +401,6 @@ describe("Simulation page", () => {
             render(<Simulation />);
             await waitFor(() => expect(importXMLMock).toHaveBeenCalled());
             const hooks = (simulationModule as jest.Mock).mock.calls[0][3];
-            // The analysis has loaded once the simulation can read from it
             await waitFor(() => expect(hooks.getAverageCycleTime()).toBe(48 * HOUR));
             return hooks;
         };

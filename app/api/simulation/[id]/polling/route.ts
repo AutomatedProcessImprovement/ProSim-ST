@@ -19,7 +19,6 @@ export const GET = async (
         const processId = params.id;
         const { searchParams } = new URL(request.url);
         const pointer = parseInt(searchParams.get("pointer") || "0", 10);
-        // Fast playback asks for weeks of hourly batches at once; a month is the most one request may load
         const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "10", 10) || 10, 1), MAX_POLLING_HOURS);
 
         const appDataSource = await createMySQLConnection();

@@ -1,4 +1,3 @@
-// Sample processes bundled in sampleProcesses/<name>/, offered on the home page
 export const SAMPLE_PROCESSES = [
     {name: "loanApplication", label: "Loan application", size: "1.6 MB"},
     {name: "p2p", label: "Purchase-to-pay", size: "24 MB"},

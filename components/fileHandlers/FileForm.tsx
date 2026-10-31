@@ -34,7 +34,6 @@ const FileForm = () => {
         setFiles([...files, ..._files.filter(file => !filenames.includes(file.name))]);
     };
 
-    // Starts the setup for a new log. The mapping and starting point of a previous log no longer apply.
     const startSetup = async (logFile: File, configFiles: { bpmnFile?: File, jsonFile?: File } = {}) => {
         const { fileHeaders, fileFirstLine, fileLastLine } = await parseCsvFile(logFile);
 

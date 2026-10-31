@@ -90,7 +90,6 @@ describe("GET /api/simulation/[id]/cycle-time", () => {
         });
 
         expect(eventRepo.createQueryBuilder).toHaveBeenCalledWith("event");
-        // Cases open at the start count once finished, from when the log says they started
         expect(buildCycleTimeSeries).toHaveBeenCalledWith(
             expect.any(Array),
             "2024-01-01 00:00:00",

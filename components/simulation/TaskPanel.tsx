@@ -25,8 +25,6 @@ const toPoints = (values: number[], max: number) => values
     })
     .join(" ");
 
-// Everything about one task: who is waiting and for how long, how long work takes there, and how its queue
-// develops over the whole simulation
 const TaskPanel = ({taskId, name, stats, analysis, utcOffset, getQueue, getCurrentTime, onClose}: Props) => {
     const [queue, setQueue] = useState<QueueEntry[]>(() => getQueue());
     const [currentTime, setCurrentTime] = useState<number | null>(() => getCurrentTime());

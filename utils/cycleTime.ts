@@ -7,7 +7,6 @@ export const buildCycleTimeSeries = (
     processStart: string,
     processEnd: string,
     steps = 100,
-    // Cases open at the starting point: they have no arrival event, but the log may tell when they started
     openAtStart: FrameCase[] = [],
 ): number[] => {
     const arrivalTimes = new Map<string, number>();

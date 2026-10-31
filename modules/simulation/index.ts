@@ -79,7 +79,7 @@ const simulation = (
 ) => {
     const tokenSimulation = function(canvas: Canvas, elementRegistry: ElementRegistry, eventBus?: EventBus) {
             let processId: string;
-            const defaultDelta = msPerSimulatedHour(1); // milliseconds per simulated hour at 1 hour/s
+            const defaultDelta = msPerSimulatedHour(1);
             let delta = msPerSimulatedHour(DEFAULT_HOURS_PER_SECOND);
             let tokens: Tokens = {};
             let totalDuration: number;
@@ -99,7 +99,6 @@ const simulation = (
             let tokenProgresses: TokenProgresses = {};
             let batchesQueue: Batch[];
             let currentBatch: Batch;
-            // Taken from the queue but not applied yet: replayed when playback restarts
             let currentBatchUnfinished = false;
             let frames: FrameCase[];
             let batchesPointer = 0;
@@ -107,7 +106,6 @@ const simulation = (
             let isPaused = false;
             let isResumed = false;
             let fetchPromise: Promise<void> | null = null;
-            // Bumped on every jump in time, so batches still being loaded for the old position are dropped
             let queueGeneration = 0;
             let initialDate: Date;
             let finalDate: Date;
@@ -117,28 +115,22 @@ const simulation = (
             let colorMode: ColorMode = "state";
             let agePaintInterval: ReturnType<typeof setInterval> | null = null;
 
-            // Where every case that is not moving rests, grouped by the element its dots are laid out on
             const rests = new Map<string, Rest>();
             const groups = new Map<string, Set<string>>();
             const animating = new Set<string>();
             const taskCounts = new Map<string, {waiting: number; inWork: number}>();
             const dirtyGroups = new Set<string>();
-            // Places with more dots than fit on them; their task shows a count instead
             const overflowing = new Map<string, RestPlace>();
             let layoutScheduled = false;
             const pills = new Map<string, {waiting: SVGGElement; inWork: SVGGElement}>();
-            // Counts in front of gateways and events, by element
             const otherPills = new Map<string, SVGGElement>();
             const shadedTasks = new Set<string>();
-            // bpmn-js styles shapes inline, so the task's own fill is kept to put back when its queue empties
             const originalFills = new Map<string, string>();
             let lastLoadReport = 0;
             let loadReportTimeout: ReturnType<typeof setTimeout> | null = null;
 
-            // What is known about each case: when it arrived, and when it started waiting for or working on a task
             const taskTimes = new Map<number, Map<string, {enabled?: number; started?: number}>>();
             const seenArrivals = new Map<number, number>();
-            // Cases already open at the start of the simulation
             const openAtStart = new Set(simulationData.frames.map(frame => frame.caseId));
 
             const tokenKey = (caseId: number, tokenId: string) => `${caseId}|${tokenId}`;
@@ -176,7 +168,6 @@ const simulation = (
                 token.setAttribute("cy", y.toString());
             }
 
-            // ---- Colours ----
 
             function caseArrival(caseId: number): number | null {
                 return hooks.getCaseArrival?.(caseId) ?? seenArrivals.get(caseId) ?? null;
@@ -205,7 +196,6 @@ const simulation = (
                 });
             }
 
-            // ---- Resting places ----
 
             function adjustTaskCount(place: RestPlace, change: number) {
                 if (!place.taskId || (place.kind !== "waiting" && place.kind !== "working")) return;
@@ -231,7 +221,6 @@ const simulation = (
                 markDirty(rest.place.groupId);
             }
 
-            // The case stopped at the element: line its dot up with the others there
             function settle(caseId: number, tokenId: string, elementId: string) {
                 const key = tokenKey(caseId, tokenId);
                 removeRest(key);
@@ -248,7 +237,6 @@ const simulation = (
                 paintToken(caseId, tokenId);
             }
 
-            // The case starts moving: take its dot out of the line
             function unsettle(caseId: number, tokenId: string) {
                 removeRest(tokenKey(caseId, tokenId));
                 const token = tokens[caseId]?.[tokenId];
@@ -273,10 +261,7 @@ const simulation = (
                 if (!members.length) groups.delete(groupId);
                 if (!element || !members.length) return;
 
-                // First in line nearest to the task
                 members.sort((a, b) => (sinceOf(a) ?? 0) - (sinceOf(b) ?? 0));
-                // Only as many dots as the arrow is long or the task is wide; when cases in work do not all fit,
-                // the task's count replaces their dots
                 const capacity = slotCapacity(element);
                 const fits = members.length <= capacity;
                 const hideAll = !fits && members[0].place.kind === "working";
@@ -297,7 +282,6 @@ const simulation = (
                 renderLoad();
             }
 
-            // ---- Counts and shading per task ----
 
             function createPill(elementId: string, className: string, clickable = true): SVGGElement {
                 const group = document.createElementNS(SVG_NS, "g");
@@ -355,8 +339,6 @@ const simulation = (
                     if (opacity) shadedTasks.add(taskId);
                     else shadedTasks.delete(taskId);
 
-                    // A count as soon as some of the task's dots do not fit: above the task for the queue, inside
-                    // it along the bottom (where its dots would be) for the cases in work
                     const showWaiting = overflowingTasks.waiting.has(taskId);
                     const showInWork = overflowingTasks.working.has(taskId);
                     let taskPills = pills.get(taskId);
@@ -375,14 +357,11 @@ const simulation = (
                 reportLoad();
             }
 
-            // The element a place's dots are in front of (for an arrow) or at
             function placeTarget(groupId: string): string | undefined {
                 const element = getElement(groupId);
                 return element?.type === FlowTypes.FLOW ? element.target?.id : groupId;
             }
 
-            // Cases waiting in front of or at a gateway or an event, such as branches waiting at a parallel join: a
-            // count above the element as soon as some of their dots do not fit
             function renderOtherLoad() {
                 const overflowingTargets = new Set<string>();
                 overflowing.forEach((place, groupId) => {
@@ -408,7 +387,6 @@ const simulation = (
                 });
             }
 
-            // Tells the page how busy every task is, at most four times a second
             function reportLoad() {
                 if (!hooks.onTaskLoad || loadReportTimeout) return;
                 const wait = Math.max(0, 250 - (performance.now() - lastLoadReport));
@@ -421,7 +399,6 @@ const simulation = (
                 }, wait);
             }
 
-            // ---- Case history (for "waiting for 6 h" and "case open 2 d") ----
 
             function noteBatchEvents(events: BatchEvent[]) {
                 events.forEach(event => {
@@ -454,7 +431,6 @@ const simulation = (
                 });
             }
 
-            // ---- Hover details ----
 
             function describeToken(caseId: number, tokenId: string): string[] {
                 const lines = [`Case ${caseId}`];
@@ -501,7 +477,6 @@ const simulation = (
                 tokenLayer.addEventListener("mouseout", hide);
             }
 
-            // ---- Dots ----
 
             function hasTokens(caseId: number) {
                 return Boolean(tokens[caseId] && Object.keys(tokens[caseId]).length);
@@ -579,8 +554,6 @@ const simulation = (
                 renderLoad();
             }
 
-            // Makes the dots match where the cases are: adds missing ones, removes the ones of finished or merged
-            // branches, and lines up every dot that is not moving
             function reconcileWithFrames() {
                 const active = new Map(frames.map(frame => [frame.caseId, frame.activeElements]));
 
@@ -606,7 +579,6 @@ const simulation = (
                         if (!animating.has(key) && rests.get(key)?.elementId !== elementId) settle(caseId, tokenId, elementId);
                     });
                 });
-                // Line the dots up before the next paint, so new ones never show piled up for a frame
                 flushLayout();
             }
 
@@ -662,7 +634,6 @@ const simulation = (
                         reject(new Error("Simulation aborted"));
                     });
 
-                    // The case is done once every one of its dots has finished moving
                     let pending = 0;
                     const tracker: AnimationTracker = {
                         start: () => { pending++; },
@@ -673,8 +644,6 @@ const simulation = (
                     const finalElements: Record<string, string> = {};
                     const isAsyncAnimation = batchEvents.some(batchEvent => Object.keys(batchEvent.paths).length > 1)
 
-                    // Where the dot ends up after this batch: gone for a finished case or a branch merged at a
-                    // parallel join, otherwise lined up at the element it stopped at
                     const finishToken = (tokenId: string, lifecycle: LifecycleTypes) => {
                         const finalElement = finalElements[tokenId];
                         if (lifecycle === LifecycleTypes.CASE_END) deleteToken(caseId, tokenId, true);
@@ -697,7 +666,6 @@ const simulation = (
                         if (isAsyncAnimation) {
                             batchEventPathEntries.forEach(([tokenId, elements]) => {
                                 if (!tokens[caseId]?.[tokenId]) {
-                                    // A new branch stays hidden until the dot it splits from reaches it
                                     const show = !hasTokens(caseId);
                                     createToken(elements[0], caseId, tokenId, {
                                         show,
@@ -721,7 +689,6 @@ const simulation = (
                     });
 
                     if (pending === 0) setTimeout(resolve, batchDuration * (1 - (isResumed ? localProgress : 0)));
-                    // Never hold the playback up for a dot that does not arrive
                     else setTimeout(resolve, batchDuration * 2 + 1000);
                 });
             }
@@ -755,7 +722,6 @@ const simulation = (
                 animating.add(key);
                 unsettle(caseId, tokenId);
 
-                // Durations of merging branches can come out infinite or negative when a branch has no length left
                 const safeDuration = Number.isFinite(duration) && duration > 0 ? duration : 0;
                 const startTime = computeTokenAnimationStartTime(
                     performance.now(),
@@ -808,9 +774,7 @@ const simulation = (
                 requestAnimationFrame(animate);
             }
 
-            // ---- Clock and timeline ----
 
-            // Times are shown as they appear in the uploaded log, i.e. in its UTC offset
             function formatTime(date: Date) {
                 return formatInLogTime(date, utcOffset);
             }
@@ -850,7 +814,6 @@ const simulation = (
                 enableTimelineHover();
             }
 
-            // Moves the clock through one batch; resolves when the batch's time has passed
             function animateTimeline(batchDuration: number): Promise<void> {
                 return new Promise((resolve, reject) => {
                     const signal = abortController.signal;
@@ -946,7 +909,6 @@ const simulation = (
                 timeline.addEventListener("mouseleave", hideTooltip);
             }
 
-            // ---- Playback controls ----
 
             function handleRewindButtonClick(progress: number) {
                 abortController.abort();
@@ -997,8 +959,6 @@ const simulation = (
                 restartFromFrames();
             }
 
-            // Redraws the dots from the case positions and plays on. The old dots go in the same step as the new
-            // ones are drawn, so the diagram never shows empty in between.
             function restartFromFrames() {
                 setTimeout(() => {
                     clearTokens();
@@ -1064,7 +1024,6 @@ const simulation = (
                 }
             }
 
-            // ---- Loading batches ----
 
             function topBatchesQueueUp(): Promise<void> {
                 if (fetchPromise) return fetchPromise;
@@ -1091,7 +1050,6 @@ const simulation = (
                 }
             }
 
-            // Waits for more batches when the queue ran dry; false when there is nothing more to play
             async function waitForBatches(signal: AbortSignal): Promise<boolean> {
                 while (!batchesQueue.length && batchesPointer > 0) {
                     await topBatchesQueueUp();
@@ -1112,14 +1070,11 @@ const simulation = (
                 });
             }
 
-            // ---- Playing ----
 
             function runSimulation() {
                 return isSummarySpeed(delta) ? runSummary() : runAnimated();
             }
 
-            // Every batch: the clock moves through the hour while the cases move along their paths; then the case
-            // positions are updated and the dots made to match them
             async function runAnimated() {
                 const signal = abortController.signal;
                 reconcileWithFrames();
@@ -1159,8 +1114,6 @@ const simulation = (
                 finishPlayback();
             }
 
-            // Fast playback: the clock runs continuously and every batch it passes is applied at once; the dots jump
-            // to where the cases are instead of travelling
             function runSummary(): Promise<void> {
                 const signal = abortController.signal;
                 const initialMs = initialDate.getTime();
@@ -1177,7 +1130,6 @@ const simulation = (
                 return new Promise(resolve => {
                     const step = (timestamp: number) => {
                         if (signal.aborted) {
-                            // Resume from the end of the last applied batch, so no batch is applied twice
                             currentProgress = Math.min(Math.max((appliedUntil - initialMs) / totalDuration, 0), 1);
                             showProgress(currentProgress);
                             resolve();
@@ -1187,7 +1139,6 @@ const simulation = (
                         const elapsed = Math.max(0, timestamp - last);
                         last = timestamp;
                         let target = Math.min(simulatedMs + elapsed / delta * HOUR, finalMs);
-                        // At the end of the simulation, the last (possibly partial) batches all count
                         const applyUntil = target >= finalMs ? Infinity : target;
                         let applied = false;
 
@@ -1203,7 +1154,6 @@ const simulation = (
 
                         const moreToLoad = batchesPointer > 0;
                         if (!batchesQueue.length && moreToLoad) {
-                            // Hold the clock until the next batches are loaded
                             target = Math.min(target, appliedUntil);
                             if (!waiting) {
                                 waiting = true;
@@ -1228,7 +1178,6 @@ const simulation = (
                 });
             }
 
-            // ---- Public ----
 
             this.setColorMode = (mode: ColorMode) => {
                 colorMode = mode;
@@ -1237,7 +1186,6 @@ const simulation = (
                 agePaintInterval = mode === "age" ? setInterval(paintAllTokens, 1000) : null;
             };
 
-            // Every case waiting for or being worked on in the task, longest waiting first
             this.getTaskQueue = (taskId: string): QueueEntry[] => {
                 const entries: QueueEntry[] = [];
                 rests.forEach(rest => {

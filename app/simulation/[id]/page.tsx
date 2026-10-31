@@ -40,7 +40,6 @@ const Simulation = () => {
     const [analysis, setAnalysis] = useState<ProcessAnalysis | null>(null);
     const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
     const [colorMode, setColorMode] = useState<ColorMode>("state");
-    // Read by the running simulation, so it always sees the latest analysis
     const hooksRef = useRef<SimulationHooks>({
         onTaskClick: setSelectedTaskId,
     });
@@ -125,7 +124,6 @@ const Simulation = () => {
                 const data = res?.data as ProcessAnalysis | undefined;
                 return Array.isArray(data?.open) && data.open.length && data.tasks ? data : null;
             } catch (error) {
-                // The page works without it, only the forecast and queue history are missing
                 console.warn("Could not load the simulation analysis", error);
                 return null;
             }
@@ -199,7 +197,6 @@ const Simulation = () => {
         }
     }, [xml, simulationData]);
 
-    // The open stats panel takes space from the diagram: refit it to the remaining width once the panel has moved
     const statsToggledRef = useRef(false);
     useEffect(() => {
         if (!statsToggledRef.current) {
@@ -237,7 +234,6 @@ const Simulation = () => {
     const getCurrentTime = useCallback(() => getTokenSimulation()?.getCurrentTime?.() ?? null, [getTokenSimulation]);
     const closeTaskPanel = useCallback(() => setSelectedTaskId(null), []);
 
-    // Keyboard shortcuts: Space plays/pauses, Home and End jump to the start and end
     useEffect(() => {
         const actions: Record<string, string> = {" ": "play-pause-btn", Home: "go-to-start-btn", End: "go-to-end-btn"};
 
@@ -245,8 +241,6 @@ const Simulation = () => {
             const buttonId = actions[event.key];
             if (!buttonId || event.ctrlKey || event.metaKey || event.altKey) return;
 
-            // Leave other controls alone (e.g. Space on a focused button or in the speed menu), except the playback
-            // buttons, which would otherwise repeat the last one clicked
             const target = event.target as HTMLElement;
             const inPlayControls = Boolean(target.closest?.('#play-controls'));
             if (!inPlayControls && target.closest?.('input, select, textarea, button, a, [contenteditable="true"]')) return;
@@ -318,7 +312,6 @@ const Simulation = () => {
     }, [cycleTimeData]);
 
     const ctMaxHours = cycleTimeData && cycleTimeData.length > 0 ? Math.max(...cycleTimeData) / 3600000 : null;
-    // "8 Jan", in the time zone of the uploaded log
     const formatChartDate = (date: string) =>
         new Intl.DateTimeFormat("en-GB", {day: "numeric", month: "short", timeZone: "UTC"}).format(
             new Date(formatInLogTime(new Date(date + "Z"), simulationData?.utcOffset ?? "+00:00").replace(" ", "T") + "Z"));

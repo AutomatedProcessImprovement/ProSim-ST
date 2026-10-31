@@ -27,7 +27,6 @@ export type PyFrameCase = {
     arrival_time?: string | null,
 }
 
-// Only the frame at the start of a simulation tells when its cases started
 export const mapPyFrameCase = (frame: PyFrameCase): FrameCase => {
     const arrival = frame.arrival_time ? new Date(frame.arrival_time) : null;
     const known = arrival !== null && !isNaN(arrival.getTime());
@@ -51,7 +50,6 @@ export type SimulationData = {
 
 export type SimulationSeedData = {
     id: string;
-    // The configured simulation window and the UTC offset of the uploaded log
     window: {
         startDate: Date;
         endDate: Date;
@@ -68,24 +66,18 @@ export type PollingData = {
     pointer: number,
 }
 
-// What the simulation forecasts, for the analyst: samples every stepMs from startDate
 export type ProcessAnalysis = {
     startDate: string;
     endDate: string;
     stepMs: number;
-    // Cases in progress at every sample
     open: number[];
-    // Per task: cases waiting for it and cases being worked on at every sample
     tasks: Record<string, {waiting: number[]; inWork: number[]}>;
-    // When each case arrived (ms since epoch); for cases already running at the start, when the event log says they
-    // started, and missing when it does not
     caseArrivals: Record<string, number>;
     openAtStart: number;
     openAtStartFinished: number;
     openAtEnd: number;
     arrived: number;
     completed: number;
-    // Average duration of the cases that finished within the simulation and whose arrival is known
     averageCycleTimeMs: number | null;
 }
 

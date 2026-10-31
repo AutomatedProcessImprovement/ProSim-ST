@@ -38,19 +38,16 @@ const offsetToMinutes = (utcOffset: string = "+00:00") => {
     return match[1] === "-" ? -minutes : minutes;
 }
 
-// Turns a wall-clock time from the log ("2025-04-04T15:46:14") in the log's UTC offset into an absolute date
 export const logTimeToUtc = (wallClock: string, utcOffset: string = "+00:00"): Date => {
     return new Date(new Date(wallClock + "Z").getTime() - offsetToMinutes(utcOffset) * 60000);
 }
 
-// Formats an absolute date as wall-clock time in the log's UTC offset, e.g. "2025-04-04 15:46:14"
 export const formatInLogTime = (date: Date, utcOffset: string = "+00:00") => {
     return formatDateString(new Date(date.getTime() + offsetToMinutes(utcOffset) * 60000));
 }
 
 export const formatUtcOffset = (utcOffset: string = "+00:00") => `UTC${utcOffset}`;
 
-// Formats a wall-clock time (a "2025-04-04T15:46:14" string, or a Date whose UTC fields hold it) as "4 Apr 2025, 15:46"
 export const formatReadableDate = (wallClock: string | Date) => {
     const date = typeof wallClock === "string" ? new Date(wallClock + "Z") : wallClock;
     if (Number.isNaN(date.getTime())) return "";
@@ -60,10 +57,8 @@ export const formatReadableDate = (wallClock: string | Date) => {
     }).format(date);
 }
 
-// "8 weeks", "1 week"
 export const formatHorizon = (value: number, unit: string) => `${value} ${value === 1 ? unit.replace(/s$/, "") : unit}`;
 
-// A duration as an analyst would say it: "45 min", "6 h 12 min", "2 d 4 h"
 export const formatDuration = (ms: number) => {
     const minutes = Math.max(0, Math.floor(ms / 60000));
     if (minutes < 60) return `${minutes} min`;
@@ -73,7 +68,6 @@ export const formatDuration = (ms: number) => {
     return hours % 24 ? `${days} d ${hours % 24} h` : `${days} d`;
 };
 
-// "4 Apr" or "4 Apr 15:46" in the log's own time
 export const formatShortDate = (date: Date, utcOffset: string = "+00:00", withTime = false) => {
     const wallClock = new Date(formatInLogTime(date, utcOffset).replace(" ", "T") + "Z");
     return new Intl.DateTimeFormat("en-GB", {

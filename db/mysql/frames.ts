@@ -10,15 +10,12 @@ type FrameRow = {
     arrivalTime: string | null;
 };
 
-// "2024-01-01 08:00:00" (UTC, as stored) -> "2024-01-01T08:00:00.000Z"
 const storedToIso = (value: string | null): string | null => {
     if (!value) return null;
     const date = new Date(value.trim().replace(" ", "T") + "Z");
     return isNaN(date.getTime()) ? null : date.toISOString();
 };
 
-// The cases open at the starting point of a simulation: from the cache, or else from the database (and then cached
-// again for a day)
 export const loadInitialFrames = async (redis: Redis, dataSource: DataSource, processId: string): Promise<FrameCase[]> => {
     const redisKey = REDIS_KEY_PREFIX_FRAMES + processId;
     const cached = await redis.get(redisKey);

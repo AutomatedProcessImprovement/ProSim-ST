@@ -50,7 +50,6 @@ export const GET = async (
 
         const frames = await loadInitialFrames(redis, appDataSource, processId);
 
-        // Only needed to tell which task a running case waits for; without it those cases are left out
         let flowTargets: Record<string, string> = {};
         try {
             const bpmnXml = await readFile(join(process.cwd(), "public/assets", simulationProcess.fileName), "utf-8");

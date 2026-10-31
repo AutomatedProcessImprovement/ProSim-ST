@@ -18,7 +18,6 @@ const MappingInput = ({field, label}: Props) => {
     const [value, setValue] = useState(mapping[field] || suggested[field]);
     const [isValid, setIsValid] = useState(Object.values(mapping).filter(value => value == mapping[field]).length <= 1);
 
-    // Value of the selected column in the first row of the log, to make a wrong match easy to spot
     const sample = value === '__DISCOVER__' ? undefined : firstLine[headers.indexOf(value as string)];
 
     return <Field className = 'flex h-8 flex-row items-center justify-between gap-4'>

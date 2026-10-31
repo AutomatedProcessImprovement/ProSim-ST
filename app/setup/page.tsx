@@ -20,10 +20,25 @@ import {CsvContext} from "@context/CsvContext";
 import {clsx} from "clsx/lite";
 import axios from "axios";
 import {calculateEndDate, formatHorizon, formatReadableDate, formatUtcOffset, logTimeToUtc} from "@utils/dateHelpers";
-import Loader from "@components/Loader";
-import {getCellByHeader, getLogUtcOffset, normalizeLogDate} from "@utils/fileHelpers";
+import {getCellByHeader, getLogUtcOffset, normalizeLogDate, readLines, readText} from "@utils/fileHelpers";
 import {clearSetup, loadSetup, saveSetup} from "@utils/setupStorage";
 import {CaseSpans, countOngoingCases, readCaseSpans} from "@utils/ongoingCases";
+import {
+    activitiesMissingFromModel,
+    collectActivities,
+    describeMissingActivities,
+    validateSimulationInputs,
+} from "@utils/inputValidation";
+import {JobStatus} from "@utils/simulationJobs";
+import RunProgress, {STAGE_LABELS} from "@components/simulationSetup/RunProgress";
+
+const POLL_INTERVAL_MS = 1000;
+const MAX_POLL_FAILURES = 30;
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+const IssueList = ({issues}: {issues: string[]}) =>
+    <ul className='list-disc pl-4'>{issues.map(issue => <li key={issue}>{issue}</li>)}</ul>;
 
 const MAPPING_LABELS: Record<string, string> = {
     case: 'Case ID',
@@ -39,13 +54,16 @@ const Setup = () => {
     const { csvData, setCsvData } = useContext(CsvContext);
     const [ endDate, setEndDate ] = useState<Date>(new Date());
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [runStatus, setRunStatus] = useState<JobStatus | null>(null);
+    const [fileIssues, setFileIssues] = useState<string[] | null>(null);
+    const [missingActivities, setMissingActivities] = useState<string[]>([]);
+    const mountedRef = useRef(true);
     const router = useRouter();
 
     const [isRestoring, setIsRestoring] = useState(!data.id);
     const [caseSpans, setCaseSpans] = useState<CaseSpans | null>(null);
     const saveTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-    // After a refresh the in-memory setup is gone: restore it from this browser, or go back to the upload page
     useEffect(() => {
         if (data.id) return;
 
@@ -66,7 +84,6 @@ const Setup = () => {
             });
 
         return () => { cancelled = true; };
-        // Only on the first render: later changes of data.id come from the restore itself
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -82,12 +99,55 @@ const Setup = () => {
     }, [data, csvData]);
 
     useEffect(() => {
+        mountedRef.current = true;
+        return () => { mountedRef.current = false; };
+    }, []);
+
+    const {bpmnFile, jsonFile, logFile} = data as {bpmnFile?: File; jsonFile?: File; logFile?: File};
+    useEffect(() => {
+        setFileIssues(null);
+        if (!bpmnFile || !jsonFile) return;
+
+        let cancelled = false;
+        Promise.all([readText(bpmnFile), readText(jsonFile)])
+            .then(([bpmn, json]) => { if (!cancelled) setFileIssues(validateSimulationInputs(bpmn, json)); })
+            .catch(() => {});
+
+        return () => { cancelled = true; };
+    }, [bpmnFile, jsonFile]);
+
+    const activityColumn = (data.mapping as Record<string, string>).activity;
+    useEffect(() => {
+        setMissingActivities([]);
+        if (!bpmnFile || !logFile || !activityColumn) return;
+
+        let cancelled = false;
+        Promise.all([readLines(logFile, {removeWhite: true}), readText(bpmnFile)])
+            .then(([lines, bpmn]) => {
+                if (!cancelled) setMissingActivities(activitiesMissingFromModel(collectActivities(lines, activityColumn), bpmn));
+            })
+            .catch(() => {});
+
+        return () => { cancelled = true; };
+    }, [bpmnFile, logFile, activityColumn]);
+
+    const fileIssuesNote = fileIssues?.length > 0 &&
+        <div className='rounded-xl border border-red-300 bg-red-50 px-4 py-2 text-sm text-red-900'>
+            <p className='mb-1 font-medium'>These files cannot be simulated:</p>
+            <IssueList issues={fileIssues}/>
+        </div>;
+
+    const missingActivitiesNote = missingActivities.length > 0 &&
+        <p className='rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900'>
+            {describeMissingActivities(missingActivities)}
+        </p>;
+
+    useEffect(() => {
         if (data.config.startingPoint) {
             setEndDate(calculateEndDate(data.config));
         }
     }, [ data.config ]);
 
-    // Spans of the cases in the log, to tell how many are in progress at the chosen starting point
     const { case: caseColumn, start: startColumn, end: endColumn } = data.mapping as Record<string, string>;
     useEffect(() => {
         if (!data.logFile || !caseColumn || !endColumn) return;
@@ -178,17 +238,44 @@ const Setup = () => {
     }
 
     const onBpmnCompleted = () => {
-        if (data.bpmnFile && data.jsonFile) return true;
-        else {
-            if (!data.bpmnFile) {
-                toast.error('Invalid BPMN', {description: 'You have to upload a BPMN model!'});
-                return false;
-            }
-            if (!data.jsonFile) {
-                toast.error('Invalid JSON', {description: 'You have to upload a JSON file!'});
-                return false;
+        if (!data.bpmnFile) {
+            toast.error('Invalid BPMN', {description: 'You have to upload a BPMN model!'});
+            return false;
+        }
+        if (!data.jsonFile) {
+            toast.error('Invalid JSON', {description: 'You have to upload a JSON file!'});
+            return false;
+        }
+        if (fileIssues?.length) {
+            toast.error('These files cannot be simulated', {description: <IssueList issues={fileIssues}/>});
+            return false;
+        }
+        return true;
+    }
+
+    const pollRun = async (id: string): Promise<JobStatus | null> => {
+        let failures = 0;
+        while (mountedRef.current) {
+            await sleep(POLL_INTERVAL_MS);
+            try {
+                const {data: status} = await axios.get<JobStatus>(`/api/simulation/${id}/status`);
+                failures = 0;
+                if (mountedRef.current) setRunStatus(status);
+                if (status.stage === 'done' || status.stage === 'failed') return status;
+            } catch (error) {
+                if (error?.response?.status === 404 || ++failures >= MAX_POLL_FAILURES) {
+                    return {
+                        stage: 'failed',
+                        durations: {},
+                        error: {
+                            stage: 'queued',
+                            message: error?.response?.data?.error ?? 'Lost contact with the server while the simulation was running.',
+                        },
+                    };
+                }
             }
         }
+        return null;
     }
 
     const onSubmit = async () => {
@@ -205,18 +292,39 @@ const Setup = () => {
             formData.append(key, value);
         });
 
+        let id: string;
         try {
             const res = await axios.post('/api/simulation', formData);
-
-            clearTimeout(saveTimeoutRef.current);
-            await clearSetup().catch(() => {});
-            router.push(`/simulation/${res.data.id}`);
+            id = res.data.id;
         } catch (error) {
             setIsSubmitting(false);
-            toast.error("Error occurred!", {
-                description: error?.response?.data?.error ?? "The simulation could not be started. Please try again.",
+            const issues = error?.response?.data?.issues;
+            toast.error(issues ? 'These files cannot be simulated' : 'The simulation could not be started', {
+                description: issues
+                    ? <IssueList issues={issues}/>
+                    : error?.response?.data?.error ?? 'Please try again.',
             });
+            return;
         }
+
+        setRunStatus({stage: 'queued', durations: {}});
+        const status = await pollRun(id);
+        if (!status) return;
+
+        if (status.stage === 'done') {
+            clearTimeout(saveTimeoutRef.current);
+            await clearSetup().catch(() => {});
+            router.push(`/simulation/${id}`);
+            return;
+        }
+
+        setIsSubmitting(false);
+        setRunStatus(null);
+        const failedStage = status.error?.stage ?? 'simulation';
+        toast.error(`The simulation failed: ${STAGE_LABELS[failedStage].toLowerCase()}`, {
+            description: status.error?.message,
+            duration: 15000,
+        });
     }
 
     if (isRestoring || !data.id) {
@@ -224,11 +332,7 @@ const Setup = () => {
     }
 
     return <div className={'max-w-screen-lg mx-auto p-4'}>
-        {isSubmitting && (
-            <div className="fixed inset-0 z-50 grid place-items-center bg-black/30">
-                <Loader />
-            </div>
-        )}
+        {isSubmitting && <RunProgress status={runStatus}/>}
 
         <Stepper onSubmit={onSubmit}>
             <Step label='Setup the log mapping'
@@ -287,6 +391,11 @@ const Setup = () => {
                         <ConfigFileInput type={FileTypes.JSON} />
                     </div>
                 </div>
+                {(fileIssues?.length || missingActivities.length > 0) &&
+                    <div className='flex flex-col gap-2 p-4'>
+                        {fileIssuesNote}
+                        {missingActivitiesNote}
+                    </div>}
             </Step>
             <Step label='Validate configuration'
                   icon={<ShieldCheckIcon />}
@@ -350,6 +459,8 @@ const Setup = () => {
                             {ongoingCases === 0 && <div className='mt-3'>{ongoingCasesNote}</div>}
                         </Preview>
                     </div>
+                    {fileIssuesNote}
+                    {missingActivitiesNote}
                 </div>
             </Step>
         </Stepper>

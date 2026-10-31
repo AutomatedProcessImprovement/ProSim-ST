@@ -9,7 +9,6 @@ import {TimeUnits} from "@definitions/config/enums";
 const SimulationHorizonInput = () => {
     const { data: { config: { simulationHorizonValue, simulationHorizonUnit } }, setData } = useContext(DataContext);
     const [value, setValue] = useState(simulationHorizonValue || 8);
-    // What the user is typing; may be temporarily empty or invalid while `value` keeps the last valid number
     const [draft, setDraft] = useState(String(value));
     const [unit, setUnit] = useState(simulationHorizonUnit || TimeUnits.WEEKS);
     const units: Array<TimeUnits> = [TimeUnits.DAYS, TimeUnits.WEEKS, TimeUnits.MONTHS];

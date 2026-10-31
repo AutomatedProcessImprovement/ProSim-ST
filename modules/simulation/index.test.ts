@@ -13,7 +13,6 @@ jest.mock("axios", () => ({
 
 const mockedAxios = axios as jest.Mocked<typeof axios>;
 
-// start -> Task_A -> split P -> Task_B / Task_C -> join J -> end
 const shapes = {
     Start: {type: NodeTypes.START_EVENT, x: 0, y: 20, width: 36, height: 36},
     Task_A: {type: NodeTypes.TASK, x: 100, y: 0, width: 100, height: 80, businessObject: {name: "Check form"}},
@@ -71,7 +70,6 @@ function setupDom() {
     });
 }
 
-// Animation frames and the clock are driven by the tests
 let clock = 0;
 let frameCallbacks: FrameRequestCallback[] = [];
 
@@ -177,16 +175,13 @@ describe("modules/simulation/index", () => {
 
             expect(dots()).toHaveLength(7);
             expect(dots().every(dot => dot.getAttribute("fill") === STATE_COLORS.waiting)).toBe(true);
-            // First in line next to the arrowhead, the next ones further back on the arrow
             expect(position(dots()[0])).toEqual([90, 38]);
             expect(position(dots()[1])).toEqual([76, 38]);
-            // The 64 long arrow has room for four dots
             expect(dots().filter(visible)).toHaveLength(4);
 
             const pill = container.querySelector(".load-pill.waiting");
             expect(pill.textContent).toBe("7 waiting");
             expect(pill.getAttribute("data-task")).toBe("Task_A");
-            // Centred over the task (x 100-200)
             const rect = pill.querySelector("rect");
             expect(Number(rect.getAttribute("x")) + Number(rect.getAttribute("width")) / 2).toBe(150);
             expect((graphics.Task_A.querySelector("rect") as SVGRectElement).style.fill).toContain("rgba(245, 158, 11");
@@ -215,7 +210,6 @@ describe("modules/simulation/index", () => {
             expect(dots().filter(visible)).toHaveLength(0);
             const pill = container.querySelector(".load-pill.in-work");
             expect(pill.textContent).toBe("7 in work");
-            // Inside the task (y 0-80), along its bottom
             expect(Number(pill.querySelector("rect").getAttribute("y"))).toBe(57);
             expect((container.querySelector(".load-pill.waiting") as SVGGElement).style.display).toBe("none");
         });
@@ -273,11 +267,9 @@ describe("modules/simulation/index", () => {
             const pill = container.querySelector<SVGGElement>(".load-pill.other");
             expect(pill.textContent).toBe("8 waiting");
             expect(pill.getAttribute("data-element")).toBe("J");
-            // Centred above the join (x 575-625, y 15-65)
             const rect = pill.querySelector("rect");
             expect(Number(rect.getAttribute("x")) + Number(rect.getAttribute("width")) / 2).toBe(600);
             expect(Number(rect.getAttribute("y"))).toBe(-8);
-            // A gateway has no task panel
             pill.dispatchEvent(new MouseEvent("click"));
             expect(onTaskClick).not.toHaveBeenCalled();
         });
@@ -511,7 +503,6 @@ describe("modules/simulation/index", () => {
             select.dispatchEvent(new Event("change"));
             await play(400);
 
-            // 1 day/s: two simulated hours pass in about 85 ms
             await play(100);
             expect(dotsOf(1)).toHaveLength(1);
             expect(position(dotsOf(1)[0])).toEqual([150, 70]);
@@ -563,7 +554,6 @@ describe("modules/simulation/index", () => {
 
             button.click();
             expect(dots().filter(visible)).toHaveLength(4);
-            // The dots are redrawn without waiting for an animation frame
             jest.advanceTimersByTime(10);
             await flush();
             expect(dots()).toHaveLength(7);
@@ -605,7 +595,6 @@ describe("modules/simulation/index", () => {
             answer({data: {batches: emptyBatches(1, 30), pointer: -1}});
             await play(7000);
 
-            // Only the six hours of the jump were played, none of the 29 stale ones
             expect(document.getElementById("simulated-time-box").textContent).toBe("2024-01-01 06:00:00 UTC+00:00");
         });
     });

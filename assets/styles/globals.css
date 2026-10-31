@@ -21,8 +21,6 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
-  /* The timeline sits near the bottom of the window, so the diagram gets all the height above it, and the
-     controls row below it (50px lower, 40px tall) always stays in view. */
   --timeline-top: calc(100vh - 100px);
   --controls-top: calc(var(--timeline-top) + 50px);
 }
@@ -51,7 +49,6 @@ h1 {
 }
 
 .load-pill text {
-  /* The diagram's own font: Geist's hinting breaks up words at small zoom levels */
   font: bold 13px Arial, sans-serif;
   text-anchor: middle;
 }
@@ -117,7 +114,6 @@ h1 {
   animation: fadeIn forwards; /* No duration specified here as the duration will be assigned dynamically in the logic */
 }
 
-/* Leaves room for the open stats panel (300px) and its toggle */
 .diagram-area.with-stats {
   width: calc(100% - 320px);
 }
@@ -126,7 +122,6 @@ h1 {
   position: relative;
   width: 100%;
   transition: width 0.3s ease-in-out;
-  /* Everything between the legend above and the workload band above the timeline */
   height: calc(var(--timeline-top) - 175px);
   min-height: 240px;
 }
@@ -408,7 +403,6 @@ h1 {
   color: #94a3b8;
 }
 
-/* The hint would run into the centred page title; the buttons' tooltips still name the shortcuts */
 @media (max-width: 1500px) {
   .toolbar-hint {
     display: none;
@@ -554,7 +548,6 @@ h1 {
   position: fixed;
   top: 0;
   right: 0;
-  /* Stops above the workload band, so the timeline and the controls stay usable while the panel is open */
   bottom: calc(100vh - var(--timeline-top) + 75px);
   display: flex;
   transition: transform 0.3s ease-in-out;

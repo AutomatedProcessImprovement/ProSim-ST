@@ -14,8 +14,6 @@ type ApplyBatchFrameUpdatesInput = {
     wtptSetter: WtptSetter;
 };
 
-// Applies a batch to the cases' positions, and updates the case counters and waiting/processing times once for the
-// whole batch (fast playback goes through hundreds of batches a second)
 export function applyBatchFrameUpdates(input: ApplyBatchFrameUpdatesInput): FrameCase[] {
     let nextFrames = input.frames;
     const counters = {ongoing: 0, finished: 0};

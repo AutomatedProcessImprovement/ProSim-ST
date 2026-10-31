@@ -1,7 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
-  // The sample processes are read from disk by the samples API route
   outputFileTracingIncludes: {
     '/api/samples/[name]/[file]': ['./sampleProcesses/**/*'],
   },

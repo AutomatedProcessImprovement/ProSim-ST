@@ -1,7 +1,5 @@
 import {Batch} from "@definitions/simulation/types";
 
-// The batch being played goes back to the front of the queue unless it was fully applied. Without the explicit
-// flag, a batch counts as unfinished when its time was partly played.
 export function prependCurrentBatchIfNeeded(
     batchesQueue: Batch[],
     currentBatch: Batch,
@@ -12,7 +10,6 @@ export function prependCurrentBatchIfNeeded(
     return [currentBatch, ...batchesQueue];
 }
 
-// The dots are cleared and redrawn on resume; a batch interrupted half-way is replayed from where it stopped
 export function buildVisualResetPatch(localProgress: number): {
     isResumed: boolean;
 } {

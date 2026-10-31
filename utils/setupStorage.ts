@@ -1,5 +1,3 @@
-// Keeps the setup in progress (including the uploaded files) in this browser's IndexedDB, so a refresh of the
-// setup page does not lose it. Everything fails silently: without storage the setup simply isn't restored.
 const DB_NAME = "prosim-setup";
 const STORE = "setup";
 const KEY = "current";
