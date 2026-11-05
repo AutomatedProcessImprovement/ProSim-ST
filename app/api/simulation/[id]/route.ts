@@ -1,12 +1,12 @@
 import {NextResponse} from "next/server";
-import {getRedisInstance, REDIS_KEY_PREFIX_FRAMES} from "@db/redis/redis";
+import {getRedisInstance} from "@db/redis/redis";
 import {join} from "path";
 import {readFile} from "fs/promises";
 import {createMySQLConnection} from "@db/mysql/typeorm";
 import {Process} from "@db/entities/Process";
-import {Frame} from "@db/entities/Frame";
+import {loadInitialFrames} from "@db/mysql/frames";
 import {Event} from "@db/entities/Event";
-import {BatchEvent, FrameCase} from "@definitions/simulation/types";
+import {BatchEvent} from "@definitions/simulation/types";
 import {SimulationData} from "@definitions/api/types";
 import {groupEvents} from "@utils/events";
 import {LifecycleTypes} from "@definitions/simulation/enums";
@@ -31,6 +31,7 @@ export const GET = async (
                 "process.fileName AS fileName",
                 "CAST(process.endDate AS CHAR) AS endDate",
                 "CAST(process.startDate AS CHAR) AS startDate",
+                "process.utcOffset AS utcOffset",
                 "process.setToDelete AS setToDelete"
             ])
             .where("process.id = :id", { id: processId })
@@ -44,7 +45,6 @@ export const GET = async (
             return NextResponse.json({ error: "Process is marked for deletion" }, { status: 410 });
         }
 
-        // Update lastAccessedAt
         await processRepository.update({ id: processId }, { lastAccessedAt: new Date() });
 
         const startDate = new Date(simulationProcess.startDate + "Z");
@@ -77,25 +77,7 @@ export const GET = async (
         const batches = groupEvents(batchEvents, startDate.toISOString(), endDate.toISOString());
 
         const redis = getRedisInstance();
-        const redisKey = REDIS_KEY_PREFIX_FRAMES + processId;
-        const stringFrames = await redis.get(redisKey);
-        let frames: Array<FrameCase>;
-
-        if (!stringFrames) {
-            frames = await appDataSource.getRepository(Frame)
-                .createQueryBuilder("frame")
-                .select([
-                    "frame.caseId as caseId",
-                    "frame.activeElements as activeElements"
-                ])
-                .where("frame.processId = :processId", { processId })
-                .getRawMany();
-
-            await redis.set(redisKey, JSON.stringify(frames), 'EX', 60*60*24);
-        } else {
-            frames = JSON.parse(stringFrames) as Array<FrameCase>;
-        }
-
+        const frames = await loadInitialFrames(redis, appDataSource, processId);
         redis.disconnect();
 
         const filePath = join(process.cwd(), 'public/assets', simulationProcess.fileName);
@@ -108,6 +90,7 @@ export const GET = async (
             file,
             startDate: simulationProcess.startDate,
             endDate: simulationProcess.endDate,
+            utcOffset: simulationProcess.utcOffset ?? "+00:00",
             pointer: simulationHasFinished ? -1 : limit,
         }, { status: 200 });
     } catch (e) {

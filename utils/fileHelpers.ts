@@ -34,6 +34,13 @@ export const readLines = async (
     });
 }
 
+export const readText = (file: Blob) => new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(file);
+});
+
 export async function parseCsvFile(file: File){
     const lines = await readLines(file, { removeWhite: true });
 
@@ -59,6 +66,13 @@ export const normalizeLogDate = (raw?: string) => {
             .slice(0, 19) + "+00:00";
 
     return new Date(isoish).toISOString().slice(0, 19);
+};
+
+export const getLogUtcOffset = (raw?: string) => {
+    const match = raw?.trim().match(/([+-])(\d{2}):?(\d{2})$/);
+    if (!match || !/\d[T ]\d/.test(raw)) return "+00:00";
+
+    return `${match[1]}${match[2]}:${match[3]}`;
 };
 
 const splitCsvLine = (line: string) => line.split(/[;,]/);

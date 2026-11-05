@@ -1,72 +1,53 @@
-import axios, {AxiosResponse} from "axios";
+import axios from "axios";
 import simulation from "@modules/simulation/index";
-import {Batch, BatchEvent, WTPTState} from "@definitions/simulation/types";
-import {Canvas, ElementRegistry} from "@definitions/simulation/interfaces";
-import {LifecycleTypes, NodeTypes} from "@definitions/simulation/enums";
-import {FlowTypes} from "@definitions/simulation/enums";
+import {Batch, BatchEvent, FrameCase, InitialView, SimulationHooks, TokenSimulationApi, WTPTState} from "@definitions/simulation/types";
+import {Canvas, ElementRegistry, EventBus} from "@definitions/simulation/interfaces";
+import {FlowTypes, LifecycleTypes, NodeTypes} from "@definitions/simulation/enums";
 import {SimulationData} from "@definitions/api/types";
-import {Dispatch, SetStateAction} from "react";
-import {
-    buildResumedWTPT,
-    buildTimelineResumptionPatch,
-    TimelineResumptionPatch,
-} from "@modules/simulation/timelineResumptionHelpers";
-import {
-    calculatePlaybackDelta,
-    decidePlaybackSpeedUpdateAction,
-    decidePlayPauseResumeAction,
-} from "@modules/simulation/playbackStateHelpers";
-import {
-    computeEmptyBatchWaitTime,
-    computeProportionalDelta,
-    computeTokenAnimationStartTime,
-    groupEventsByCaseId,
-    shouldTopUpQueue,
-    shouldUpdateFrames,
-} from "@modules/simulation/runSimulationHelpers";
+import {STATE_COLORS, AGE_COLORS} from "@modules/simulation/restLayout";
 
 jest.mock("axios", () => ({
     post: jest.fn(),
     get: jest.fn(),
 }));
 
-jest.mock("@modules/simulation/timelineResumptionHelpers", () => ({
-    buildTimelineResumptionPatch: jest.fn(),
-    buildResumedWTPT: jest.fn(),
-}));
-
-jest.mock("@modules/simulation/playbackStateHelpers", () => ({
-    calculatePlaybackDelta: jest.fn(),
-    decidePlaybackSpeedUpdateAction: jest.fn(),
-    decidePlayPauseResumeAction: jest.fn(),
-}));
-
-jest.mock("@modules/simulation/runSimulationHelpers", () => ({
-    computeEmptyBatchWaitTime: jest.fn(),
-    computeProportionalDelta: jest.fn(),
-    computeTokenAnimationStartTime: jest.fn(),
-    groupEventsByCaseId: jest.fn(),
-    shouldTopUpQueue: jest.fn(),
-    shouldUpdateFrames: jest.fn(),
-}));
-
 const mockedAxios = axios as jest.Mocked<typeof axios>;
-const mockedBuildPatch = buildTimelineResumptionPatch as jest.MockedFunction<typeof buildTimelineResumptionPatch>;
-const mockedBuildResumedWTPT = buildResumedWTPT as jest.MockedFunction<typeof buildResumedWTPT>;
-const mockedDecidePlayPause = decidePlayPauseResumeAction as jest.MockedFunction<typeof decidePlayPauseResumeAction>;
-const mockedDecideSpeed = decidePlaybackSpeedUpdateAction as jest.MockedFunction<typeof decidePlaybackSpeedUpdateAction>;
-const mockedCalcDelta = calculatePlaybackDelta as jest.MockedFunction<typeof calculatePlaybackDelta>;
-const mockedComputeEmptyBatchWaitTime = computeEmptyBatchWaitTime as jest.MockedFunction<typeof computeEmptyBatchWaitTime>;
-const mockedComputeProportionalDelta = computeProportionalDelta as jest.MockedFunction<typeof computeProportionalDelta>;
-const mockedComputeTokenAnimationStartTime = computeTokenAnimationStartTime as jest.MockedFunction<typeof computeTokenAnimationStartTime>;
-const mockedGroupEventsByCaseId = groupEventsByCaseId as jest.MockedFunction<typeof groupEventsByCaseId>;
-const mockedShouldTopUpQueue = shouldTopUpQueue as jest.MockedFunction<typeof shouldTopUpQueue>;
-const mockedShouldUpdateFrames = shouldUpdateFrames as jest.MockedFunction<typeof shouldUpdateFrames>;
 
-type SimulationPluginInstance = {start?: () => void};
-type SimulationPluginDefinition = {
-    tokenSimulation: [string, (this: SimulationPluginInstance, canvas: Canvas, elementRegistry: ElementRegistry) => void];
+const shapes = {
+    Start: {type: NodeTypes.START_EVENT, x: 0, y: 20, width: 36, height: 36},
+    Task_A: {type: NodeTypes.TASK, x: 100, y: 0, width: 100, height: 80, businessObject: {name: "Check form"}},
+    P: {type: NodeTypes.PARALLEL_GATEWAY, x: 250, y: 15, width: 50, height: 50},
+    Task_B: {type: NodeTypes.TASK, x: 400, y: -140, width: 100, height: 80, businessObject: {name: "Check credit"}},
+    Task_C: {type: NodeTypes.TASK, x: 400, y: 140, width: 100, height: 80, businessObject: {name: "Appraise"}},
+    J: {type: NodeTypes.PARALLEL_GATEWAY, x: 575, y: 15, width: 50, height: 50},
+    End: {type: NodeTypes.END_EVENT, x: 700, y: 22, width: 36, height: 36},
 };
+const flow = (target: keyof typeof shapes, waypoints: Array<[number, number]>) => ({
+    type: FlowTypes.FLOW,
+    waypoints: waypoints.map(([x, y]) => ({x, y})),
+    target: {id: target, type: shapes[target].type},
+});
+const flows = {
+    Flow_S_A: flow("Task_A", [[36, 38], [100, 38]]),
+    Flow_A_P: flow("P", [[200, 40], [250, 40]]),
+    Flow_P_B: flow("Task_B", [[275, 15], [275, -100], [400, -100]]),
+    Flow_P_C: flow("Task_C", [[275, 65], [275, 180], [400, 180]]),
+    Flow_B_J: flow("J", [[500, -100], [600, -100], [600, 15]]),
+    Flow_C_J: flow("J", [[500, 180], [600, 180], [600, 65]]),
+    Flow_J_E: flow("End", [[625, 40], [700, 40]]),
+};
+
+const HOUR = 3600000;
+const START = Date.UTC(2024, 0, 1, 0, 0, 0);
+const iso = (hours: number) => new Date(START + hours * HOUR).toISOString();
+const stamp = (hours: number) => iso(hours).slice(0, 19).replace("T", " ");
+
+const event = (caseId: number, lifecycle: LifecycleTypes, hours: number, nodeId: string, paths: BatchEvent["paths"] = {}): BatchEvent =>
+    ({caseId, lifecycle, timestamp: stamp(hours), nodeId, paths});
+
+const batch = (hour: number, events: BatchEvent[] = []): Batch => ({startDate: iso(hour), endDate: iso(hour + 1), events});
+
+const emptyBatches = (from: number, to: number) => Array.from({length: to - from}, (_, i) => batch(from + i));
 
 function setupDom() {
     document.body.innerHTML = `
@@ -74,6 +55,7 @@ function setupDom() {
       <div id="progress-bar"></div>
       <div id="pointer"></div>
       <div id="timeline-tooltip"></div>
+      <div id="token-tooltip"></div>
       <div id="cycle-time-chart-time-bar"></div>
       <div id="simulated-time-box"></div>
       <div id="start-date"></div>
@@ -81,151 +63,110 @@ function setupDom() {
       <button id="go-to-start-btn"></button>
       <button id="play-pause-btn"></button>
       <button id="go-to-end-btn"></button>
-      <select id="speed-select"><option value="2">2</option></select>
+      <select id="speed-select"><option value="1">1</option><option value="24">24</option></select>
     `;
-
-    const timeline = document.getElementById("timeline") as HTMLDivElement;
-    Object.defineProperty(timeline, "getBoundingClientRect", {
+    Object.defineProperty(document.getElementById("timeline"), "getBoundingClientRect", {
         value: () => ({left: 0, width: 100, top: 0, right: 100, bottom: 20, height: 20}),
     });
 }
 
-function makeSimulationData(overrides: Partial<{
-    frames: SimulationData["frames"];
-    batches: Batch[];
-    pointer: number;
-}> = {}): SimulationData {
-    return {
-        processId: "proc-1",
-        frames: overrides.frames ?? [],
-        batches: overrides.batches ?? [],
-        startDate: "2024-01-01T00:00:00",
-        endDate: "2024-01-01T01:00:00",
-        file: Buffer.from(""),
-        pointer: overrides.pointer ?? 0,
-    };
+let clock = 0;
+let frameCallbacks: FrameRequestCallback[] = [];
+
+const flush = async () => {
+    for (let i = 0; i < 20; i++) await Promise.resolve();
+};
+
+async function play(ms: number, step = 50) {
+    for (let elapsed = 0; elapsed < ms; elapsed += step) {
+        clock += step;
+        const callbacks = frameCallbacks;
+        frameCallbacks = [];
+        callbacks.forEach(callback => callback(clock));
+        jest.advanceTimersByTime(step);
+        await flush();
+    }
 }
 
-function setupPlugin(
-    simulationData = makeSimulationData(),
-    elementResolver?: (elementId: string) => ReturnType<ElementRegistry["get"]>,
-) {
-    const state = {ongoing: 0, finished: 0};
-    const caseNumberSetterImpl: Dispatch<SetStateAction<{ongoing: number; finished: number}>> = (next) => {
-        if (typeof next === "function") {
-            const updater = next as (prev: typeof state) => typeof state;
-            const updated = updater(state);
-            state.ongoing = updated.ongoing;
-            state.finished = updated.finished;
-            return;
-        }
-        const updated = next as typeof state;
-        state.ongoing = updated.ongoing;
-        state.finished = updated.finished;
-    };
-    const caseNumberSetter = jest.fn(caseNumberSetterImpl);
-
-    const wtptBase: WTPTState = {
-        Task_A: {name: "Task A", averageWT: 0, averagePT: 0, _count: 0, incompleteCases: {}},
-    };
-    const wtptSetterImpl: Dispatch<SetStateAction<WTPTState>> = (updater) => {
-        if (typeof updater === "function") {
-            (updater as (prev: WTPTState) => WTPTState)(wtptBase);
-            return;
-        }
-    };
-    const wtptSetter = jest.fn(wtptSetterImpl);
-
+function setup({
+    frames = [],
+    batches = [],
+    pointer = -1,
+    endHours = 6,
+    hooks = {},
+    initialView = {},
+}: {frames?: FrameCase[]; batches?: Batch[]; pointer?: number; endHours?: number; hooks?: SimulationHooks; initialView?: InitialView} = {}) {
     const container = document.createElement("div");
     container.innerHTML = `<svg><g data-element-id="root"></g></svg>`;
+    document.body.appendChild(container);
 
-    const canvas = {
-        getContainer: () => container as HTMLDivElement,
-    };
+    const graphics: Record<string, SVGGElement> = {};
+    Object.keys(shapes).forEach(id => {
+        const gfx = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        gfx.innerHTML = `<g class="djs-visual"><rect style="fill: white"></rect></g>`;
+        graphics[id] = gfx;
+    });
 
     const elementRegistry: ElementRegistry = {
-        get: jest.fn((elementId: string) => {
-            if (elementResolver) return elementResolver(elementId);
-            return {type: NodeTypes.TASK, x: 0, y: 0, width: 10, height: 10};
-        }),
+        get: (id: string) => (shapes[id]
+            ? {id, ...shapes[id], incoming: Object.values(flows).filter(({target}) => target.id === id)}
+            : flows[id] ? {id, ...flows[id]} : undefined) as never,
+        getGraphics: (id: string) => graphics[id],
+    };
+    const busHandlers: Record<string, Array<(event: unknown) => void>> = {};
+    const eventBus: EventBus = {
+        on: (name, callback) => { (busHandlers[name] ??= []).push(callback as never); },
     };
 
-    const networkMetricsSetter = jest.fn();
-    const networkActivitySetter = jest.fn();
-    const pluginDef = simulation(simulationData, caseNumberSetter, wtptSetter, networkMetricsSetter, networkActivitySetter) as unknown as SimulationPluginDefinition;
-    const ctor = pluginDef.tokenSimulation[1];
-    const instance: SimulationPluginInstance = {};
-    ctor.call(instance, canvas, elementRegistry);
+    const counters = {ongoing: frames.length, finished: 0};
+    const caseNumberSetter = jest.fn(next => Object.assign(counters, typeof next === "function" ? next(counters) : next));
+    let wtpt: WTPTState = {};
+    const wtptSetter = jest.fn(next => { wtpt = typeof next === "function" ? next(wtpt) : next; });
 
-    return {instance, caseNumberSetter, wtptSetter, networkMetricsSetter, networkActivitySetter, container, elementRegistry};
+    const simulationData: SimulationData = {
+        processId: "p1",
+        frames,
+        batches,
+        startDate: iso(0).slice(0, 19),
+        endDate: iso(endHours).slice(0, 19),
+        utcOffset: "+00:00",
+        file: Buffer.from(""),
+        pointer,
+    };
+    const pluginDef = simulation(simulationData, caseNumberSetter, wtptSetter, hooks, initialView) as unknown as {
+        tokenSimulation: [string, (this: TokenSimulationApi, canvas: Canvas, registry: ElementRegistry, bus: EventBus) => void];
+    };
+    const api = {} as TokenSimulationApi;
+    pluginDef.tokenSimulation[1].call(api, {getContainer: () => container as HTMLDivElement}, elementRegistry, eventBus);
+
+    const dots = () => [...container.querySelectorAll<SVGCircleElement>("circle.token")];
+    const dotsOf = (caseId: number) => dots().filter(dot => dot.getAttribute("data-case") === String(caseId));
+    const position = (dot: Element) => [Number(dot.getAttribute("cx")), Number(dot.getAttribute("cy"))];
+    const visible = (dot: SVGCircleElement) => dot.style.visibility !== "hidden";
+
+    return {api, container, graphics, busHandlers, counters, dots, dotsOf, position, visible, getWtpt: () => wtpt};
 }
 
+const waitingAt = (count: number, elementId = "Flow_S_A", firstCase = 1): FrameCase[] =>
+    Array.from({length: count}, (_, i) => ({caseId: firstCase + i, activeElements: {token_0: elementId}}));
+
+const pausedResumption = (overrides = {}) => ({
+    data: {frames: waitingAt(2), batches: emptyBatches(3, 6), pointer: -1, finishedCasesNumber: 4, wtpt: {}, ...overrides},
+});
+
 describe("modules/simulation/index", () => {
-    let now = 0;
-
     beforeEach(() => {
-        jest.useFakeTimers();
-        jest.clearAllMocks();
+        jest.useFakeTimers({doNotFake: ["performance", "requestAnimationFrame", "cancelAnimationFrame"]});
         setupDom();
-
-        now = 0;
-        jest.spyOn(performance, "now").mockImplementation(() => {
-            now += 16;
-            return now;
-        });
-
-        global.requestAnimationFrame = ((cb: FrameRequestCallback) => {
-            cb(0);
-            return 1;
+        clock = 0;
+        frameCallbacks = [];
+        jest.spyOn(performance, "now").mockImplementation(() => clock);
+        global.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+            frameCallbacks.push(callback);
+            return frameCallbacks.length;
         }) as typeof requestAnimationFrame;
-
-        const postResponse: AxiosResponse = {
-            data: {
-                frames: [],
-                batches: [],
-                pointer: 0,
-                finishedCasesNumber: 0,
-                wtpt: {},
-            },
-            status: 200,
-            statusText: "OK",
-            headers: {},
-            config: {headers: {}} as never,
-        };
-        const getResponse: AxiosResponse = {
-            data: {batches: [], pointer: 0},
-            status: 200,
-            statusText: "OK",
-            headers: {},
-            config: {headers: {}} as never,
-        };
-        mockedAxios.post.mockResolvedValue(postResponse);
-        mockedAxios.get.mockResolvedValue(getResponse);
-
-        mockedBuildPatch.mockReturnValue({
-            tokenProgresses: {},
-            localProgress: 0,
-            batchesQueue: [],
-            frames: [],
-            batchesPointer: 0,
-            caseNumbers: {ongoing: 0, finished: 0},
-            shouldUnpause: true,
-        } satisfies TimelineResumptionPatch);
-        mockedBuildResumedWTPT.mockImplementation((prev) => prev);
-
-        mockedDecidePlayPause.mockReturnValue({kind: "pause"});
-        mockedDecideSpeed.mockReturnValue({kind: "paused"});
-        mockedCalcDelta.mockReturnValue(1000);
-
-        mockedComputeEmptyBatchWaitTime.mockReturnValue(0);
-        mockedComputeProportionalDelta.mockReturnValue(0);
-        mockedComputeTokenAnimationStartTime.mockImplementation((startTime, duration, resumed, progress) => {
-            if (resumed && typeof progress === "number") return startTime - progress * duration;
-            return startTime;
-        });
-        mockedGroupEventsByCaseId.mockReturnValue({});
-        mockedShouldTopUpQueue.mockReturnValue(false);
-        mockedShouldUpdateFrames.mockReturnValue(false);
+        mockedAxios.get.mockResolvedValue({data: {batches: [], pointer: -1}});
+        mockedAxios.post.mockResolvedValue({data: {frames: [], batches: [], pointer: -1, finishedCasesNumber: 0, wtpt: {}}});
     });
 
     afterEach(() => {
@@ -233,1413 +174,646 @@ describe("modules/simulation/index", () => {
         jest.restoreAllMocks();
     });
 
-    it("starts simulation and marks playback ended when queue is empty", () => {
-        const {instance} = setupPlugin(makeSimulationData({batches: []}));
-
-        instance.start?.();
-
-        expect((document.getElementById("play-pause-btn") as HTMLButtonElement).innerHTML).toBe(" ▶");
-    });
-
-    it("creates initial frame tokens from active elements", () => {
-        const {instance, container} = setupPlugin(makeSimulationData({
-            frames: [{caseId: 1, activeElements: {t1: "Task_A"}}],
-            batches: [],
-        }));
-
-        instance.start?.();
-
-        expect(container.querySelectorAll(".token")).toHaveLength(1);
-    });
-
-    it("rewind button requests timeline resumption and applies patch state", async () => {
-        const {instance, caseNumberSetter, wtptSetter} = setupPlugin();
-        instance.start?.();
-
-        (document.getElementById("go-to-start-btn") as HTMLButtonElement).click();
-        await Promise.resolve();
-
-        expect(mockedAxios.post).toHaveBeenCalledTimes(1);
-        expect(mockedBuildPatch).toHaveBeenCalledTimes(1);
-        expect(caseNumberSetter).toHaveBeenCalledWith({ongoing: 0, finished: 0});
-        expect(wtptSetter).toHaveBeenCalled();
-        expect((document.getElementById("play-pause-btn") as HTMLButtonElement).innerHTML).toBe("⏸");
-    });
-
-    it("removes existing DOM tokens before applying timeline resumption patch", async () => {
-        const {instance} = setupPlugin();
-        const existingToken = document.createElement("div");
-        existingToken.className = "token";
-        const removeSpy = jest.spyOn(existingToken, "remove");
-        document.body.appendChild(existingToken);
-
-        instance.start?.();
-        (document.getElementById("go-to-start-btn") as HTMLButtonElement).click();
-        await Promise.resolve();
-
-        expect(removeSpy).toHaveBeenCalled();
-    });
-
-    it("keeps play button unchanged when resumption patch does not request unpause", async () => {
-        mockedBuildPatch.mockReturnValueOnce({
-            tokenProgresses: {},
-            localProgress: 0,
-            batchesQueue: [],
-            frames: [],
-            batchesPointer: 0,
-            caseNumbers: {ongoing: 0, finished: 0},
-            shouldUnpause: false,
-        } satisfies TimelineResumptionPatch);
-
-        const {instance} = setupPlugin();
-        instance.start?.();
-
-        (document.getElementById("go-to-start-btn") as HTMLButtonElement).click();
-        await Promise.resolve();
-
-        expect((document.getElementById("play-pause-btn") as HTMLButtonElement).innerHTML).toBe(" ▶");
-    });
-
-    it("handles timeline request errors without throwing", async () => {
-        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
-        mockedAxios.post.mockRejectedValueOnce(new Error("boom"));
-
-        const {instance} = setupPlugin();
-        instance.start?.();
-
-        (document.getElementById("go-to-end-btn") as HTMLButtonElement).click();
-        await Promise.resolve();
-
-        expect(logSpy).toHaveBeenCalled();
-    });
-
-    it("handles play/pause pause branch", () => {
-        mockedDecidePlayPause.mockReturnValueOnce({kind: "pause"} as never);
-
-        const {instance} = setupPlugin();
-        instance.start?.();
-
-        (document.getElementById("play-pause-btn") as HTMLButtonElement).click();
-
-        expect(mockedDecidePlayPause).toHaveBeenCalled();
-        expect((document.getElementById("play-pause-btn") as HTMLButtonElement).innerHTML).toBe(" ▶");
-    });
-
-    it("handles play/pause restart branch by requesting progress 0", async () => {
-        mockedDecidePlayPause.mockReturnValueOnce({kind: "restart"} as never);
-
-        const {instance} = setupPlugin();
-        instance.start?.();
-
-        (document.getElementById("play-pause-btn") as HTMLButtonElement).click();
-        await Promise.resolve();
-
-        expect(mockedAxios.post).toHaveBeenCalled();
-        const payload = mockedAxios.post.mock.calls[0][1] as {requestedDate: string};
-        expect(payload.requestedDate).toContain("2024-01-01T00:00:00");
-    });
-
-    it("handles play/pause resume branch and resets token visuals", () => {
-        const token = document.createElement("div");
-        token.className = "token";
-        const removeSpy = jest.spyOn(token, "remove");
-        document.body.appendChild(token);
-
-        mockedDecidePlayPause.mockReturnValueOnce({
-            kind: "resume",
-            nextQueue: [],
-            resetPatch: {
-                tokens: {},
-                coordinateMap: {},
-                isResumed: true,
-            },
-        } as never);
-
-        const {instance} = setupPlugin();
-        instance.start?.();
-
-        (document.getElementById("play-pause-btn") as HTMLButtonElement).click();
-
-        expect(removeSpy).toHaveBeenCalled();
-        expect((document.getElementById("play-pause-btn") as HTMLButtonElement).innerHTML).toBe("⏸");
-    });
-
-    it("updates playback speed in paused branch", () => {
-        mockedDecideSpeed.mockReturnValueOnce({kind: "paused"} as never);
-
-        const {instance} = setupPlugin();
-        instance.start?.();
-
-        const speedSelect = document.getElementById("speed-select") as HTMLSelectElement;
-        speedSelect.value = "2";
-        speedSelect.dispatchEvent(new Event("change", {bubbles: true}));
-
-        expect(mockedDecideSpeed).toHaveBeenCalled();
-        expect(mockedCalcDelta).toHaveBeenCalledWith(2000, 2);
-    });
-
-    it("updates playback speed in running branch after delay and resets token visuals", () => {
-        const token = document.createElement("div");
-        token.className = "token";
-        const removeSpy = jest.spyOn(token, "remove");
-        document.body.appendChild(token);
-
-        mockedDecideSpeed.mockReturnValueOnce({
-            kind: "running",
-            nextQueue: [],
-            resetPatch: {
-                tokens: {},
-                coordinateMap: {},
-                isResumed: false,
-            },
-        } as never);
-
-        const {instance} = setupPlugin();
-        instance.start?.();
-
-        const speedSelect = document.getElementById("speed-select") as HTMLSelectElement;
-        speedSelect.value = "2";
-        speedSelect.dispatchEvent(new Event("change", {bubbles: true}));
-
-        expect(mockedDecideSpeed).toHaveBeenCalled();
-        jest.advanceTimersByTime(300);
-        expect(removeSpy).toHaveBeenCalled();
-        expect(mockedCalcDelta).toHaveBeenCalledWith(2000, 2);
-    });
-
-    it("runs non-empty batch branch and groups events by case id", () => {
-        const batch: Batch = {
-            startDate: "2024-01-01T00:00:00.000Z",
-            endDate: "2024-01-01T01:00:00.000Z",
-            events: [{
-                caseId: 1,
-                lifecycle: LifecycleTypes.START,
-                timestamp: "2024-01-01T00:05:00.000Z",
-                nodeId: "Task_A",
-                paths: {t1: ["Task_A", "Task_B"]},
-            } satisfies BatchEvent],
-        };
-
-        mockedGroupEventsByCaseId.mockReturnValueOnce({});
-
-        const {instance} = setupPlugin(makeSimulationData({batches: [batch]}));
-        instance.start?.();
-
-        expect(mockedGroupEventsByCaseId).toHaveBeenCalledWith(batch.events);
-    });
-
-    it("handles non-empty grouped events and animates token paths", () => {
-        const batchEvent: BatchEvent = {
-            caseId: 1,
-            lifecycle: LifecycleTypes.START,
-            timestamp: "2024-01-01T00:05:00.000Z",
-            nodeId: "Task_A",
-            paths: {t1: ["Task_A", "Task_B"]},
-        };
-        const batch: Batch = {
-            startDate: "2024-01-01T00:00:00.000Z",
-            endDate: "2024-01-01T01:00:00.000Z",
-            events: [batchEvent],
-        };
-
-        mockedGroupEventsByCaseId.mockReturnValueOnce({1: [batchEvent]});
-        mockedComputeProportionalDelta.mockReturnValueOnce(1);
-
-        const {instance, container} = setupPlugin(
-            makeSimulationData({batches: [batch]}),
-            (elementId) => {
-                if (elementId === "flow-1") {
-                    return {
-                        type: NodeTypes.TASK,
-                        x: 0,
-                        y: 0,
-                        width: 10,
-                        height: 10,
-                    };
-                }
-
-                return {
-                    type: NodeTypes.TASK,
-                    x: elementId === "Task_A" ? 0 : 40,
-                    y: 0,
-                    width: 10,
-                    height: 10,
-                };
-            },
-        );
-
-        instance.start?.();
-
-        expect(mockedGroupEventsByCaseId).toHaveBeenCalledWith(batch.events);
-        expect(container.querySelectorAll(".token").length).toBeGreaterThanOrEqual(1);
-    });
-
-    it("warns when a path references a missing element", () => {
-        const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => undefined);
-        const batchEvent: BatchEvent = {
-            caseId: 1,
-            lifecycle: LifecycleTypes.START,
-            timestamp: "2024-01-01T00:05:00.000Z",
-            nodeId: "Task_A",
-            paths: {
-                t1: ["Task_A", "Missing_Element"],
-                t2: ["Task_A", "Missing_Element"],
-            },
-        };
-        const batch: Batch = {
-            startDate: "2024-01-01T00:00:00.000Z",
-            endDate: "2024-01-01T01:00:00.000Z",
-            events: [batchEvent],
-        };
-
-        mockedGroupEventsByCaseId.mockReturnValueOnce({1: [batchEvent]});
-
-        const {instance} = setupPlugin(
-            makeSimulationData({batches: [batch]}),
-            (elementId) => {
-                if (elementId === "Missing_Element") {
-                    return undefined as unknown as ReturnType<ElementRegistry["get"]>;
-                }
-
-                return {
-                    type: NodeTypes.TASK,
-                    x: 0,
-                    y: 0,
-                    width: 10,
-                    height: 10,
-                };
-            },
-        );
-
-        instance.start?.();
-
-        expect(warnSpy).toHaveBeenCalled();
-    });
-
-    it("creates async flow-based tokens with fade-in and clears class on animationend", () => {
-        const batchEvent: BatchEvent = {
-            caseId: 1,
-            lifecycle: LifecycleTypes.START,
-            timestamp: "2024-01-01T00:05:00.000Z",
-            nodeId: "Task_A",
-            paths: {
-                t1: ["Flow_Start"],
-                t2: ["Flow_Start"],
-            },
-        };
-        const batch: Batch = {
-            startDate: "2024-01-01T00:00:00.000Z",
-            endDate: "2024-01-01T01:00:00.000Z",
-            events: [batchEvent],
-        };
-
-        mockedGroupEventsByCaseId.mockReturnValueOnce({1: [batchEvent]});
-
-        const {instance, container} = setupPlugin(
-            makeSimulationData({batches: [batch]}),
-            (elementId) => {
-                if (elementId === "Flow_Start") {
-                    return {
-                        type: FlowTypes.FLOW,
-                        waypoints: [{x: 0, y: 0}, {x: 10, y: 0}],
-                    } as ReturnType<ElementRegistry["get"]>;
-                }
-
-                return {
-                    type: NodeTypes.TASK,
-                    x: 0,
-                    y: 0,
-                    width: 10,
-                    height: 10,
-                };
-            },
-        );
-
-        instance.start?.();
-
-        const tokens = Array.from(container.querySelectorAll(".token"));
-        expect(tokens.length).toBeGreaterThanOrEqual(1);
-        expect(tokens.some((token) => token.classList.contains("fade-in"))).toBe(true);
-
-        tokens.forEach((token) => token.dispatchEvent(new Event("animationend")));
-        expect(tokens.some((token) => token.classList.contains("fade-in"))).toBe(false);
-    });
-
-    it("applies fade-out when CASE_END completes", () => {
-        const batchEvent: BatchEvent = {
-            caseId: 1,
-            lifecycle: LifecycleTypes.CASE_END,
-            timestamp: "2024-01-01T00:05:00.000Z",
-            nodeId: "Task_A",
-            paths: {t1: ["Task_A", "Task_B"]},
-        };
-        const batch: Batch = {
-            startDate: "2024-01-01T00:00:00.000Z",
-            endDate: "2024-01-01T01:00:00.000Z",
-            events: [batchEvent],
-        };
-
-        mockedGroupEventsByCaseId.mockReturnValueOnce({1: [batchEvent]});
-
-        const {instance, container} = setupPlugin(
-            makeSimulationData({
-                frames: [{caseId: 1, activeElements: {t1: "Task_A"}}],
-                batches: [batch],
-            }),
-            (elementId) => ({
-                type: NodeTypes.TASK,
-                x: elementId === "Task_A" ? 0 : 20,
-                y: 0,
-                width: 10,
-                height: 10,
-            }),
-        );
-
-        instance.start?.();
-
-        expect(container.querySelectorAll(".token").length).toBeGreaterThanOrEqual(1);
-    });
-
-    it("merges animation paths when same token appears across sequential batch events", () => {
-        const first: BatchEvent = {
-            caseId: 1,
-            lifecycle: LifecycleTypes.START,
-            timestamp: "2024-01-01T00:05:00.000Z",
-            nodeId: "Task_A",
-            paths: {t1: ["Task_A"]},
-        };
-        const second: BatchEvent = {
-            caseId: 1,
-            lifecycle: LifecycleTypes.COMPLETE,
-            timestamp: "2024-01-01T00:06:00.000Z",
-            nodeId: "Task_A",
-            paths: {t1: ["Task_B"]},
-        };
-        const batch: Batch = {
-            startDate: "2024-01-01T00:00:00.000Z",
-            endDate: "2024-01-01T01:00:00.000Z",
-            events: [first, second],
-        };
-
-        mockedGroupEventsByCaseId.mockReturnValueOnce({1: [first, second]});
-
-        const {instance, container} = setupPlugin(
-            makeSimulationData({
-                frames: [{caseId: 1, activeElements: {t1: "Task_A"}}],
-                batches: [batch],
-            }),
-            (elementId) => ({
-                type: NodeTypes.TASK,
-                x: elementId === "Task_A" ? 0 : 30,
-                y: 0,
-                width: 10,
-                height: 10,
-            }),
-        );
-
-        instance.start?.();
-
-        expect(container.querySelectorAll(".token").length).toBeGreaterThanOrEqual(1);
-    });
-
-    it("handles async split-merge recursion through parallel gateway subpaths", () => {
-        const asyncEvent: BatchEvent = {
-            caseId: 1,
-            lifecycle: LifecycleTypes.START,
-            timestamp: "2024-01-01T00:05:00.000Z",
-            nodeId: "Gateway",
-            paths: {
-                t1: ["Task_A", "PGW"],
-                t2: ["PGW", "Task_B"],
-            },
-        };
-        const batch: Batch = {
-            startDate: "2024-01-01T00:00:00.000Z",
-            endDate: "2024-01-01T01:00:00.000Z",
-            events: [asyncEvent],
-        };
-
-        mockedGroupEventsByCaseId.mockReturnValueOnce({1: [asyncEvent]});
-
-        const {instance, container} = setupPlugin(
-            makeSimulationData({batches: [batch]}),
-            (elementId) => {
-                if (elementId === "PGW") {
-                    return {type: NodeTypes.PARALLEL_GATEWAY, x: 10, y: 0, width: 10, height: 10};
-                }
-                return {
-                    type: NodeTypes.TASK,
-                    x: elementId === "Task_A" ? 0 : 30,
-                    y: 0,
-                    width: 10,
-                    height: 10,
-                };
-            },
-        );
-
-        instance.start?.();
-
-        expect(container.querySelectorAll(".token").length).toBeGreaterThanOrEqual(1);
-    });
-
-    it("reuses stored token color for missing async token in subsequent batch", () => {
-        const firstAsync: BatchEvent = {
-            caseId: 1,
-            lifecycle: LifecycleTypes.START,
-            timestamp: "2024-01-01T00:05:00.000Z",
-            nodeId: "Gateway",
-            paths: {
-                t1: ["Task_A", "PGW"],
-                t2: ["PGW", "Task_B"],
-            },
-        };
-        const secondAsync: BatchEvent = {
-            caseId: 1,
-            lifecycle: LifecycleTypes.START,
-            timestamp: "2024-01-01T00:06:00.000Z",
-            nodeId: "Gateway",
-            paths: {
-                t1: ["Task_A", "PGW"],
-                t2: ["PGW", "Task_B"],
-            },
-        };
-
-        mockedGroupEventsByCaseId
-            .mockReturnValueOnce({1: [firstAsync]})
-            .mockReturnValueOnce({1: [secondAsync]});
-
-        const firstBatch: Batch = {
-            startDate: "2024-01-01T00:00:00.000Z",
-            endDate: "2024-01-01T01:00:00.000Z",
-            events: [firstAsync],
-        };
-        const secondBatch: Batch = {
-            startDate: "2024-01-01T01:00:00.000Z",
-            endDate: "2024-01-01T02:00:00.000Z",
-            events: [secondAsync],
-        };
-
-        const {instance, container} = setupPlugin(
-            makeSimulationData({batches: [firstBatch, secondBatch]}),
-            (elementId) => {
-                if (elementId === "PGW") {
-                    return {type: NodeTypes.PARALLEL_GATEWAY, x: 10, y: 0, width: 10, height: 10};
-                }
-                return {
-                    type: NodeTypes.TASK,
-                    x: elementId === "Task_A" ? 0 : 30,
-                    y: 0,
-                    width: 10,
-                    height: 10,
-                };
-            },
-        );
-
-        instance.start?.();
-
-        expect(container.querySelectorAll(".token").length).toBeGreaterThanOrEqual(1);
-    });
-
-    it("triggers polling top-up when top-up decision is true", async () => {
-        const batch: Batch = {
-            startDate: "2024-01-01T00:00:00.000Z",
-            endDate: "2024-01-01T01:00:00.000Z",
-            events: [],
-        };
-
-        mockedShouldTopUpQueue.mockReturnValueOnce(true);
-
-        const {instance} = setupPlugin(makeSimulationData({batches: [batch], pointer: 10}));
-        instance.start?.();
-
-        await Promise.resolve();
-
-        expect(mockedAxios.get).toHaveBeenCalled();
-        expect(mockedAxios.get.mock.calls[0][0]).toContain("/api/simulation/proc-1/polling");
-    });
-
-    it("logs polling errors and resets fetching state in top-up path", async () => {
-        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
-        const batch: Batch = {
-            startDate: "2024-01-01T00:00:00.000Z",
-            endDate: "2024-01-01T01:00:00.000Z",
-            events: [],
-        };
-
-        mockedShouldTopUpQueue.mockReturnValueOnce(true);
-        mockedAxios.get.mockRejectedValueOnce(new Error("polling failed"));
-
-        const {instance} = setupPlugin(makeSimulationData({batches: [batch], pointer: 10}));
-        instance.start?.();
-        await Promise.resolve();
-
-        expect(logSpy).toHaveBeenCalled();
-    });
-
-    it("uses empty-batch wait helper in empty batch branch", () => {
-        const batch: Batch = {
-            startDate: "2024-01-01T00:00:00.000Z",
-            endDate: "2024-01-01T01:00:00.000Z",
-            events: [],
-        };
-
-        mockedComputeProportionalDelta.mockReturnValueOnce(1000);
-        mockedComputeEmptyBatchWaitTime.mockReturnValueOnce(0);
-
-        const {instance} = setupPlugin(makeSimulationData({batches: [batch]}));
-        instance.start?.();
-
-        expect(mockedComputeEmptyBatchWaitTime).toHaveBeenCalledWith(1000, false, 0);
-    });
-
-    it("handles abort in empty-batch wait branch", async () => {
-        const batch: Batch = {
-            startDate: "2024-01-01T00:00:00.000Z",
-            endDate: "2024-01-01T01:00:00.000Z",
-            events: [],
-        };
-
-        mockedComputeEmptyBatchWaitTime.mockReturnValueOnce(5000);
-        const clearTimeoutSpy = jest.spyOn(global, "clearTimeout");
-        global.requestAnimationFrame = jest.fn(() => 1) as typeof requestAnimationFrame;
-
-        const {instance} = setupPlugin(makeSimulationData({batches: [batch]}));
-        instance.start?.();
-        (document.getElementById("play-pause-btn") as HTMLButtonElement).click();
-        await Promise.resolve();
-
-        expect(clearTimeoutSpy).toHaveBeenCalled();
-    });
-
-    it("handles abort in non-empty batch branch", async () => {
-        const batchEvent: BatchEvent = {
-            caseId: 1,
-            lifecycle: LifecycleTypes.START,
-            timestamp: "2024-01-01T00:05:00.000Z",
-            nodeId: "Task_A",
-            paths: {t1: ["Task_A", "Task_B"]},
-        };
-        const batch: Batch = {
-            startDate: "2024-01-01T00:00:00.000Z",
-            endDate: "2024-01-01T01:00:00.000Z",
-            events: [batchEvent],
-        };
-
-        mockedGroupEventsByCaseId.mockReturnValueOnce({1: [batchEvent]});
-        global.requestAnimationFrame = jest.fn(() => 1) as typeof requestAnimationFrame;
-
-        const {instance} = setupPlugin(makeSimulationData({batches: [batch]}));
-        instance.start?.();
-        (document.getElementById("play-pause-btn") as HTMLButtonElement).click();
-        await Promise.resolve();
-
-        expect((document.getElementById("play-pause-btn") as HTMLButtonElement).innerHTML).toBe(" ▶");
-    });
-
-    it("applies frame updates and resolves node types from element registry when update condition is true", () => {
-        const parallelEvent: BatchEvent = {
-            caseId: 1,
-            lifecycle: LifecycleTypes.COMPLETE,
-            timestamp: "2024-01-01T00:05:00.000Z",
-            nodeId: "PGW",
-            paths: {
-                t1: ["PGW", "Task_A"],
-                t2: ["PGW", "Task_B"],
-            },
-        };
-        const batch: Batch = {
-            startDate: "2024-01-01T00:00:00.000Z",
-            endDate: "2024-01-01T01:00:00.000Z",
-            events: [parallelEvent],
-        };
-
-        mockedGroupEventsByCaseId.mockReturnValueOnce({1: [parallelEvent]});
-        mockedShouldUpdateFrames.mockReturnValueOnce(true);
-
-        const {instance, elementRegistry} = setupPlugin(
-            makeSimulationData({
-                frames: [{caseId: 1, activeElements: {t1: "PGW", t2: "PGW"}}],
-                batches: [batch],
-            }),
-            (elementId) => ({
-                type: elementId === "PGW" ? NodeTypes.PARALLEL_GATEWAY : NodeTypes.TASK,
-                x: 0,
-                y: 0,
-                width: 10,
-                height: 10,
-            }),
-        );
-
-        instance.start?.();
-
-        expect(elementRegistry.get).toHaveBeenCalledWith("PGW");
-        expect(elementRegistry.get).toHaveBeenCalledWith("Task_A");
-    });
-
-    it("removes token after CASE_END fade-out animation end", () => {
-        const batchEvent: BatchEvent = {
-            caseId: 1,
-            lifecycle: LifecycleTypes.CASE_END,
-            timestamp: "2024-01-01T00:05:00.000Z",
-            nodeId: "Task_A",
-            paths: {t1: ["Task_A", "Task_B"]},
-        };
-        const batch: Batch = {
-            startDate: "2024-01-01T00:00:00.000Z",
-            endDate: "2024-01-01T01:00:00.000Z",
-            events: [batchEvent],
-        };
-
-        mockedGroupEventsByCaseId.mockReturnValueOnce({1: [batchEvent]});
-
-        const {instance, container} = setupPlugin(
-            makeSimulationData({
-                frames: [{caseId: 1, activeElements: {t1: "Task_A"}}],
-                batches: [batch],
-            }),
-            (elementId) => ({
-                type: NodeTypes.TASK,
-                x: elementId === "Task_A" ? 0 : 20,
-                y: 0,
-                width: 10,
-                height: 10,
-            }),
-        );
-
-        instance.start?.();
-
-        const token = container.querySelector(".token") as SVGCircleElement;
-        expect(token.classList.contains("fade-out")).toBe(true);
-        token.dispatchEvent(new Event("animationend"));
-        expect(container.querySelectorAll(".token")).toHaveLength(0);
-    });
-
-    it("reuses stored token colors for resumed async token recreation", () => {
-        const resumedAsyncEvent: BatchEvent = {
-            caseId: 1,
-            lifecycle: LifecycleTypes.START,
-            timestamp: "2024-01-01T00:05:00.000Z",
-            nodeId: "Gateway",
-            paths: {
-                t1: ["Task_A", "PGW"],
-                t2: ["PGW", "Task_B"],
-            },
-        };
-        const resumedBatch: Batch = {
-            startDate: "2024-01-01T00:00:00.000Z",
-            endDate: "2024-01-01T01:00:00.000Z",
-            events: [resumedAsyncEvent],
-        };
-
-        mockedDecidePlayPause.mockReturnValueOnce({
-            kind: "resume",
-            nextQueue: [resumedBatch],
-            resetPatch: {
-                tokens: {},
-                coordinateMap: {},
-                isResumed: true,
-            },
-        } as never);
-        mockedGroupEventsByCaseId.mockReturnValueOnce({1: [resumedAsyncEvent]});
-        mockedComputeProportionalDelta.mockReturnValueOnce(1);
-
-        const {instance, container} = setupPlugin(
-            makeSimulationData({
-                frames: [{caseId: 1, activeElements: {t2: "Task_A"}}],
-                batches: [],
-            }),
-            (elementId) => {
-                if (elementId === "PGW") {
-                    return {type: NodeTypes.PARALLEL_GATEWAY, x: 10, y: 0, width: 10, height: 10};
-                }
-                return {
-                    type: NodeTypes.TASK,
-                    x: elementId === "Task_A" ? 0 : 30,
-                    y: 0,
-                    width: 10,
-                    height: 10,
-                };
-            },
-        );
-
-        instance.start?.();
-        (document.getElementById("play-pause-btn") as HTMLButtonElement).click();
-        jest.advanceTimersByTime(10);
-
-        expect(container.querySelectorAll(".token").length).toBeGreaterThanOrEqual(1);
-    });
-
-    it("skips fade-in for resumed async token recreation when token progress already exists", () => {
-        const initialAsyncEvent: BatchEvent = {
-            caseId: 1,
-            lifecycle: LifecycleTypes.START,
-            timestamp: "2024-01-01T00:05:00.000Z",
-            nodeId: "Gateway",
-            paths: {
-                t1: ["Task_A", "PGW"],
-                t2: ["PGW", "Task_B"],
-            },
-        };
-        const resumedAsyncEvent: BatchEvent = {
-            caseId: 1,
-            lifecycle: LifecycleTypes.START,
-            timestamp: "2024-01-01T00:06:00.000Z",
-            nodeId: "Gateway",
-            paths: {
-                t1: ["Task_A", "PGW"],
-                t2: ["PGW", "Task_B"],
-            },
-        };
-
-        mockedGroupEventsByCaseId
-            .mockReturnValueOnce({1: [initialAsyncEvent]})
-            .mockReturnValueOnce({1: [resumedAsyncEvent]});
-
-        mockedDecidePlayPause.mockReturnValueOnce({
-            kind: "resume",
-            nextQueue: [{
-                startDate: "2024-01-01T01:00:00.000Z",
-                endDate: "2024-01-01T02:00:00.000Z",
-                events: [resumedAsyncEvent],
-            }],
-            resetPatch: {
-                tokens: {},
-                coordinateMap: {},
-                isResumed: true,
-            },
-        } as never);
-
-        const {instance, container} = setupPlugin(
-            makeSimulationData({
-                batches: [{
-                    startDate: "2024-01-01T00:00:00.000Z",
-                    endDate: "2024-01-01T01:00:00.000Z",
-                    events: [initialAsyncEvent],
-                }],
-            }),
-            (elementId) => {
-                if (elementId === "PGW") {
-                    return {type: NodeTypes.PARALLEL_GATEWAY, x: 10, y: 0, width: 10, height: 10};
-                }
-                return {
-                    type: NodeTypes.TASK,
-                    x: elementId === "Task_A" ? 0 : 30,
-                    y: 0,
-                    width: 10,
-                    height: 10,
-                };
-            },
-        );
-
-        instance.start?.();
-        (document.getElementById("play-pause-btn") as HTMLButtonElement).click();
-        jest.advanceTimersByTime(10);
-
-        const tokens = Array.from(container.querySelectorAll(".token"));
-        expect(tokens.length).toBeGreaterThanOrEqual(1);
-        expect(tokens.some((token) => token.classList.contains("fade-in"))).toBe(false);
-    });
-
-    it("skips fade-in for resumed non-async token recreation with saved token progress", async () => {
-        const resumedEvent: BatchEvent = {
-            caseId: 1,
-            lifecycle: LifecycleTypes.COMPLETE,
-            timestamp: "2024-01-01T00:06:00.000Z",
-            nodeId: "Task_B",
-            paths: {t1: ["Task_B", "Task_C"]},
-        };
-
-        mockedBuildPatch.mockReturnValueOnce({
-            tokenProgresses: {1: {t1: 0.5}},
-            localProgress: 0.2,
-            batchesQueue: [],
-            frames: [],
-            batchesPointer: 0,
-            caseNumbers: {ongoing: 1, finished: 0},
-            shouldUnpause: false,
-        } satisfies TimelineResumptionPatch);
-
-        mockedGroupEventsByCaseId.mockReturnValueOnce({1: [resumedEvent]});
-
-        mockedDecidePlayPause.mockReturnValueOnce({
-            kind: "resume",
-            nextQueue: [{
-                startDate: "2024-01-01T01:00:00.000Z",
-                endDate: "2024-01-01T02:00:00.000Z",
-                events: [resumedEvent],
-            }],
-            resetPatch: {
-                tokens: {},
-                coordinateMap: {},
-                isResumed: true,
-            },
-        } as never);
-
-        const {instance, container} = setupPlugin(
-            makeSimulationData({
-                batches: [],
-            }),
-            () => ({type: NodeTypes.TASK, x: 0, y: 0, width: 10, height: 10}),
-        );
-
-        instance.start?.();
-        (document.getElementById("go-to-start-btn") as HTMLButtonElement).click();
-        await Promise.resolve();
-        (document.getElementById("play-pause-btn") as HTMLButtonElement).click();
-        jest.advanceTimersByTime(10);
-
-        const token = container.querySelector(".token");
-        expect(token).toBeTruthy();
-        expect(token?.classList.contains("fade-in")).toBe(false);
-    });
-
-    it("uses resumed local-progress branch for non-async empty-path events", () => {
-        const resumedEvent: BatchEvent = {
-            caseId: 1,
-            lifecycle: LifecycleTypes.START,
-            timestamp: "2024-01-01T00:05:00.000Z",
-            nodeId: "Task_A",
-            paths: {},
-        };
-        const resumedBatch: Batch = {
-            startDate: "2024-01-01T00:00:00.000Z",
-            endDate: "2024-01-01T01:00:00.000Z",
-            events: [resumedEvent],
-        };
-
-        mockedDecidePlayPause.mockReturnValueOnce({
-            kind: "resume",
-            nextQueue: [resumedBatch],
-            resetPatch: {
-                tokens: {},
-                coordinateMap: {},
-                isResumed: true,
-            },
-        } as never);
-        mockedGroupEventsByCaseId.mockReturnValueOnce({1: [resumedEvent]});
-        mockedComputeProportionalDelta.mockReturnValueOnce(1000);
-
-        const timeoutSpy = jest.spyOn(global, "setTimeout");
-        const {instance} = setupPlugin(makeSimulationData({batches: []}));
-
-        instance.start?.();
-        (document.getElementById("play-pause-btn") as HTMLButtonElement).click();
-        jest.advanceTimersByTime(10);
-
-        expect(timeoutSpy).toHaveBeenCalled();
-    });
-
-    it("creates resumed non-async token with saved progress state", async () => {
-        const patchWithProgress: TimelineResumptionPatch = {
-            tokenProgresses: {1: {t1: 0.6}},
-            localProgress: 0.4,
-            batchesQueue: [{
-                startDate: "2024-01-01T00:00:00.000Z",
-                endDate: "2024-01-01T01:00:00.000Z",
-                events: [{
-                    caseId: 1,
-                    lifecycle: LifecycleTypes.START,
-                    timestamp: "2024-01-01T00:05:00.000Z",
-                    nodeId: "Task_A",
-                    paths: {t1: ["Task_A", "Task_B"]},
-                }],
-            }],
-            frames: [],
-            batchesPointer: 1,
-            caseNumbers: {ongoing: 1, finished: 0},
-            shouldUnpause: true,
-        };
-
-        mockedBuildPatch.mockReturnValueOnce(patchWithProgress);
-        mockedComputeProportionalDelta.mockReturnValue(1);
-        mockedGroupEventsByCaseId.mockReturnValueOnce({
-            1: patchWithProgress.batchesQueue[0].events,
+    describe("opening a shared view", () => {
+        it("opens paused at the shared moment, showing the cases of that moment", async () => {
+            mockedAxios.post.mockResolvedValue(pausedResumption());
+            const onViewChange = jest.fn();
+            const {api, dots} = setup({hooks: {onViewChange}, initialView: {moment: START + 3 * HOUR}});
+            api.start();
+            await play(100);
+
+            expect(mockedAxios.post).toHaveBeenCalledTimes(1);
+            expect(mockedAxios.post.mock.calls[0][1]).toEqual({requestedDate: iso(3)});
+            expect(document.getElementById("simulated-time-box").textContent).toContain("2024-01-01 03:00:00");
+            expect(document.getElementById("play-pause-btn").textContent).toContain("▶");
+            expect(dots()).toHaveLength(2);
+            expect(api.getCurrentTime()).toBe(START + 3 * HOUR);
+            expect(onViewChange).toHaveBeenCalled();
+
+            await play(2000);
+            expect(api.getCurrentTime()).toBe(START + 3 * HOUR);
         });
 
-        const {instance, container} = setupPlugin(makeSimulationData(), (elementId) => ({
-            type: NodeTypes.TASK,
-            x: elementId === "Task_A" ? 0 : 20,
-            y: 0,
-            width: 10,
-            height: 10,
-        }));
+        it("plays on from that moment when asked", async () => {
+            mockedAxios.post.mockResolvedValue(pausedResumption());
+            const {api} = setup({initialView: {moment: START + 3 * HOUR}});
+            api.start();
+            await play(100);
 
-        instance.start?.();
-        (document.getElementById("go-to-start-btn") as HTMLButtonElement).click();
-        await Promise.resolve();
-        jest.advanceTimersByTime(10);
+            document.getElementById("play-pause-btn").click();
+            await play(2000);
 
-        expect(mockedComputeTokenAnimationStartTime).toHaveBeenCalled();
-        expect(container.querySelectorAll(".token").length).toBeGreaterThanOrEqual(1);
-    });
-
-    it("re-enters animateTimeline with resumed local progress", () => {
-        const emptyBatch: Batch = {
-            startDate: "2024-01-01T00:00:00.000Z",
-            endDate: "2024-01-01T01:00:00.000Z",
-            events: [],
-        };
-
-        let rafCalls = 0;
-        global.requestAnimationFrame = ((cb: FrameRequestCallback) => {
-            rafCalls += 1;
-            if (rafCalls === 1) cb(0);
-            return rafCalls;
-        }) as typeof requestAnimationFrame;
-
-        mockedDecidePlayPause.mockReturnValueOnce({
-            kind: "resume",
-            nextQueue: [emptyBatch],
-            resetPatch: {
-                tokens: {},
-                coordinateMap: {},
-                isResumed: true,
-            },
-        } as never);
-
-        const {instance} = setupPlugin(makeSimulationData({batches: [emptyBatch]}));
-        instance.start?.();
-
-        (document.getElementById("play-pause-btn") as HTMLButtonElement).click();
-        jest.advanceTimersByTime(10);
-
-        expect(rafCalls).toBeGreaterThan(1);
-    });
-
-    it("updates timeline progress during drag and requests resumption on drag end", async () => {
-        const {instance} = setupPlugin();
-        instance.start?.();
-
-        const timeline = document.getElementById("timeline") as HTMLDivElement;
-        const progressBar = document.getElementById("progress-bar") as HTMLDivElement;
-        const pointer = document.getElementById("pointer") as HTMLDivElement;
-
-        timeline.dispatchEvent(new MouseEvent("mousedown", {clientX: 30, bubbles: true}));
-        document.dispatchEvent(new MouseEvent("mousemove", {clientX: 70, bubbles: true}));
-        document.dispatchEvent(new MouseEvent("mouseup", {clientX: 70, bubbles: true}));
-        await Promise.resolve();
-
-        expect(progressBar.style.width).toBe("70%");
-        expect(pointer.style.left).toBe("70%");
-        expect(mockedAxios.post).toHaveBeenCalled();
-    });
-
-    it("updates timeline progress via touch drag and requests resumption on touch end", async () => {
-        const {instance} = setupPlugin();
-        instance.start?.();
-
-        const timeline = document.getElementById("timeline") as HTMLDivElement;
-        const progressBar = document.getElementById("progress-bar") as HTMLDivElement;
-        const pointer = document.getElementById("pointer") as HTMLDivElement;
-
-        const touchStart = new Event("touchstart", {bubbles: true}) as TouchEvent;
-        Object.defineProperty(touchStart, "touches", {value: [{clientX: 25}]});
-        timeline.dispatchEvent(touchStart);
-
-        const touchMove = new Event("touchmove", {bubbles: true}) as TouchEvent;
-        Object.defineProperty(touchMove, "touches", {value: [{clientX: 80}]});
-        document.dispatchEvent(touchMove);
-
-        const touchEnd = new Event("touchend", {bubbles: true}) as TouchEvent;
-        Object.defineProperty(touchEnd, "changedTouches", {value: [{clientX: 80}]});
-        document.dispatchEvent(touchEnd);
-        await Promise.resolve();
-
-        expect(progressBar.style.width).toBe("80%");
-        expect(pointer.style.left).toBe("80%");
-        expect(mockedAxios.post).toHaveBeenCalled();
-    });
-
-    it("handles flow elements with empty waypoints without placing a token", () => {
-        const {instance, container} = setupPlugin(makeSimulationData({
-            frames: [{caseId: 1, activeElements: {t1: "Flow_No_Waypoints"}}],
-            batches: [],
-        }), (elementId) => {
-            if (elementId === "Flow_No_Waypoints") {
-                return {
-                    type: FlowTypes.FLOW,
-                    waypoints: [],
-                } as ReturnType<ElementRegistry["get"]>;
-            }
-
-            return {
-                type: NodeTypes.TASK,
-                x: 0,
-                y: 0,
-                width: 10,
-                height: 10,
-            };
+            expect(api.getCurrentTime()).toBeGreaterThan(START + 3 * HOUR);
+            expect(api.getCurrentTime()).toBeLessThan(START + 6 * HOUR);
+            expect(mockedAxios.post).toHaveBeenCalledTimes(1);
         });
 
-        instance.start?.();
+        it("ignores play until the moment has loaded", async () => {
+            let answer: (value: unknown) => void;
+            mockedAxios.post.mockReturnValue(new Promise(resolve => { answer = resolve; }));
+            const {api, dots} = setup({frames: waitingAt(5), initialView: {moment: START + 3 * HOUR}});
+            api.start();
 
-        expect(container.querySelectorAll(".token")).toHaveLength(0);
-    });
+            document.getElementById("play-pause-btn").click();
+            answer(pausedResumption());
+            await play(100);
 
-    it("keeps coordinate cleanup stable when previous token lookup index is not found", () => {
-        const indexOfSpy = jest.spyOn(Array.prototype, "indexOf").mockImplementationOnce(() => -1);
-        const batchEvent: BatchEvent = {
-            caseId: 1,
-            lifecycle: LifecycleTypes.START,
-            timestamp: "2024-01-01T00:05:00.000Z",
-            nodeId: "Task_A",
-            paths: {t1: ["Task_B"]},
-        };
-        const batch: Batch = {
-            startDate: "2024-01-01T00:00:00.000Z",
-            endDate: "2024-01-01T01:00:00.000Z",
-            events: [batchEvent],
-        };
-
-        mockedGroupEventsByCaseId.mockReturnValueOnce({1: [batchEvent]});
-        mockedComputeProportionalDelta.mockReturnValueOnce(1000);
-
-        const {instance, container} = setupPlugin(
-            makeSimulationData({
-                frames: [{caseId: 1, activeElements: {t1: "Task_A"}}],
-                batches: [batch],
-            }),
-            (elementId) => ({
-                type: NodeTypes.TASK,
-                x: elementId === "Task_A" ? 0 : 0.1,
-                y: 0,
-                width: 10,
-                height: 10,
-            }),
-        );
-
-        expect(() => instance.start?.()).not.toThrow();
-        expect(indexOfSpy).toHaveBeenCalled();
-        expect(container.querySelectorAll(".token").length).toBeGreaterThanOrEqual(1);
-    });
-
-    it("reuses existing token in non-async path without recreating it", () => {
-        const batchEvent: BatchEvent = {
-            caseId: 1,
-            lifecycle: LifecycleTypes.COMPLETE,
-            timestamp: "2024-01-01T00:05:00.000Z",
-            nodeId: "Task_A",
-            paths: {t1: ["Task_B"]},
-        };
-        const batch: Batch = {
-            startDate: "2024-01-01T00:00:00.000Z",
-            endDate: "2024-01-01T01:00:00.000Z",
-            events: [batchEvent],
-        };
-
-        mockedGroupEventsByCaseId.mockReturnValueOnce({1: [batchEvent]});
-
-        const {instance, container} = setupPlugin(
-            makeSimulationData({
-                frames: [{caseId: 1, activeElements: {t1: "Task_A"}}],
-                batches: [batch],
-            }),
-            (elementId) => ({
-                type: NodeTypes.TASK,
-                x: elementId === "Task_A" ? 0 : 30,
-                y: 0,
-                width: 10,
-                height: 10,
-            }),
-        );
-
-        instance.start?.();
-
-        expect(container.querySelectorAll(".token")).toHaveLength(1);
-        expect(mockedComputeTokenAnimationStartTime).toHaveBeenCalled();
-    });
-
-    it("waits for non-async batch events with empty paths", () => {
-        const emptyPathEvent: BatchEvent = {
-            caseId: 1,
-            lifecycle: LifecycleTypes.START,
-            timestamp: "2024-01-01T00:05:00.000Z",
-            nodeId: "Task_A",
-            paths: {},
-        };
-        const batch: Batch = {
-            startDate: "2024-01-01T00:00:00.000Z",
-            endDate: "2024-01-01T01:00:00.000Z",
-            events: [emptyPathEvent],
-        };
-
-        mockedGroupEventsByCaseId.mockReturnValueOnce({1: [emptyPathEvent]});
-        mockedComputeProportionalDelta.mockReturnValueOnce(500);
-
-        const {instance} = setupPlugin(makeSimulationData({batches: [batch]}));
-
-        instance.start?.();
-
-        expect(mockedGroupEventsByCaseId).toHaveBeenCalledWith(batch.events);
-    });
-
-    it("avoids re-entrant polling fetch while a previous top-up request is still in flight", async () => {
-        const batch1: Batch = {
-            startDate: "2024-01-01T00:00:00.000Z",
-            endDate: "2024-01-01T01:00:00.000Z",
-            events: [],
-        };
-        const batch2: Batch = {
-            startDate: "2024-01-01T01:00:00.000Z",
-            endDate: "2024-01-01T02:00:00.000Z",
-            events: [],
-        };
-
-        mockedShouldTopUpQueue.mockReturnValue(true);
-        let resolveGet: ((value: AxiosResponse) => void) | undefined;
-        const inFlightGet = new Promise<AxiosResponse>((resolve) => {
-            resolveGet = resolve;
+            expect(document.getElementById("play-pause-btn").textContent).toContain("▶");
+            expect(dots()).toHaveLength(2);
         });
-        mockedAxios.get.mockReturnValueOnce(inFlightGet);
 
-        const {instance} = setupPlugin(makeSimulationData({batches: [batch1, batch2], pointer: 4}));
-        instance.start?.();
+        it("clamps a moment past the end and restarts on play", async () => {
+            mockedAxios.post.mockResolvedValue(pausedResumption({frames: [], batches: []}));
+            const {api} = setup({initialView: {moment: START + 100 * HOUR}});
+            api.start();
+            await play(100);
 
-        await Promise.resolve();
-        expect(mockedAxios.get).toHaveBeenCalledTimes(1);
+            expect(api.getCurrentTime()).toBe(START + 6 * HOUR);
 
-        resolveGet?.({
-            data: {batches: [], pointer: 4},
-            status: 200,
-            statusText: "OK",
-            headers: {},
-            config: {headers: {}} as never,
+            document.getElementById("play-pause-btn").click();
+            await play(100);
+            expect(mockedAxios.post).toHaveBeenCalledTimes(2);
+            expect(mockedAxios.post.mock.calls[1][1]).toEqual({requestedDate: iso(0)});
         });
-        await Promise.resolve();
-    });
 
-    it("returns early from timeline animation frame when aborted", () => {
-        const batch: Batch = {
-            startDate: "2024-01-01T00:00:00.000Z",
-            endDate: "2024-01-01T01:00:00.000Z",
-            events: [],
-        };
+        it("falls back to the start, still paused, when the moment cannot be loaded", async () => {
+            jest.spyOn(console, "log").mockImplementation(() => {});
+            mockedAxios.post.mockRejectedValue(new Error("Too many requests"));
+            const onOpenFailed = jest.fn();
+            const {api, dots} = setup({frames: waitingAt(3), hooks: {onOpenFailed}, initialView: {moment: START + 3 * HOUR}});
+            api.start();
+            await play(100);
 
-        let queuedFrame: FrameRequestCallback | undefined;
-        global.requestAnimationFrame = jest.fn((cb: FrameRequestCallback) => {
-            queuedFrame = cb;
-            return 1;
-        }) as typeof requestAnimationFrame;
-
-        mockedComputeEmptyBatchWaitTime.mockReturnValueOnce(5000);
-
-        const {instance} = setupPlugin(makeSimulationData({batches: [batch]}));
-        instance.start?.();
-
-        (document.getElementById("play-pause-btn") as HTMLButtonElement).click();
-        queuedFrame?.(0);
-
-        expect((global.requestAnimationFrame as jest.Mock)).toHaveBeenCalled();
-    });
-
-    it("returns at runSimulation loop top when aborted before delayed resume run starts", () => {
-        const queuedBatch: Batch = {
-            startDate: "2024-01-01T00:00:00.000Z",
-            endDate: "2024-01-01T01:00:00.000Z",
-            events: [],
-        };
-
-        mockedDecidePlayPause
-            .mockReturnValueOnce({
-                kind: "resume",
-                nextQueue: [queuedBatch],
-                resetPatch: {
-                    tokens: {},
-                    coordinateMap: {},
-                    isResumed: true,
-                },
-            } as never)
-            .mockReturnValueOnce({kind: "pause"} as never);
-
-        const {instance} = setupPlugin(makeSimulationData({batches: []}));
-        instance.start?.();
-
-        const playPause = document.getElementById("play-pause-btn") as HTMLButtonElement;
-        playPause.click();
-        playPause.click();
-        jest.advanceTimersByTime(10);
-
-        expect(mockedComputeProportionalDelta).not.toHaveBeenCalled();
-        expect(playPause.innerHTML).toBe(" ▶");
-    });
-
-    it("keeps polling to a single request when repeated top-up checks happen during in-flight fetch", async () => {
-        const batches: Batch[] = [
-            {startDate: "2024-01-01T00:00:00.000Z", endDate: "2024-01-01T01:00:00.000Z", events: []},
-            {startDate: "2024-01-01T01:00:00.000Z", endDate: "2024-01-01T02:00:00.000Z", events: []},
-            {startDate: "2024-01-01T02:00:00.000Z", endDate: "2024-01-01T03:00:00.000Z", events: []},
-        ];
-
-        mockedShouldTopUpQueue.mockReturnValue(true);
-        mockedComputeEmptyBatchWaitTime.mockReturnValue(0);
-
-        let resolveGet: ((value: AxiosResponse) => void) | undefined;
-        const pendingGet = new Promise<AxiosResponse>((resolve) => {
-            resolveGet = resolve;
+            expect(onOpenFailed).toHaveBeenCalled();
+            expect(api.getCurrentTime()).toBe(START);
+            expect(dots()).toHaveLength(3);
+            expect(document.getElementById("play-pause-btn").textContent).toContain("▶");
         });
-        mockedAxios.get.mockReturnValueOnce(pendingGet);
 
-        const {instance} = setupPlugin(makeSimulationData({batches, pointer: 100}));
-        instance.start?.();
-        jest.runAllTimers();
-        await Promise.resolve();
+        it("starts at the shared speed and colouring", async () => {
+            const {api, dotsOf} = setup({
+                frames: waitingAt(1),
+                batches: emptyBatches(0, 6),
+                hooks: {getCaseArrival: () => START, getAverageCycleTime: () => 100 * HOUR},
+                initialView: {hoursPerSecond: 3, colorMode: "age"},
+            });
+            api.start();
+            await play(1000);
 
-        expect(mockedAxios.get).toHaveBeenCalledTimes(1);
+            expect(api.getCurrentTime()).toBeGreaterThan(START + 2.5 * HOUR);
+            expect(dotsOf(1)[0].getAttribute("fill")).toBe(AGE_COLORS.young);
+        });
 
-        resolveGet?.({
-            data: {batches: [], pointer: 100},
-            status: 200,
-            statusText: "OK",
-            headers: {},
-            config: {headers: {}} as never,
+        it("reports every pause, so the address bar can follow", async () => {
+            const onViewChange = jest.fn();
+            const {api} = setup({batches: emptyBatches(0, 6), hooks: {onViewChange}});
+            api.start();
+            await play(100);
+
+            document.getElementById("play-pause-btn").click();
+
+            expect(onViewChange).toHaveBeenCalledTimes(1);
         });
     });
 
-    it("short-circuits async token animation when token is already marked animated", () => {
-        const hasSpy = jest.spyOn(Set.prototype, "has").mockImplementation(() => true);
-        const asyncEvent: BatchEvent = {
-            caseId: 1,
-            lifecycle: LifecycleTypes.START,
-            timestamp: "2024-01-01T00:05:00.000Z",
-            nodeId: "Gateway",
-            paths: {
-                t1: ["Task_A", "PGW"],
-                t2: ["PGW", "Task_B"],
-            },
-        };
+    describe("following a case", () => {
+        it("reports a click on a dot, but not a drag that started on one", async () => {
+            const onCaseClick = jest.fn();
+            const {api, dotsOf} = setup({frames: waitingAt(1), batches: emptyBatches(0, 6), hooks: {onCaseClick}});
+            api.start();
+            await play(50);
+            const dot = dotsOf(1)[0];
 
-        mockedGroupEventsByCaseId.mockReturnValueOnce({1: [asyncEvent]});
+            dot.dispatchEvent(new MouseEvent("mousedown", {bubbles: true, clientX: 10, clientY: 10}));
+            dot.dispatchEvent(new MouseEvent("click", {bubbles: true, clientX: 11, clientY: 10}));
+            expect(onCaseClick).toHaveBeenCalledWith(1);
 
-        const {instance} = setupPlugin(
-            makeSimulationData({
-                batches: [{
-                    startDate: "2024-01-01T00:00:00.000Z",
-                    endDate: "2024-01-01T01:00:00.000Z",
-                    events: [asyncEvent],
-                }],
-            }),
-            (elementId) => {
-                if (elementId === "PGW") {
-                    return {type: NodeTypes.PARALLEL_GATEWAY, x: 10, y: 0, width: 10, height: 10};
-                }
-                return {
-                    type: NodeTypes.TASK,
-                    x: elementId === "Task_A" ? 0 : 30,
-                    y: 0,
-                    width: 10,
-                    height: 10,
-                };
-            },
-        );
-
-        expect(() => instance.start?.()).not.toThrow();
-        expect(hasSpy).toHaveBeenCalled();
-    });
-
-    it("exits token animation frame immediately when aborted", () => {
-        const queuedFrames: FrameRequestCallback[] = [];
-        global.requestAnimationFrame = jest.fn((cb: FrameRequestCallback) => {
-            queuedFrames.push(cb);
-            return queuedFrames.length;
-        }) as typeof requestAnimationFrame;
-
-        const batchEvent: BatchEvent = {
-            caseId: 1,
-            lifecycle: LifecycleTypes.START,
-            timestamp: "2024-01-01T00:05:00.000Z",
-            nodeId: "Task_A",
-            paths: {t1: ["Task_A", "Task_B"]},
-        };
-
-        mockedGroupEventsByCaseId.mockReturnValueOnce({1: [batchEvent]});
-
-        const {instance} = setupPlugin(
-            makeSimulationData({
-                frames: [{caseId: 1, activeElements: {t1: "Task_A"}}],
-                batches: [{
-                    startDate: "2024-01-01T00:00:00.000Z",
-                    endDate: "2024-01-01T01:00:00.000Z",
-                    events: [batchEvent],
-                }],
-            }),
-            (elementId) => ({
-                type: NodeTypes.TASK,
-                x: elementId === "Task_A" ? 0 : 20,
-                y: 0,
-                width: 10,
-                height: 10,
-            }),
-        );
-
-        instance.start?.();
-        const beforeAbortRafCalls = (global.requestAnimationFrame as jest.Mock).mock.calls.length;
-        (document.getElementById("play-pause-btn") as HTMLButtonElement).click();
-        queuedFrames.forEach((callback) => callback(0));
-
-        expect((global.requestAnimationFrame as jest.Mock).mock.calls.length).toBe(beforeAbortRafCalls);
-    });
-
-    it("continues empty-batch loop when a non-abort error happens", () => {
-        const batch: Batch = {
-            startDate: "2024-01-01T00:00:00.000Z",
-            endDate: "2024-01-01T01:00:00.000Z",
-            events: [],
-        };
-
-        mockedComputeProportionalDelta.mockReturnValueOnce(1000);
-        mockedComputeEmptyBatchWaitTime.mockImplementationOnce(() => {
-            throw new Error("unexpected wait error");
+            onCaseClick.mockClear();
+            dot.dispatchEvent(new MouseEvent("mousedown", {bubbles: true, clientX: 10, clientY: 10}));
+            dot.dispatchEvent(new MouseEvent("click", {bubbles: true, clientX: 60, clientY: 10}));
+            expect(onCaseClick).not.toHaveBeenCalled();
         });
 
-        const {instance} = setupPlugin(makeSimulationData({batches: [batch]}));
-        expect(() => instance.start?.()).not.toThrow();
-        expect(mockedComputeEmptyBatchWaitTime).toHaveBeenCalled();
+        it("marks the dots of the followed case and only those", async () => {
+            const {api, dotsOf} = setup({frames: waitingAt(2), batches: emptyBatches(0, 6)});
+            api.start();
+            await play(50);
+
+            api.setFollowedCase(2);
+            expect(dotsOf(2)[0].classList.contains("followed")).toBe(true);
+            expect(dotsOf(1)[0].classList.contains("followed")).toBe(false);
+
+            api.setFollowedCase(1);
+            expect(dotsOf(2)[0].classList.contains("followed")).toBe(false);
+            expect(dotsOf(1)[0].classList.contains("followed")).toBe(true);
+
+            api.setFollowedCase(null);
+            expect(dotsOf(1)[0].classList.contains("followed")).toBe(false);
+        });
+
+        it("keeps the followed dot visible at the front of a long queue", async () => {
+            const {api, dotsOf, visible} = setup({frames: waitingAt(30), batches: emptyBatches(0, 6)});
+            api.start();
+            await play(50);
+            expect(visible(dotsOf(30)[0])).toBe(false);
+
+            api.setFollowedCase(30);
+            await play(50);
+
+            expect(visible(dotsOf(30)[0])).toBe(true);
+        });
+
+        it("keeps the followed dot visible when a task only shows a count", async () => {
+            const {api, dotsOf, visible} = setup({frames: waitingAt(20, "Task_A"), batches: emptyBatches(0, 6)});
+            api.start();
+            await play(50);
+            expect(visible(dotsOf(7)[0])).toBe(false);
+
+            api.setFollowedCase(7);
+            await play(50);
+
+            expect(visible(dotsOf(7)[0])).toBe(true);
+            expect(visible(dotsOf(8)[0])).toBe(false);
+        });
+
+        it("marks dots created later too", async () => {
+            const {api, dotsOf} = setup({batches: [batch(0, [
+                event(1, LifecycleTypes.CASE_ARRIVAL, 0.5, "Start", {token_0: ["Start", "Flow_S_A"]}),
+            ]), ...emptyBatches(1, 6)]});
+            api.start();
+            api.setFollowedCase(1);
+            await play(1500);
+
+            expect(dotsOf(1)[0].classList.contains("followed")).toBe(true);
+        });
+
+        it("says what a case is doing", async () => {
+            const {api} = setup({frames: waitingAt(1, "Task_A"), batches: emptyBatches(0, 6)});
+            api.start();
+            await play(50);
+
+            expect(api.describeCase(1)).toEqual(["In work: Check form", expect.stringMatching(/^Open since before /)]);
+            expect(api.describeCase(99)).toEqual([]);
+        });
     });
 
-    it("continues non-empty batch loop when batch handling throws a non-abort error", () => {
-        const batchEvent: BatchEvent = {
-            caseId: 1,
-            lifecycle: LifecycleTypes.START,
-            timestamp: "2024-01-01T00:05:00.000Z",
-            nodeId: "Task_A",
-            paths: {t1: ["Task_A"]},
-        };
-        const batch: Batch = {
-            startDate: "2024-01-01T00:00:00.000Z",
-            endDate: "2024-01-01T01:00:00.000Z",
-            events: [batchEvent],
-        };
+    describe("where the dots rest", () => {
+        it("queues waiting cases on the arrow into the task, as many as fit, and counts them when some do not fit", async () => {
+            const {api, dots, position, visible, container, graphics} = setup({frames: waitingAt(7), batches: emptyBatches(0, 6)});
+            api.start();
+            await play(50);
 
-        mockedGroupEventsByCaseId.mockReturnValueOnce({1: [batchEvent]});
-        mockedShouldUpdateFrames.mockReturnValueOnce(true);
+            expect(dots()).toHaveLength(7);
+            expect(dots().every(dot => dot.getAttribute("fill") === STATE_COLORS.waiting)).toBe(true);
+            expect(position(dots()[0])).toEqual([90, 38]);
+            expect(position(dots()[1])).toEqual([76, 38]);
+            expect(dots().filter(visible)).toHaveLength(4);
 
-        const {instance} = setupPlugin(
-            makeSimulationData({batches: [batch]}),
-            () => undefined as unknown as ReturnType<ElementRegistry["get"]>,
-        );
+            const pill = container.querySelector(".load-pill.waiting");
+            expect(pill.textContent).toBe("7 waiting");
+            expect(pill.getAttribute("data-task")).toBe("Task_A");
+            const rect = pill.querySelector("rect");
+            expect(Number(rect.getAttribute("x")) + Number(rect.getAttribute("width")) / 2).toBe(150);
+            expect((graphics.Task_A.querySelector("rect") as SVGRectElement).style.fill).toContain("rgba(245, 158, 11");
+        });
 
-        expect(() => instance.start?.()).not.toThrow();
-        expect(mockedGroupEventsByCaseId).toHaveBeenCalledWith(batch.events);
+        it("puts cases in work in a row inside the task along its bottom edge", async () => {
+            const {api, dots, position} = setup({
+                frames: [{caseId: 1, activeElements: {token_0: "Task_A"}}, {caseId: 2, activeElements: {token_0: "Task_A"}}],
+                batches: emptyBatches(0, 6),
+            });
+            api.start();
+            await play(50);
+
+            expect(dots().map(position)).toEqual([[143, 70], [157, 70]]);
+            expect(dots().every(dot => dot.getAttribute("fill") === STATE_COLORS.working)).toBe(true);
+        });
+
+        it("shows the count instead of the dots when the cases in work do not fit in the task", async () => {
+            const {api, dots, visible, container} = setup({
+                frames: Array.from({length: 7}, (_, i) => ({caseId: i + 1, activeElements: {token_0: "Task_A"}})),
+                batches: emptyBatches(0, 6),
+            });
+            api.start();
+            await play(50);
+
+            expect(dots().filter(visible)).toHaveLength(0);
+            const pill = container.querySelector(".load-pill.in-work");
+            expect(pill.textContent).toBe("7 in work");
+            expect(Number(pill.querySelector("rect").getAttribute("y"))).toBe(57);
+            expect((container.querySelector(".load-pill.waiting") as SVGGElement).style.display).toBe("none");
+        });
+
+        it("counts a short queue as soon as one of its dots does not fit", async () => {
+            const {api, dots, visible, container} = setup({frames: waitingAt(5), batches: emptyBatches(0, 6)});
+            api.start();
+            await play(50);
+
+            expect(dots().filter(visible)).toHaveLength(4);
+            expect(container.querySelector(".load-pill.waiting").textContent).toBe("5 waiting");
+        });
+
+        it("shows no count while every dot fits", async () => {
+            const {api, container} = setup({frames: waitingAt(4), batches: emptyBatches(0, 6)});
+            api.start();
+            await play(50);
+
+            expect(container.querySelector(".load-pill")).toBeNull();
+        });
+
+        it("gives a task its own fill back once its queue is empty", async () => {
+            const {api, graphics} = setup({
+                frames: waitingAt(1),
+                batches: [batch(0), batch(1, [event(1, LifecycleTypes.START, 1.5, "Task_A", {token_0: ["Task_A"]})]), ...emptyBatches(2, 6)],
+            });
+            api.start();
+            await play(50);
+            const rect = graphics.Task_A.querySelector("rect") as SVGRectElement;
+            expect(rect.style.fill).toContain("rgba(245, 158, 11");
+
+            await play(2100);
+            expect(rect.style.fill).toBe("white");
+        });
+
+        it("marks branches waiting at a parallel join", async () => {
+            const {api, dots} = setup({frames: [{caseId: 1, activeElements: {token_1: "Flow_B_J"}}], batches: emptyBatches(0, 6)});
+            api.start();
+            await play(50);
+
+            expect(dots()[0].getAttribute("fill")).toBe(STATE_COLORS.sync);
+        });
+
+        it("counts the branches waiting at a join, over all its arrows, once some of their dots do not fit", async () => {
+            const onTaskClick = jest.fn();
+            const {api, dots, visible, container} = setup({
+                frames: [...waitingAt(6, "Flow_B_J"), ...waitingAt(2, "Flow_C_J", 7)],
+                batches: emptyBatches(0, 6),
+                hooks: {onTaskClick},
+            });
+            api.start();
+            await play(50);
+
+            expect(dots().filter(visible)).toHaveLength(7);
+            const pill = container.querySelector<SVGGElement>(".load-pill.other");
+            expect(pill.textContent).toBe("8 waiting");
+            expect(pill.getAttribute("data-element")).toBe("J");
+            const rect = pill.querySelector("rect");
+            expect(Number(rect.getAttribute("x"))).toBe(604);
+            expect(Number(rect.getAttribute("y"))).toBe(-8);
+            pill.dispatchEvent(new MouseEvent("click"));
+            expect(onTaskClick).not.toHaveBeenCalled();
+        });
+
+        it("shows no count at a join while every dot fits", async () => {
+            const {api, container} = setup({
+                frames: [...waitingAt(5, "Flow_B_J"), ...waitingAt(5, "Flow_C_J", 6)],
+                batches: emptyBatches(0, 6),
+            });
+            api.start();
+            await play(50);
+
+            expect(container.querySelector(".load-pill.other")).toBeNull();
+        });
     });
 
-    it("shows and hides timeline tooltip on hover", () => {
-        const {instance} = setupPlugin();
-        instance.start?.();
+    describe("moving cases", () => {
+        it("moves a new case to the queue of its first task, colouring it while it moves", async () => {
+            const {api, dotsOf, position} = setup({
+                batches: [batch(0, [
+                    event(1, LifecycleTypes.CASE_ARRIVAL, 0.2, "Start", {token_0: ["Start", "Flow_S_A"]}),
+                    event(1, LifecycleTypes.ENABLE, 0.2, "Task_A"),
+                ]), ...emptyBatches(1, 6)],
+            });
+            api.start();
+            await play(500);
 
-        const timeline = document.getElementById("timeline") as HTMLDivElement;
-        const tooltip = document.getElementById("timeline-tooltip") as HTMLDivElement;
+            expect(dotsOf(1)[0].getAttribute("fill")).toBe(STATE_COLORS.moving);
 
-        timeline.dispatchEvent(new MouseEvent("mousemove", {
-            clientX: 50,
-            clientY: 50,
-            bubbles: true,
-        }));
+            await play(600);
+            expect(dotsOf(1)[0].getAttribute("fill")).toBe(STATE_COLORS.waiting);
+            expect(position(dotsOf(1)[0])).toEqual([90, 38]);
+        });
 
-        expect(tooltip.style.display).toBe("block");
-        expect(tooltip.textContent).toBeTruthy();
+        it("leaves a single dot when parallel branches merge at the join", async () => {
+            const {api, dotsOf, position} = setup({
+                frames: [{caseId: 1, activeElements: {token_1: "Flow_B_J", token_2: "Task_C"}}],
+                batches: [batch(0, [
+                    event(1, LifecycleTypes.COMPLETE, 0.5, "Task_C", {
+                        token_1: ["J"],
+                        token_2: ["Task_C", "Flow_C_J", "J"],
+                        token_3: ["J", "Flow_J_E"],
+                    }),
+                ]), ...emptyBatches(1, 6)],
+            });
+            api.start();
+            await play(50);
+            expect(dotsOf(1)).toHaveLength(2);
 
-        timeline.dispatchEvent(new MouseEvent("mouseleave", {bubbles: true}));
-        expect(tooltip.style.display).toBe("none");
+            await play(1200);
+            expect(dotsOf(1)).toHaveLength(1);
+            expect(dotsOf(1)[0].getAttribute("data-token")).toBe("token_3");
+            expect(position(dotsOf(1)[0])).toEqual([690, 40]);
+        });
+
+        it("splits a case into hidden branches that appear when the split is reached", async () => {
+            const {api, dotsOf} = setup({
+                frames: [{caseId: 1, activeElements: {token_0: "Task_A"}}],
+                batches: [batch(0, [
+                    event(1, LifecycleTypes.COMPLETE, 0.5, "Task_A", {
+                        token_0: ["Task_A", "Flow_A_P", "P"],
+                        token_1: ["P", "Flow_P_B"],
+                        token_2: ["P", "Flow_P_C"],
+                    }),
+                ]), ...emptyBatches(1, 6)],
+            });
+            api.start();
+            await play(50);
+            await play(1200);
+
+            expect(dotsOf(1).map(dot => dot.getAttribute("data-token")).sort()).toEqual(["token_1", "token_2"]);
+            expect(dotsOf(1).every(dot => dot.getAttribute("fill") === STATE_COLORS.waiting)).toBe(true);
+        });
+
+        it("fades out and counts a case that ends", async () => {
+            const {api, dotsOf, counters} = setup({
+                frames: [{caseId: 1, activeElements: {token_0: "Flow_J_E"}}],
+                batches: [batch(0, [event(1, LifecycleTypes.CASE_END, 0.5, "End", {token_0: ["End"]})]), ...emptyBatches(1, 6)],
+            });
+            api.start();
+            await play(1200);
+
+            expect(counters).toEqual({ongoing: 0, finished: 1});
+            const dot = dotsOf(1)[0];
+            expect(dot.classList.contains("fade-out")).toBe(true);
+            dot.dispatchEvent(new Event("animationend"));
+            expect(dotsOf(1)).toHaveLength(0);
+        });
+    });
+
+    describe("what the analyst can inspect", () => {
+        const twoWaitingOneWorking = () => [batch(0, [
+            event(1, LifecycleTypes.CASE_ARRIVAL, 0.1, "Start", {token_0: ["Start", "Flow_S_A"]}),
+            event(1, LifecycleTypes.ENABLE, 0.1, "Task_A"),
+            event(2, LifecycleTypes.CASE_ARRIVAL, 0.3, "Start", {token_0: ["Start", "Flow_S_A"]}),
+            event(2, LifecycleTypes.ENABLE, 0.3, "Task_A"),
+            event(3, LifecycleTypes.CASE_ARRIVAL, 0.5, "Start", {token_0: ["Start", "Flow_S_A"]}),
+            event(3, LifecycleTypes.ENABLE, 0.5, "Task_A"),
+            event(3, LifecycleTypes.START, 0.5, "Task_A", {token_0: ["Task_A"]}),
+        ]), ...emptyBatches(1, 6)];
+
+        it("describes a case on hover: what it waits for, for how long, and how long it is open", async () => {
+            const {api, dotsOf} = setup({batches: twoWaitingOneWorking()});
+            api.start();
+            await play(1000);
+
+            dotsOf(1)[0].dispatchEvent(new MouseEvent("mouseover", {bubbles: true, clientX: 10, clientY: 10}));
+            const tooltip = document.getElementById("token-tooltip");
+            expect(tooltip.style.display).toBe("block");
+            expect([...tooltip.children].map(line => line.textContent)).toEqual([
+                "Case 1",
+                "Waiting for Check form for 54 min",
+                "Case open 54 min",
+                "Click to follow this case",
+            ]);
+
+            dotsOf(3)[0].dispatchEvent(new MouseEvent("mouseover", {bubbles: true}));
+            expect(tooltip.children[1].textContent).toBe("In work: Check form for 30 min");
+
+            dotsOf(3)[0].dispatchEvent(new MouseEvent("mouseout", {bubbles: true}));
+            expect(tooltip.style.display).toBe("none");
+        });
+
+        it("tells how long a case open at the start has been open, when the analysis knows when it started", async () => {
+            const {api, dotsOf} = setup({
+                frames: [...waitingAt(1), {caseId: 2, activeElements: {token_0: "Flow_S_A"}}],
+                batches: emptyBatches(0, 6),
+                hooks: {getCaseArrival: caseId => (caseId === 1 ? START - 50 * HOUR : undefined)},
+            });
+            api.start();
+            await play(50);
+            const tooltip = document.getElementById("token-tooltip");
+
+            dotsOf(1)[0].dispatchEvent(new MouseEvent("mouseover", {bubbles: true}));
+            expect(tooltip.children[2].textContent).toMatch(/^Case open 2 d/);
+
+            dotsOf(2)[0].dispatchEvent(new MouseEvent("mouseover", {bubbles: true}));
+            expect(tooltip.children[2].textContent).toMatch(/^Open since before /);
+        });
+
+        it("names a task and its load on hover", async () => {
+            const {api, container, graphics} = setup({frames: waitingAt(2), batches: emptyBatches(0, 6)});
+            api.start();
+            await play(50);
+            container.querySelector("svg").appendChild(graphics.Task_A);
+            graphics.Task_A.classList.add("djs-shape");
+            graphics.Task_A.setAttribute("data-element-id", "Task_A");
+
+            graphics.Task_A.querySelector("rect").dispatchEvent(new MouseEvent("mouseover", {bubbles: true}));
+
+            const tooltip = document.getElementById("token-tooltip");
+            expect(tooltip.style.display).toBe("block");
+            expect([...tooltip.children].map(line => line.textContent)).toEqual(["Check form", "2 waiting · 0 in work"]);
+        });
+
+        it("hides the tooltip after a tap, where no mouse will leave", async () => {
+            const {api, dotsOf} = setup({frames: waitingAt(1), batches: emptyBatches(0, 6)});
+            api.start();
+            await play(50);
+            const tooltip = document.getElementById("token-tooltip");
+
+            dotsOf(1)[0].dispatchEvent(new MouseEvent("mouseover", {bubbles: true}));
+            dotsOf(1)[0].dispatchEvent(new MouseEvent("click", {bubbles: true}));
+
+            expect(tooltip.style.display).toBe("none");
+        });
+
+        it("lists the cases at a task, waiting first and longest waiting first", async () => {
+            const {api} = setup({batches: twoWaitingOneWorking()});
+            api.start();
+            await play(1000);
+
+            expect(api.getTaskQueue("Task_A")).toEqual([
+                {caseId: 1, state: "waiting", since: START + 0.1 * HOUR, arrival: START + 0.1 * HOUR},
+                {caseId: 2, state: "waiting", since: START + 0.3 * HOUR, arrival: START + 0.3 * HOUR},
+                {caseId: 3, state: "working", since: START + 0.5 * HOUR, arrival: START + 0.5 * HOUR},
+            ]);
+            expect(api.getTaskQueue("Task_B")).toEqual([]);
+            expect(api.getCurrentTime()).toBe(START + HOUR);
+        });
+
+        it("reports the load of every task, at most a few times a second", async () => {
+            const onTaskLoad = jest.fn();
+            const {api} = setup({frames: waitingAt(3), batches: emptyBatches(0, 6), hooks: {onTaskLoad}});
+            api.start();
+            await play(400);
+
+            expect(onTaskLoad).toHaveBeenLastCalledWith({Task_A: {waiting: 3, inWork: 0}});
+            expect(onTaskLoad.mock.calls.length).toBeLessThanOrEqual(2);
+        });
+
+        it("reports clicks on a task and on its count", async () => {
+            const onTaskClick = jest.fn();
+            const {api, busHandlers, container} = setup({frames: waitingAt(6), batches: emptyBatches(0, 6), hooks: {onTaskClick}});
+            api.start();
+            await play(50);
+
+            busHandlers["element.click"].forEach(handler => handler({element: {id: "Task_B", type: NodeTypes.TASK}}));
+            busHandlers["element.click"].forEach(handler => handler({element: {id: "P", type: NodeTypes.PARALLEL_GATEWAY}}));
+            container.querySelector(".load-pill.waiting").dispatchEvent(new MouseEvent("click"));
+
+            expect(onTaskClick.mock.calls).toEqual([["Task_B"], ["Task_A"]]);
+        });
+
+        it("colours dots by case age against the average cycle time", async () => {
+            const arrivals = {1: START - 10 * HOUR, 2: START - 3 * HOUR, 3: START};
+            const {api, dotsOf} = setup({
+                frames: waitingAt(3),
+                batches: emptyBatches(0, 6),
+                hooks: {getCaseArrival: caseId => arrivals[caseId], getAverageCycleTime: () => 4 * HOUR},
+            });
+            api.start();
+            await play(50);
+            api.setColorMode("age");
+
+            expect(dotsOf(1)[0].getAttribute("fill")).toBe(AGE_COLORS.overdue);
+            expect(dotsOf(2)[0].getAttribute("fill")).toBe(AGE_COLORS.young);
+
+            api.setColorMode("state");
+            expect(dotsOf(1)[0].getAttribute("fill")).toBe(STATE_COLORS.waiting);
+        });
+
+        it("adds the hook's text to the timeline tooltip", async () => {
+            const {api} = setup({batches: emptyBatches(0, 6), hooks: {describeMoment: () => "12 cases in progress"}});
+            api.start();
+
+            document.getElementById("timeline").dispatchEvent(new MouseEvent("mousemove", {clientX: 50, clientY: 5}));
+            expect(document.getElementById("timeline-tooltip").textContent).toBe("2024-01-01 03:00:00 · 12 cases in progress");
+        });
+    });
+
+    describe("playback", () => {
+        it("plays every batch at the chosen pace and stops at the end", async () => {
+            const {api} = setup({batches: emptyBatches(0, 2), endHours: 2});
+            api.start();
+            await play(1000);
+            expect(document.getElementById("simulated-time-box").textContent).toBe("2024-01-01 01:00:00 UTC+00:00");
+            expect(document.getElementById("play-pause-btn").innerHTML).toBe("");
+
+            await play(1200);
+            expect(document.getElementById("simulated-time-box").textContent).toBe("2024-01-01 02:00:00 UTC+00:00");
+            expect(document.getElementById("play-pause-btn").innerHTML).toBe(" ▶");
+        });
+
+        it("at fast speeds, applies every hour it passes and moves the dots straight to where the cases are", async () => {
+            const {api, dotsOf, position, counters} = setup({
+                batches: [
+                    batch(0, [
+                        event(1, LifecycleTypes.CASE_ARRIVAL, 0.1, "Start", {token_0: ["Start", "Flow_S_A"]}),
+                        event(1, LifecycleTypes.ENABLE, 0.1, "Task_A"),
+                    ]),
+                    batch(1, [event(1, LifecycleTypes.START, 1.5, "Task_A", {token_0: ["Task_A"]})]),
+                    ...emptyBatches(2, 6),
+                ],
+            });
+            api.start();
+            const select = document.getElementById("speed-select") as HTMLSelectElement;
+            select.value = "24";
+            select.dispatchEvent(new Event("change"));
+            await play(400);
+
+            await play(100);
+            expect(dotsOf(1)).toHaveLength(1);
+            expect(position(dotsOf(1)[0])).toEqual([150, 70]);
+            expect(dotsOf(1)[0].getAttribute("fill")).toBe(STATE_COLORS.working);
+            expect(counters.ongoing).toBe(1);
+
+            await play(300);
+            expect(document.getElementById("play-pause-btn").innerHTML).toBe(" ▶");
+            expect(document.getElementById("simulated-time-box").textContent).toBe("2024-01-01 06:00:00 UTC+00:00");
+        });
+
+        it("loads more batches as the queue runs low, in chunks sized to the speed", async () => {
+            mockedAxios.get.mockResolvedValueOnce({data: {batches: emptyBatches(2, 4), pointer: -1}});
+            const {api} = setup({batches: emptyBatches(0, 2), pointer: 2, endHours: 4});
+            api.start();
+            await play(4500);
+
+            expect(mockedAxios.get).toHaveBeenCalledWith("/api/simulation/p1/polling?pointer=2&limit=15");
+            expect(document.getElementById("simulated-time-box").textContent).toBe("2024-01-01 04:00:00 UTC+00:00");
+            expect(document.getElementById("play-pause-btn").innerHTML).toBe(" ▶");
+        });
+
+        it("pauses and resumes", async () => {
+            const {api} = setup({batches: emptyBatches(0, 6)});
+            api.start();
+            await play(500);
+
+            const button = document.getElementById("play-pause-btn");
+            button.click();
+            expect(button.innerHTML).toBe(" ▶");
+            await play(2000);
+            const pausedAt = document.getElementById("simulated-time-box").textContent;
+            await play(1000);
+            expect(document.getElementById("simulated-time-box").textContent).toBe(pausedAt);
+
+            button.click();
+            expect(button.innerHTML).toBe("⏸");
+            await play(1500);
+            expect(document.getElementById("simulated-time-box").textContent).not.toBe(pausedAt);
+        });
+
+        it("keeps the dots lined up while resuming, without an empty or piled-up frame", async () => {
+            const {api, dots, visible} = setup({frames: waitingAt(7), batches: emptyBatches(0, 6)});
+            api.start();
+            await play(500);
+            const button = document.getElementById("play-pause-btn");
+            button.click();
+            await play(500);
+
+            button.click();
+            expect(dots().filter(visible)).toHaveLength(4);
+            jest.advanceTimersByTime(10);
+            await flush();
+            expect(dots()).toHaveLength(7);
+            expect(dots().filter(visible)).toHaveLength(4);
+        });
+
+        it("jumps to a moment: redraws the cases from the server's state with their waiting times", async () => {
+            mockedAxios.post.mockResolvedValueOnce({data: {
+                frames: [{caseId: 9, activeElements: {token_0: "Flow_S_A"}}],
+                batches: emptyBatches(6, 6),
+                pointer: -1,
+                finishedCasesNumber: 4,
+                wtpt: {Task_A: {name: "Task_A", averageWT: 0, averagePT: 0, _count: 0, incompleteCases: {9: {enablementTime: START + 5 * HOUR}}}},
+            }});
+            const {api, dots, dotsOf, counters} = setup({frames: waitingAt(2), batches: emptyBatches(0, 6)});
+            api.start();
+            await play(100);
+
+            document.getElementById("go-to-end-btn").click();
+            await play(100);
+
+            expect(mockedAxios.post).toHaveBeenCalledWith("/api/simulation/p1/resumption", {requestedDate: iso(6)});
+            expect(dots()).toHaveLength(1);
+            expect(counters).toEqual({ongoing: 1, finished: 4});
+            expect(api.getTaskQueue("Task_A")).toEqual([{caseId: 9, state: "waiting", since: START + 5 * HOUR, arrival: null}]);
+            expect(dotsOf(9)[0].getAttribute("fill")).toBe(STATE_COLORS.waiting);
+        });
+
+        it("drops batches still loading for a position the user jumped away from", async () => {
+            let answer: (value: unknown) => void;
+            mockedAxios.get.mockReturnValueOnce(new Promise(resolve => { answer = resolve; }));
+            mockedAxios.post.mockResolvedValueOnce({data: {frames: [], batches: emptyBatches(0, 6), pointer: -1, finishedCasesNumber: 0, wtpt: {}}});
+            const {api} = setup({batches: emptyBatches(0, 1), pointer: 1});
+            api.start();
+            await play(100);
+
+            document.getElementById("go-to-start-btn").click();
+            await play(100);
+            answer({data: {batches: emptyBatches(1, 30), pointer: -1}});
+            await play(7000);
+
+            expect(document.getElementById("simulated-time-box").textContent).toBe("2024-01-01 06:00:00 UTC+00:00");
+        });
     });
 });
-

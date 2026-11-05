@@ -48,7 +48,6 @@ export const POST = async (
             return NextResponse.json({ error: "Process is marked for deletion" }, { status: 410 });
         }
 
-        // Update lastAccessedAt
         await processRepository.update({ id: processId }, { lastAccessedAt: new Date() });
 
         const simulationStartDate = new Date(simulationProcess.startDate + "Z");
@@ -139,8 +138,6 @@ export const POST = async (
         )
         const pyFrames = (response.data as { frames: Array<PyFrameCase> }).frames;
         const frames: FrameCase[] = pyFrames.map(mapPyFrameCase);
-
-        // Repair the tokens to match the ongoing precomputed events
 
         const previousEvents: Event[] = await appDataSource.query(`
             SELECT 

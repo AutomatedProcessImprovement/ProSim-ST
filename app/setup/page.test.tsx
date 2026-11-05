@@ -15,17 +15,21 @@ jest.mock("next/navigation", () => ({
 
 jest.mock("axios", () => ({
     post: jest.fn(),
+    get: jest.fn(),
 }));
+
+const MODEL = `<definitions><process id="p">
+  <startEvent id="start"/><task id="Task_1" name="A"/><endEvent id="end"/>
+</process></definitions>`;
+const PARAMETERS = JSON.stringify({
+    resource_profiles: [], resource_calendars: [], arrival_time_distribution: {},
+    gateway_branching_probabilities: [], task_resource_distribution: [{task_id: "Task_1", resources: []}],
+});
 
 jest.mock("sonner", () => ({
     toast: {
         error: jest.fn(),
     },
-}));
-
-jest.mock("@components/Loader", () => ({
-    __esModule: true,
-    default: () => <div>loader</div>,
 }));
 
 jest.mock("@components/simulationSetup", () => ({
@@ -103,8 +107,8 @@ describe("Setup page", () => {
             startingPoint: "2024-01-01T00:00",
         },
         logFile: new File(["log"], "log.csv", {type: "text/csv"}),
-        bpmnFile: new File(["bpmn"], "model.bpmn", {type: "text/bpmn"}),
-        jsonFile: new File(["{}"], "params.json", {type: "application/json"}),
+        bpmnFile: new File([MODEL], "model.bpmn", {type: "text/bpmn"}),
+        jsonFile: new File([PARAMETERS], "params.json", {type: "application/json"}),
     };
     const baseCsv = {
         headers: ["case", "activity", "enablement", "start", "end", "resource", "extra"],
@@ -112,6 +116,7 @@ describe("Setup page", () => {
         lastLine: ["2", "B", "2024-01-02 00:00:00", "2024-01-02 01:00:00", "2024-01-02 02:00:00", "R", "y"],
         logStartDate: "2024-01-01T00:00:00",
         logEndDate: "2024-01-02T02:00:00",
+        logUtcOffset: "+00:00",
     };
 
     beforeEach(() => {
@@ -139,13 +144,16 @@ describe("Setup page", () => {
         return {setData, setCsvData};
     };
 
-    it("redirects to home when process id is missing", () => {
+    it("redirects to home when process id is missing and no setup is saved in the browser", async () => {
         renderPage({id: ""});
-        expect(replaceMock).toHaveBeenCalledWith("/");
+        await waitFor(() => expect(replaceMock).toHaveBeenCalledWith("/"));
     });
 
-    it("submits data and navigates to the simulation page", async () => {
+    it("submits data, follows the run's stages and navigates to the simulation page", async () => {
         (axios.post as jest.Mock).mockResolvedValue({data: {id: "proc-2"}});
+        (axios.get as jest.Mock)
+            .mockResolvedValueOnce({data: {stage: "simulation", durations: {queued: 0.1, state: 2.4, simulation: 1}}})
+            .mockResolvedValueOnce({data: {stage: "done", durations: {}}});
         renderPage();
 
         fireEvent.click(screen.getByRole("button", {name: "run-submit"}));
@@ -153,7 +161,29 @@ describe("Setup page", () => {
         await waitFor(() => {
             expect(axios.post).toHaveBeenCalledWith("/api/simulation", expect.any(FormData));
         });
-        expect(pushMock).toHaveBeenCalledWith("/simulation/proc-2");
+        expect(await screen.findByText("Running the simulation")).toBeInTheDocument();
+        expect(await screen.findByText("2.4 s", {}, {timeout: 3000})).toBeInTheDocument();
+        await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/simulation/proc-2"), {timeout: 3000});
+        expect(axios.get).toHaveBeenCalledWith("/api/simulation/proc-2/status");
+    });
+
+    it("shows the failed stage and the simulator's message", async () => {
+        (axios.post as jest.Mock).mockResolvedValue({data: {id: "proc-2"}});
+        (axios.get as jest.Mock).mockResolvedValue({
+            data: {stage: "failed", durations: {}, error: {stage: "state", message: "ValueError: bad log"}},
+        });
+        renderPage();
+
+        fireEvent.click(screen.getByRole("button", {name: "run-submit"}));
+
+        await waitFor(() => {
+            expect(toast.error).toHaveBeenCalledWith("The simulation failed: computing the process state", {
+                description: "ValueError: bad log",
+                duration: 15000,
+            });
+        }, {timeout: 3000});
+        expect(pushMock).not.toHaveBeenCalled();
+        expect(screen.queryByText("Running the simulation")).not.toBeInTheDocument();
     });
 
     it("shows an error toast when submit fails", async () => {
@@ -163,8 +193,37 @@ describe("Setup page", () => {
         fireEvent.click(screen.getByRole("button", {name: "run-submit"}));
 
         await waitFor(() => {
-            expect(toast.error).toHaveBeenCalledWith("Error occurred!", {description: "bad request"});
+            expect(toast.error).toHaveBeenCalledWith("The simulation could not be started", {description: "bad request"});
         });
+    });
+
+    it("lists the server's reasons when it rejects the files", async () => {
+        (axios.post as jest.Mock).mockRejectedValue({response: {data: {error: "x", issues: ["No start event."]}}});
+        renderPage();
+
+        fireEvent.click(screen.getByRole("button", {name: "run-submit"}));
+
+        await waitFor(() => {
+            expect(toast.error).toHaveBeenCalledWith("These files cannot be simulated", {description: expect.anything()});
+        });
+    });
+
+    it("blocks the upload step and explains why when the files cannot be simulated", async () => {
+        renderPage({jsonFile: new File(['{"tasks": []}'], "params.json", {type: "application/json"})});
+
+        expect((await screen.findAllByText(/not in the Prosimos format/)).length).toBe(2);
+        fireEvent.click(screen.getByRole("button", {name: /next-Upload the BPMN model and JSON file/i}));
+
+        expect(toast.error).toHaveBeenCalledWith("These files cannot be simulated", {description: expect.anything()});
+    });
+
+    it("warns about log activities that have no task in the model", async () => {
+        renderPage({
+            mapping: {case: "case", activity: "activity", start: "start", end: "end"},
+            logFile: new File(["case,activity,start,end\n1,A,x,y\n1,Archive,x,y\n"], "log.csv", {type: "text/csv"}),
+        });
+
+        expect((await screen.findAllByText(/1 activity in the log has no task with the same name in the BPMN model: "Archive"/)).length).toBeGreaterThan(0);
     });
 
     it("runs mapping and config step callbacks", () => {
@@ -249,10 +308,11 @@ describe("Setup page", () => {
             expect(axios.post).toHaveBeenCalledTimes(1);
         });
 
+        (axios.get as jest.Mock).mockResolvedValue({data: {stage: "done", durations: {}}});
         resolvePost!({data: {id: "proc-2"}});
         await waitFor(() => {
             expect(pushMock).toHaveBeenCalledWith("/simulation/proc-2");
-        });
+        }, {timeout: 3000});
     });
 
     it("renders validate preview values including Discover mapping", () => {

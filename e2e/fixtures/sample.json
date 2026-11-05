@@ -1,1 +1,33 @@
-{}
+{
+  "resource_profiles": [
+    {
+      "id": "Profile_1",
+      "name": "Clerks",
+      "resource_list": [
+        {"id": "Resource_1", "name": "Clerk", "cost_per_hour": 1, "amount": 1, "calendar": "Calendar_1", "assigned_tasks": ["Task_1"]}
+      ]
+    }
+  ],
+  "task_resource_distribution": [
+    {
+      "task_id": "Task_1",
+      "resources": [
+        {"resource_id": "Resource_1", "distribution_name": "fix", "distribution_params": [{"value": 60}]}
+      ]
+    }
+  ],
+  "arrival_time_distribution": {"distribution_name": "fix", "distribution_params": [{"value": 600}]},
+  "arrival_time_calendar": [
+    {"from": "MONDAY", "to": "SUNDAY", "beginTime": "00:00:00", "endTime": "23:59:59"}
+  ],
+  "gateway_branching_probabilities": [],
+  "resource_calendars": [
+    {
+      "id": "Calendar_1",
+      "name": "Calendar_1",
+      "time_periods": [
+        {"from": "MONDAY", "to": "SUNDAY", "beginTime": "00:00:00", "endTime": "23:59:59"}
+      ]
+    }
+  ]
+}

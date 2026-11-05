@@ -12,6 +12,9 @@ export class Frame {
     @Column({ type: "json" })
     activeElements: Record<string, string>;
 
+    @Column({ type: "datetime", nullable: true })
+    arrivalTime: string | null;
+
     @ManyToOne(() => Process)
     @JoinColumn({ name: "processId" })
     process: Process;

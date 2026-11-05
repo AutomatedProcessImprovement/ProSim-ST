@@ -24,12 +24,18 @@ export type PyFrameCase = {
     active_elements: {
         [tokenId: string]: string,
     },
+    arrival_time?: string | null,
 }
 
-export const mapPyFrameCase = (frame: PyFrameCase): FrameCase => ({
-    caseId: frame.case_id,
-    activeElements: frame.active_elements,
-});
+export const mapPyFrameCase = (frame: PyFrameCase): FrameCase => {
+    const arrival = frame.arrival_time ? new Date(frame.arrival_time) : null;
+    const known = arrival !== null && !isNaN(arrival.getTime());
+    return {
+        caseId: frame.case_id,
+        activeElements: frame.active_elements,
+        ...(known ? {arrivalTime: arrival.toISOString()} : {}),
+    };
+};
 
 export type SimulationData = {
     processId: string,
@@ -37,12 +43,18 @@ export type SimulationData = {
     batches: Array<Batch>,
     startDate: string,
     endDate: string,
+    utcOffset?: string | null,
     file: Buffer,
     pointer: number,
 }
 
 export type SimulationSeedData = {
     id: string;
+    window: {
+        startDate: Date;
+        endDate: Date;
+        utcOffset: string;
+    };
     data: {
         frames: Array<FrameCase>;
         events: Array<BatchEvent>;
@@ -52,6 +64,21 @@ export type SimulationSeedData = {
 export type PollingData = {
     batches: Array<Batch>,
     pointer: number,
+}
+
+export type ProcessAnalysis = {
+    startDate: string;
+    endDate: string;
+    stepMs: number;
+    open: number[];
+    tasks: Record<string, {waiting: number[]; inWork: number[]}>;
+    caseArrivals: Record<string, number>;
+    openAtStart: number;
+    openAtStartFinished: number;
+    openAtEnd: number;
+    arrived: number;
+    completed: number;
+    averageCycleTimeMs: number | null;
 }
 
 export type ResumeSimulationRequestBodyPython = {

@@ -1,6 +1,6 @@
 import {LifecycleTypes, NodeTypes} from "@definitions/simulation/enums";
 import {Batch, BatchEvent, FrameCase, WTPTState} from "@definitions/simulation/types";
-import {applyBatchFrameUpdates, applyBatchFrameUpdatesIfNeeded} from "@modules/simulation/frameUpdateHelpers";
+import {applyBatchFrameUpdates} from "@modules/simulation/frameUpdateHelpers";
 
 function makeEvent(overrides: Partial<BatchEvent>): BatchEvent {
     return {
@@ -120,46 +120,50 @@ describe("applyBatchFrameUpdates", () => {
     });
 });
 
-describe("applyBatchFrameUpdatesIfNeeded", () => {
-    it("returns original frames when gate is false", () => {
-        const frames: FrameCase[] = [{caseId: 1, activeElements: {t1: "Task_A"}}];
+describe("applyBatchFrameUpdates for a busy batch", () => {
+    it("updates the counters and the waiting/processing times once for the whole batch", () => {
         const batch: Batch = {
             startDate: "2024-01-01T00:00:00.000Z",
             endDate: "2024-01-01T01:00:00.000Z",
-            events: [makeEvent({lifecycle: LifecycleTypes.START})],
+            events: [
+                makeEvent({caseId: 1, lifecycle: LifecycleTypes.CASE_ARRIVAL, paths: {t1: ["Task_A"]}}),
+                makeEvent({caseId: 2, lifecycle: LifecycleTypes.CASE_ARRIVAL, paths: {t1: ["Task_A"]}}),
+                makeEvent({caseId: 1, lifecycle: LifecycleTypes.CASE_END, paths: {t1: ["End"]}}),
+            ],
         };
+        const countersState = {ongoing: 0, finished: 0};
+        const caseNumberSetter = jest.fn((updater: (state: typeof countersState) => typeof countersState) => {
+            Object.assign(countersState, updater(countersState));
+        });
+        const wtptSetter = makeWtptSetter();
 
-        const result = applyBatchFrameUpdatesIfNeeded({
-            shouldApply: false,
-            frames,
+        const nextFrames = applyBatchFrameUpdates({
+            frames: [],
             batch,
             getNodeType: () => NodeTypes.TASK,
-            caseNumberSetter: jest.fn(),
-            wtptSetter: makeWtptSetter(),
+            caseNumberSetter,
+            wtptSetter,
         });
 
-        expect(result).toBe(frames);
+        expect(nextFrames).toEqual([{caseId: 2, activeElements: {t1: "Task_A"}}]);
+        expect(caseNumberSetter).toHaveBeenCalledTimes(1);
+        expect(countersState).toEqual({ongoing: 1, finished: 1});
+        expect(wtptSetter).toHaveBeenCalledTimes(1);
     });
 
-    it("applies batch updates when gate is true", () => {
-        const frames: FrameCase[] = [];
-        const batch: Batch = {
-            startDate: "2024-01-01T00:00:00.000Z",
-            endDate: "2024-01-01T01:00:00.000Z",
-            events: [makeEvent({lifecycle: LifecycleTypes.CASE_ARRIVAL, paths: {t1: ["Task_A"]}})],
-        };
+    it("leaves the state alone for an empty batch", () => {
+        const caseNumberSetter = jest.fn();
+        const wtptSetter = jest.fn();
 
-        const result = applyBatchFrameUpdatesIfNeeded({
-            shouldApply: true,
-            frames,
-            batch,
+        applyBatchFrameUpdates({
+            frames: [],
+            batch: {startDate: "2024-01-01T00:00:00.000Z", endDate: "2024-01-01T01:00:00.000Z", events: []},
             getNodeType: () => NodeTypes.TASK,
-            caseNumberSetter: jest.fn(),
-            wtptSetter: makeWtptSetter(),
+            caseNumberSetter,
+            wtptSetter,
         });
 
-        expect(result).toEqual([{caseId: 1, activeElements: {t1: "Task_A"}}]);
+        expect(caseNumberSetter).not.toHaveBeenCalled();
+        expect(wtptSetter).not.toHaveBeenCalled();
     });
 });
-
-

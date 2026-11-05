@@ -16,6 +16,7 @@ type ApplyBatchFrameUpdatesInput = {
 
 export function applyBatchFrameUpdates(input: ApplyBatchFrameUpdatesInput): FrameCase[] {
     let nextFrames = input.frames;
+    const counters = {ongoing: 0, finished: 0};
 
     input.batch.events.forEach((event) => {
         const {frames: updatedFrames, countersDelta} = applyEventToFrames(
@@ -24,27 +25,20 @@ export function applyBatchFrameUpdates(input: ApplyBatchFrameUpdatesInput): Fram
             input.getNodeType,
         );
         nextFrames = updatedFrames;
-
-        if (countersDelta.ongoing || countersDelta.finished) {
-            input.caseNumberSetter((state) => ({
-                ongoing: state.ongoing + countersDelta.ongoing,
-                finished: state.finished + countersDelta.finished,
-            }));
-        }
-
-        input.wtptSetter((prev) => setNewWTPTState(prev, event));
+        counters.ongoing += countersDelta.ongoing;
+        counters.finished += countersDelta.finished;
     });
+
+    if (counters.ongoing || counters.finished) {
+        input.caseNumberSetter((state) => ({
+            ongoing: state.ongoing + counters.ongoing,
+            finished: state.finished + counters.finished,
+        }));
+    }
+
+    if (input.batch.events.length) {
+        input.wtptSetter((prev) => input.batch.events.reduce(setNewWTPTState, prev));
+    }
 
     return nextFrames;
 }
-
-type ApplyBatchFrameUpdatesIfNeededInput = ApplyBatchFrameUpdatesInput & {
-    shouldApply: boolean;
-};
-
-export function applyBatchFrameUpdatesIfNeeded(input: ApplyBatchFrameUpdatesIfNeededInput): FrameCase[] {
-    if (!input.shouldApply) return input.frames;
-
-    return applyBatchFrameUpdates(input);
-}
-

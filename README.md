@@ -1,95 +1,170 @@
-# ProST
+# ProSim-ST
 
-ProST is a web application that allows users to analyze short-term simulations by interacting with the process execution and its performance statistics.
-The interface depicts a token-based animation of the process execution, and allows for the analysis of different performance metrics associated to activities or flows.
+ProSim-ST is a web application for exploring short-term business process simulations. Upload an event log of a running process, a BPMN model and its simulation parameters, and it simulates what happens next from the current state of the process. The result plays back as cases moving through the diagram, with waiting times, workload and per-activity statistics alongside.
 
-## 🧠 Demo – Setup Instructions
+The system has two parts:
 
-This project contains the **frontend interface** for the Business Process Simulation platform.  
-To run the full system (including simulation engine and database), you must also install and configure the **backend**.
+| Part | Repository | Stack |
+| --- | --- | --- |
+| Web app (this repository) | [ProSim-ST](https://github.com/AutomatedProcessImprovement/ProSim-ST) | Next.js, React, TypeORM |
+| Simulation service | [ongoing-bps-state](https://github.com/AutomatedProcessImprovement/ongoing-bps-state/tree/web-application-version), branch `web-application-version` | FastAPI, Prosimos |
 
----
+Both use the same MySQL database. The web app also needs Redis.
 
-### ⚙️ Prerequisites
+## Requirements
 
-- [Node.js](https://nodejs.org/) (v16+)
-- [Python 3.11](https://www.python.org/downloads/release/python-3110/)
-- [MySQL Server](https://dev.mysql.com/downloads/mysql/)
-- Git
+- Node.js 20 or newer
+- Python 3.11
+- MySQL 8
+- Redis 7
+- Docker, if you would rather not install MySQL and Redis yourself, or to run everything in containers
 
----
+## Run locally
 
-## 🚀 Frontend Setup
+Clone both repositories side by side:
 
 ```bash
-git clone https://github.com/AutomatedProcessImprovement/prost.git
-cd prost
+git clone https://github.com/AutomatedProcessImprovement/ProSim-ST.git
+git clone -b web-application-version https://github.com/AutomatedProcessImprovement/ongoing-bps-state.git
+```
+
+Start MySQL and Redis:
+
+```bash
+docker run -d --name prosim-mysql -p 127.0.0.1:3306:3306 \
+  -e MYSQL_ROOT_PASSWORD=change-me \
+  -e MYSQL_DATABASE=prosim \
+  -e MYSQL_USER=prosim \
+  -e MYSQL_PASSWORD=change-me \
+  mysql:8.0
+
+docker run -d --name prosim-redis -p 127.0.0.1:6379:6379 redis:7-alpine
+```
+
+Start the simulation service:
+
+```bash
+cd ongoing-bps-state
+python3.11 -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+
+cat > .env <<EOF
+DB_USER=prosim
+DB_PASSWORD=change-me
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_NAME=prosim
+EOF
+
+alembic upgrade head
+uvicorn main_web_app:app --reload --host 127.0.0.1 --port 8000
+```
+
+In a second terminal, start the web app:
+
+```bash
+cd ProSim-ST
 cp .env.example .env
+```
+
+Set `MYSQL_HOST=127.0.0.1`, `MYSQL_USER=prosim`, `MYSQL_PASSWORD=change-me` and `MYSQL_DATABASE=prosim` in `.env`, then:
+
+```bash
 npm install
+npm run migrate:run
 npm run dev
 ```
 
-This runs the frontend at [http://localhost:3000](http://localhost:3000).
+Open http://localhost:3000. The start page offers two sample processes, so you can try it without your own files. `/api/health` reports whether the database, Redis and the simulation service are reachable.
 
----
+## Run with Docker
 
-## 🖥️ Backend Setup
-
-The backend repo is located here:  
-🔗 [https://github.com/AutomatedProcessImprovement/ongoing-bps-state.git](https://github.com/AutomatedProcessImprovement/ongoing-bps-state.git)
-
-### 1. Clone and Set Up Python Environment
+The commands below build and start all four containers on one network. Run them from this repository, with the `web-application-version` branch of `ongoing-bps-state` cloned next to it, and use your own passwords.
 
 ```bash
-git clone https://github.com/AutomatedProcessImprovement/ongoing-bps-state.git
-cd ongoing-bps-state
-python3.11 -m venv .venv
-source .venv/bin/activate       # On Windows use: .venv\Scripts\activate
-pip install --upgrade pip
-pip install fastapi uvicorn mysql-connector-python pix-framework ongoing-process-state python-dotenv python-multipart
-pip install git+https://github.com/AutomatedProcessImprovement/Prosimos@short-term-simulation
+docker network create prosim
+
+docker run -d --name prosim-mysql --network prosim \
+  -v prosim-mysql:/var/lib/mysql \
+  -e MYSQL_ROOT_PASSWORD=change-me \
+  -e MYSQL_DATABASE=prosim \
+  -e MYSQL_USER=prosim \
+  -e MYSQL_PASSWORD=change-me \
+  mysql:8.0
+
+docker run -d --name prosim-redis --network prosim redis:7-alpine
+
+docker build -t prosim-backend ../ongoing-bps-state
+docker run -d --name prosim-backend --network prosim \
+  -v prosim-processes:/app/processes \
+  -e RUN_MIGRATIONS=1 \
+  -e DB_USER=prosim \
+  -e DB_PASSWORD=change-me \
+  -e DB_HOST=prosim-mysql \
+  -e DB_PORT=3306 \
+  -e DB_NAME=prosim \
+  prosim-backend
+
+docker build -t prosim-st .
+docker run -d --name prosim-st --network prosim \
+  -p 127.0.0.1:3000:3000 \
+  -v prosim-assets:/app/public/assets \
+  -e RUN_MIGRATIONS=1 \
+  -e NEXTJS_MYSQL_HOST=prosim-mysql \
+  -e MYSQL_HOST=prosim-mysql \
+  -e MYSQL_PORT=3306 \
+  -e MYSQL_USER=prosim \
+  -e MYSQL_PASSWORD=change-me \
+  -e MYSQL_DATABASE=prosim \
+  -e TYPEORM_SYNCHRONIZE=false \
+  -e TYPEORM_LOGGING=false \
+  -e REDIS_HOST=prosim-redis \
+  -e REDIS_PORT=6379 \
+  -e PYTHON_MICROSERVICE_BASE_URL=http://prosim-backend:8000 \
+  prosim-st
 ```
 
+With `RUN_MIGRATIONS=1`, each app waits for MySQL and applies its migrations before it starts. The app is then at http://localhost:3000. The port is bound to `127.0.0.1`, so put a reverse proxy in front of it to serve it publicly.
 
----
+## Configuration
 
-### 2. MySQL Database Setup
+The web app reads these variables from `.env`, or from the container environment:
 
-Ensure MySQL and Redis are running:
+| Variable | Purpose |
+| --- | --- |
+| `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE` | Database connection |
+| `TYPEORM_SYNCHRONIZE` | Keep at `false`; the schema is managed by migrations |
+| `TYPEORM_LOGGING` | Logs SQL queries when `true` |
+| `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD` | Redis connection |
+| `PYTHON_MICROSERVICE_BASE_URL` | Address of the simulation service |
+| `CLEANUP_TOKEN` | Enables `/api/internal/cleanup`; see [cron/README.md](cron/README.md) |
+| `RETENTION_DAYS` | Days before an unopened simulation is deleted, 30 by default |
 
----
+`NEXTJS_MYSQL_HOST` and `NEXTJS_MYSQL_PORT` are used only by the container start script, to wait for MySQL.
 
-### 3. Configure Environment Variables
-
-Create a `.env` file inside the `ongoing-bps-state` folder:
-
-```env
-DB_USER=root
-DB_PASSWORD=yourpassword
-DB_HOST=localhost
-DB_PORT=3306
-DB_NAME=prost_simulator
-```
-
-Adjust values to match your local MySQL setup. This also applies to the frontend setup.
-
----
-
-### 4. Run the Backend Server (Development Mode)
+## Tests
 
 ```bash
-uvicorn main_web_app:app --reload --host 0.0.0.0 --port 8000
+npm test                  # unit tests
+npm run test:integration  # API routes against real MySQL and Redis; needs Docker
+npm run test:e2e          # Playwright; starts the dev server on port 3000
+npm run lint
 ```
 
-The API will be available at [http://localhost:8000](http://localhost:8000).
+## Database migrations
 
----
+```bash
+npm run migration -- <Name>  # generate a migration from entity changes
+npm run migrate:run          # apply pending migrations
+```
 
-### 🧪 Test the Full Stack
+The simulation service keeps its own migrations, which run with `alembic upgrade head`.
 
-Once both frontend and backend are running:
+## Deployment
 
-- Access the frontend UI at [http://localhost:3000](http://localhost:3000)
-- Upload your BPMN and JSON configuration files
-- Ensure backend requests (e.g., `/api/simulation`) are working correctly
+Pushes to `main` run the tests in `.github/workflows/deploy.yml`. Old simulations are removed by a nightly cleanup, described in [cron/README.md](cron/README.md).
 
+## License
+
+[Apache License 2.0](LICENSE)

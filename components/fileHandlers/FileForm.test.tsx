@@ -81,6 +81,7 @@ describe("FileForm", () => {
             lastLine: [],
             logStartDate: "",
             logEndDate: "",
+            logUtcOffset: "+00:00",
         },
         setCsvData: jest.fn(),
     };

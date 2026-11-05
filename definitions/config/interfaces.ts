@@ -17,4 +17,5 @@ export interface AlgorithmConfiguration {
     simulationHorizonValue?: number,
     simulationHorizonUnit?: TimeUnits,
     startingPoint?: string,
+    utcOffset?: string,
 }

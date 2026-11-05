@@ -1,24 +1,19 @@
-import {Batch, Token, Tokens} from "@definitions/simulation/types";
-
-export type CoordinateMap = Record<string, Record<string, Array<Token>>>;
+import {Batch} from "@definitions/simulation/types";
 
 export function prependCurrentBatchIfNeeded(
     batchesQueue: Batch[],
     currentBatch: Batch,
     localProgress: number,
+    currentBatchUnfinished?: boolean,
 ): Batch[] {
-    if (!localProgress) return [...batchesQueue];
+    if (!currentBatch || !(currentBatchUnfinished ?? localProgress)) return [...batchesQueue];
     return [currentBatch, ...batchesQueue];
 }
 
 export function buildVisualResetPatch(localProgress: number): {
-    tokens: Tokens;
-    coordinateMap: CoordinateMap;
     isResumed: boolean;
 } {
     return {
-        tokens: {} as Tokens,
-        coordinateMap: {},
         isResumed: localProgress !== 0,
     };
 }
@@ -33,6 +28,7 @@ export type PlayPauseDecisionInput = {
     batchesQueue: Batch[];
     currentBatch: Batch;
     localProgress: number;
+    currentBatchUnfinished?: boolean;
 };
 
 export type PlayPauseDecision =
@@ -49,6 +45,7 @@ export type PlaybackSpeedDecisionInput = {
     batchesQueue: Batch[];
     currentBatch: Batch;
     localProgress: number;
+    currentBatchUnfinished?: boolean;
 };
 
 export type PlaybackSpeedDecision =
@@ -70,7 +67,7 @@ export function decidePlayPauseResumeAction(input: PlayPauseDecisionInput): Play
 
     return {
         kind: "resume",
-        nextQueue: prependCurrentBatchIfNeeded(input.batchesQueue, input.currentBatch, input.localProgress),
+        nextQueue: prependCurrentBatchIfNeeded(input.batchesQueue, input.currentBatch, input.localProgress, input.currentBatchUnfinished),
         resetPatch: buildVisualResetPatch(input.localProgress),
     };
 }
@@ -82,7 +79,7 @@ export function decidePlaybackSpeedUpdateAction(input: PlaybackSpeedDecisionInpu
 
     return {
         kind: "running",
-        nextQueue: prependCurrentBatchIfNeeded(input.batchesQueue, input.currentBatch, input.localProgress),
+        nextQueue: prependCurrentBatchIfNeeded(input.batchesQueue, input.currentBatch, input.localProgress, input.currentBatchUnfinished),
         resetPatch: buildVisualResetPatch(input.localProgress),
     };
 }

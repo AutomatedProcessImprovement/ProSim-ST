@@ -14,6 +14,9 @@ export class Process {
     @Column({ type: "datetime" })
     endDate: string;
 
+    @Column({ type: "varchar", length: 6, nullable: true })
+    utcOffset: string | null;
+
     @Column({ type: "datetime", default: () => "CURRENT_TIMESTAMP" })
     lastAccessedAt: Date;
 

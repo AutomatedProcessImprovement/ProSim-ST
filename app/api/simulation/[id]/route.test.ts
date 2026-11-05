@@ -84,7 +84,8 @@ describe("GET /api/simulation/[id]", () => {
     it("loads frames from DB on cache miss and returns simulation data", async () => {
         const frameRepo = {
             createQueryBuilder: jest.fn().mockReturnValue(createQueryBuilderMock([
-                {caseId: 1, activeElements: {token: "Task_1"}},
+                {caseId: 1, activeElements: {token: "Task_1"}, arrivalTime: null},
+                {caseId: 3, activeElements: '{"token":"Flow_1"}', arrivalTime: "2023-12-30 08:15:00"},
             ])),
         };
         processRepository.createQueryBuilder.mockReturnValue(createQueryBuilderMock({
@@ -121,7 +122,10 @@ describe("GET /api/simulation/[id]", () => {
         expect(processRepository.update).toHaveBeenCalled();
         expect(redis.set).toHaveBeenCalledWith(
             "frames:p1",
-            JSON.stringify([{caseId: 1, activeElements: {token: "Task_1"}}]),
+            JSON.stringify([
+                {caseId: 1, activeElements: {token: "Task_1"}},
+                {caseId: 3, activeElements: {token: "Flow_1"}, arrivalTime: "2023-12-30T08:15:00.000Z"},
+            ]),
             "EX",
             60 * 60 * 24,
         );
@@ -129,10 +133,14 @@ describe("GET /api/simulation/[id]", () => {
             body: {
                 processId: "p1",
                 batches: [{events: [], startDate: "a", endDate: "b"}],
-                frames: [{caseId: 1, activeElements: {token: "Task_1"}}],
+                frames: [
+                    {caseId: 1, activeElements: {token: "Task_1"}},
+                    {caseId: 3, activeElements: {token: "Flow_1"}, arrivalTime: "2023-12-30T08:15:00.000Z"},
+                ],
                 file: Buffer.from("xml"),
                 startDate: "2024-01-01 00:00:00",
                 endDate: "2024-01-01 20:00:00",
+                utcOffset: "+00:00",
                 pointer: 15,
             },
             status: 200,
@@ -145,6 +153,7 @@ describe("GET /api/simulation/[id]", () => {
             fileName: "model.bpmn",
             startDate: "2024-01-01 00:00:00",
             endDate: "2024-01-01 02:00:00",
+            utcOffset: "+02:00",
             setToDelete: false,
         }));
         (groupEvents as jest.Mock).mockReturnValue([]);
@@ -171,6 +180,7 @@ describe("GET /api/simulation/[id]", () => {
                 file: Buffer.from("xml"),
                 startDate: "2024-01-01 00:00:00",
                 endDate: "2024-01-01 02:00:00",
+                utcOffset: "+02:00",
                 pointer: -1,
             },
             status: 200,

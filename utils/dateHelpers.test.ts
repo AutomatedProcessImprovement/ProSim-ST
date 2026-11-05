@@ -1,4 +1,4 @@
-import {calculateEndDate, formatDateString, getHourDifference} from "@utils/dateHelpers";
+import {calculateEndDate, formatDateString, formatDuration, formatHorizon, formatInLogTime, formatReadableDate, formatShortDate, formatUtcOffset, getHourDifference, logTimeToUtc} from "@utils/dateHelpers";
 import {TimeUnits} from "@definitions/config/enums";
 
 describe("dateHelpers", () => {
@@ -33,5 +33,42 @@ describe("dateHelpers", () => {
         expect(getHourDifference(first, second)).toBe(3);
         expect(getHourDifference(second, first)).toBe(3);
     });
+
+    it("converts log wall-clock time to UTC and back using the log's UTC offset", () => {
+        const utc = logTimeToUtc("2025-04-04T15:46:14", "+02:00");
+        expect(utc.toISOString()).toBe("2025-04-04T13:46:14.000Z");
+        expect(formatInLogTime(utc, "+02:00")).toBe("2025-04-04 15:46:14");
+
+        expect(logTimeToUtc("2025-04-04T15:46", "-05:30").toISOString()).toBe("2025-04-04T21:16:00.000Z");
+        expect(formatInLogTime(new Date("2025-04-04T13:46:14Z"))).toBe("2025-04-04 13:46:14");
+        expect(formatUtcOffset("+02:00")).toBe("UTC+02:00");
+    });
+
+    it("formats dates and horizons for people", () => {
+        expect(formatReadableDate("2025-04-04T15:46:14")).toBe("4 Apr 2025, 15:46");
+        expect(formatReadableDate(new Date("2025-05-30T15:46:14Z"))).toBe("30 May 2025, 15:46");
+        expect(formatReadableDate("")).toBe("");
+        expect(formatHorizon(8, "weeks")).toBe("8 weeks");
+        expect(formatHorizon(1, "months")).toBe("1 month");
+    });
 });
 
+describe("formatDuration", () => {
+    it("says durations the way an analyst would", () => {
+        expect(formatDuration(-5)).toBe("0 min");
+        expect(formatDuration(45 * 60000)).toBe("45 min");
+        expect(formatDuration(3 * 3600000)).toBe("3 h");
+        expect(formatDuration((6 * 60 + 12) * 60000)).toBe("6 h 12 min");
+        expect(formatDuration(48 * 3600000)).toBe("2 d");
+        expect(formatDuration(52 * 3600000 + 59 * 60000)).toBe("2 d 4 h");
+    });
+});
+
+describe("formatShortDate", () => {
+    it("formats a date in the log's offset, with or without the time", () => {
+        const date = new Date("2025-05-30T22:30:00Z");
+        expect(formatShortDate(date)).toBe("30 May");
+        expect(formatShortDate(date, "+02:00")).toBe("31 May");
+        expect(formatShortDate(date, "+02:00", true)).toBe("31 May 00:30");
+    });
+});

@@ -21,7 +21,6 @@ export function setNewWTPTState(previousState: WTPTState, event: BatchEvent): WT
 
     const prevCase = nodeState.incompleteCases?.[caseId];
 
-    // ENABLE is the only event allowed to create a case entry
     if (event.lifecycle === LifecycleTypes.ENABLE) {
         return {
             ...previousState,
@@ -38,12 +37,10 @@ export function setNewWTPTState(previousState: WTPTState, event: BatchEvent): WT
         };
     }
 
-    // If we don't have enablementTime, ignore START/COMPLETE
     if (!prevCase?.enablementTime) {
         return previousState;
     }
 
-    // START only allowed after ENABLE
     if (event.lifecycle === LifecycleTypes.START) {
         return {
             ...previousState,
@@ -60,19 +57,15 @@ export function setNewWTPTState(previousState: WTPTState, event: BatchEvent): WT
         };
     }
 
-    // COMPLETE only allowed after ENABLE + START
     if (!prevCase.startTime) return previousState;
 
-    // COMPLETE: now we can compute and finalize
     const wt = prevCase.startTime - prevCase.enablementTime;
     const pt = timestamp - prevCase.startTime;
 
-    // ignore out-of-order / invalid data
     if (wt < 0 || pt < 0) {
         return previousState;
     }
 
-    // incremental averages
     const n = nodeState._count ?? 0;
     const newAvgWT = (nodeState.averageWT * n + wt) / (n + 1);
     const newAvgPT = (nodeState.averagePT * n + pt) / (n + 1);
@@ -104,7 +97,6 @@ export function hydrateWTPTNames(base: WTPTState, incoming: WTPTState): WTPTStat
         };
     }
 
-    // ensure ALL base tasks exist (reset missing ones)
     for (const [nodeId, baseStats] of Object.entries(base)) {
         if (out[nodeId]) continue;
 

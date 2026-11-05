@@ -1,14 +1,20 @@
 import {LifecycleTypes} from "@definitions/simulation/enums";
 import {Event} from "@db/entities/Event";
+import {FrameCase} from "@definitions/simulation/types";
 
 export const buildCycleTimeSeries = (
     events: Event[],
     processStart: string,
     processEnd: string,
     steps = 100,
+    openAtStart: FrameCase[] = [],
 ): number[] => {
     const arrivalTimes = new Map<string, number>();
     const endTimes = new Map<string, number>();
+
+    for (const frame of openAtStart) {
+        if (frame.arrivalTime) arrivalTimes.set(frame.caseId.toString(), new Date(frame.arrivalTime).getTime());
+    }
 
     for (const event of events) {
         const key = event.caseId.toString();

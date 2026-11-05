@@ -59,6 +59,21 @@ describe("buildCycleTimeSeries", () => {
         expect(result).toEqual([0]);
     });
 
+    it("counts a case open at the start once it finishes, from when the log says it started", () => {
+        const result = buildCycleTimeSeries(
+            [makeEventWith(7, LifecycleTypes.CASE_END, "2024-01-01T01:00:00.000Z")],
+            "2024-01-01T00:00:00.000Z",
+            "2024-01-01T02:00:00.000Z",
+            3,
+            [
+                {caseId: 7, activeElements: {}, arrivalTime: "2023-12-31T21:00:00.000Z"},
+                {caseId: 8, activeElements: {}},
+            ],
+        );
+
+        expect(result).toEqual([0, 4 * 3600000, 4 * 3600000]);
+    });
+
     it("keeps the earliest arrival and earliest completion when later duplicates exist", () => {
         const result = buildCycleTimeSeries(
             [

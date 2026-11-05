@@ -1,27 +1,10 @@
-import {useContext, useState} from "react";
+import {useContext, useMemo, useState} from "react";
 import {DataContext} from "@context/DataContext";
-import levenshtein from "js-levenshtein";
+import {suggestMapping} from "@utils/columnMapping";
 import {Field, Label, Listbox, ListboxButton, ListboxOption, ListboxOptions} from "@headlessui/react";
 import {CheckIcon, ChevronDownIcon} from "@heroicons/react/24/outline";
 import {CommandLineIcon} from "@heroicons/react/20/solid";
 import {CsvContext} from "@context/CsvContext";
-
-const findOptimalMatch = (field: string, headers:string[]) => {
-    if (field === 'enablement') {
-        return '__DISCOVER__';
-    }
-
-    const distances = [...headers].map(_header => [_header, levenshtein(_header, field)])
-        .toSorted(([, d1], [, d2]) => (d1 as number) - (d2 as number));
-    const minDistance = Math.min(...distances.map(([, d]) => d as number));
-    const options = distances.filter(([, d]) => d === minDistance).map(([header]) => header as string);
-    const withSubstring = options.filter(header => header.includes(field) || field.includes(header));
-
-    if (options.length === 1) return options[0];
-    if (withSubstring.length > 0) return withSubstring[0];
-
-    return options[0];
-}
 
 interface Props {
     field: string,
@@ -29,13 +12,22 @@ interface Props {
 }
 
 const MappingInput = ({field, label}: Props) => {
-    const { csvData: { headers } } = useContext(CsvContext);
+    const { csvData: { headers, firstLine } } = useContext(CsvContext);
     const { data: { mapping } } = useContext(DataContext);
-    const [value, setValue] = useState(mapping[field] || findOptimalMatch(field, headers));
+    const suggested = useMemo(() => suggestMapping(headers), [headers]);
+    const [value, setValue] = useState(mapping[field] || suggested[field]);
     const [isValid, setIsValid] = useState(Object.values(mapping).filter(value => value == mapping[field]).length <= 1);
 
-    return <Field className = 'flex h-8 flex-row items-center justify-between'>
-        <Label>{ label }</Label>
+    const sample = value === '__DISCOVER__' ? undefined : firstLine[headers.indexOf(value as string)];
+
+    return <Field className = 'flex h-8 flex-row items-center justify-between gap-4'>
+        <div className='flex min-w-0 flex-1 items-baseline gap-3'>
+            <Label className='shrink-0'>{ label }</Label>
+            {
+                sample &&
+                <span className='truncate font-mono text-xs text-slate-400' title={sample}>e.g. {sample}</span>
+            }
+        </div>
         <Listbox name={field}
                  value={value}
                  onChange={_value => {

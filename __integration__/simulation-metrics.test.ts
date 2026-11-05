@@ -1,11 +1,3 @@
-/**
- * Integration test: GET /api/simulation/[id]/workload
- *                   GET /api/simulation/[id]/cycle-time
- *
- * Verifies that metrics are computed from real MySQL data,
- * cached to Redis on first load, and served from cache on subsequent loads.
- */
-
 jest.mock('next/server', () => ({
     NextResponse: {
         json: (body: unknown, init?: {status?: number}) => ({body, status: init?.status ?? 200}),
@@ -70,8 +62,6 @@ describe('GET /api/simulation/[id]/workload (integration)', () => {
             startDate: ts(BASE, 0),
             endDate: ts(BASE, 4),
         });
-        // Case 1: active from hour 0 to hour 2
-        // Case 2: active from hour 1 to hour 3
         await seedEvents(db.dataSource, [
             {caseId: 1, lifecycle: LifecycleTypes.CASE_ARRIVAL, timestamp: ts(BASE, 0), nodeId: 'start', paths: {}, processId: PROCESS_ID},
             {caseId: 2, lifecycle: LifecycleTypes.CASE_ARRIVAL, timestamp: ts(BASE, 1), nodeId: 'start', paths: {}, processId: PROCESS_ID},
@@ -89,14 +79,13 @@ describe('GET /api/simulation/[id]/workload (integration)', () => {
         const series = (response as any).body as number[];
         expect(series).toHaveLength(1000);
 
-        // At the start, 1 case is active; at 25% (hour 1), 2 cases active; at 50% (hour 2), 1 active; at 75% (hour 3), 0
-        expect(series[0]).toBe(1);        // hour 0: case 1 arrived
+        expect(series[0]).toBe(1);
         const quarterIdx = 250;
-        expect(series[quarterIdx]).toBe(2); // ~hour 1: case 2 arrived
+        expect(series[quarterIdx]).toBe(2);
         const halfIdx = 500;
-        expect(series[halfIdx]).toBe(1);    // ~hour 2: case 1 ended
+        expect(series[halfIdx]).toBe(1);
         const threeQuarterIdx = 750;
-        expect(series[threeQuarterIdx]).toBe(0); // ~hour 3: case 2 ended
+        expect(series[threeQuarterIdx]).toBe(0);
     });
 
     it('caches the workload series in Redis and serves it on repeated calls', async () => {
@@ -111,7 +100,6 @@ describe('GET /api/simulation/[id]/workload (integration)', () => {
         ]);
         await seedFrames(db.dataSource, [{caseId: 1, activeElements: {}, processId: PROCESS_ID}]);
 
-        // First call computes and caches
         const r1 = await getWorkload(makeRequest('http://localhost'), makeContext(PROCESS_ID));
         expect(r1.status).toBe(200);
 
@@ -120,7 +108,6 @@ describe('GET /api/simulation/[id]/workload (integration)', () => {
         const cachedSeries = JSON.parse(cached!);
         expect(cachedSeries).toHaveLength(1000);
 
-        // Second call — return value from Redis (we poison the DB to confirm cache is used)
         await db.dataSource.query('DELETE FROM event WHERE processId = ?', [PROCESS_ID]);
         const r2 = await getWorkload(makeRequest('http://localhost'), makeContext(PROCESS_ID));
         expect(r2.status).toBe(200);
@@ -157,7 +144,6 @@ describe('GET /api/simulation/[id]/cycle-time (integration)', () => {
             startDate: ts(BASE, 0),
             endDate: ts(BASE, 4),
         });
-        // Case 1 cycle time = 2 hours; Case 2 cycle time = 2 hours as well
         await seedEvents(db.dataSource, [
             {caseId: 1, lifecycle: LifecycleTypes.CASE_ARRIVAL, timestamp: ts(BASE, 0), nodeId: 'start', paths: {}, processId: PROCESS_ID},
             {caseId: 1, lifecycle: LifecycleTypes.CASE_END,     timestamp: ts(BASE, 2), nodeId: 'end',   paths: {}, processId: PROCESS_ID},
@@ -171,15 +157,12 @@ describe('GET /api/simulation/[id]/cycle-time (integration)', () => {
         const series = (response as any).body as number[];
         expect(series).toHaveLength(100);
 
-        // First sample (point 0) — no cases finished yet: 0
         expect(series[0]).toBe(0);
 
-        // After hour 2 (50th percentile), case 1 is done: avg CT = 2h in ms
         const twoHoursMs = 2 * 60 * 60 * 1000;
         const midIdx = 50;
         expect(series[midIdx]).toBeCloseTo(twoHoursMs, -5);
 
-        // Final sample: both cases done, avg remains 2h in ms
         expect(series[99]).toBeCloseTo(twoHoursMs, -5);
     });
 
