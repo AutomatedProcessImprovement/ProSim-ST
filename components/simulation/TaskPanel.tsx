@@ -11,6 +11,8 @@ type Props = {
     utcOffset: string;
     getQueue: () => QueueEntry[];
     getCurrentTime: () => number | null;
+    followedCase: number | null;
+    onFollowCase: (caseId: number) => void;
     onClose: () => void;
 };
 
@@ -25,7 +27,7 @@ const toPoints = (values: number[], max: number) => values
     })
     .join(" ");
 
-const TaskPanel = ({taskId, name, stats, analysis, utcOffset, getQueue, getCurrentTime, onClose}: Props) => {
+const TaskPanel = ({taskId, name, stats, analysis, utcOffset, getQueue, getCurrentTime, followedCase, onFollowCase, onClose}: Props) => {
     const [queue, setQueue] = useState<QueueEntry[]>(() => getQueue());
     const [currentTime, setCurrentTime] = useState<number | null>(() => getCurrentTime());
 
@@ -38,12 +40,6 @@ const TaskPanel = ({taskId, name, stats, analysis, utcOffset, getQueue, getCurre
         }, 500);
         return () => clearInterval(interval);
     }, [taskId, getQueue, getCurrentTime]);
-
-    useEffect(() => {
-        const handleKey = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
-        window.addEventListener("keydown", handleKey);
-        return () => window.removeEventListener("keydown", handleKey);
-    }, [onClose]);
 
     const series = analysis?.tasks[taskId];
     const chart = useMemo(() => {
@@ -112,7 +108,8 @@ const TaskPanel = ({taskId, name, stats, analysis, utcOffset, getQueue, getCurre
             {queue.slice(0, MAX_LISTED_CASES).map(entry => (
                 <li key={`${entry.caseId}-${entry.state}`}>
                     <i className={`legend-swatch ${entry.state === "waiting" ? "swatch-waiting" : "swatch-working"}`}/>
-                    <span className="case-id">Case {entry.caseId}</span>
+                    <button type="button" className="case-id" aria-pressed={entry.caseId === followedCase}
+                            title="Follow this case" onClick={() => onFollowCase(entry.caseId)}>Case {entry.caseId}</button>
                     <span className="case-detail">{describe(entry)}</span>
                 </li>
             ))}

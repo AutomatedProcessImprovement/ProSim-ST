@@ -6,6 +6,7 @@ type Props = {
     colorMode: ColorMode;
     onColorModeChange: (mode: ColorMode) => void;
     hasCycleTime: boolean;
+    onHelp: () => void;
     onZoomIn: () => void;
     onZoomOut: () => void;
     onFit: () => void;
@@ -13,7 +14,7 @@ type Props = {
 
 const Swatch = ({color}: {color: string}) => <i className="legend-dot" style={{background: color}}/>;
 
-const DiagramControls = ({className = "diagram-toolbar", colorMode, onColorModeChange, hasCycleTime, onZoomIn, onZoomOut, onFit}: Props) => (
+const DiagramControls = ({className = "diagram-toolbar", colorMode, onColorModeChange, hasCycleTime, onHelp, onZoomIn, onZoomOut, onFit}: Props) => (
     <div className={className}>
         <div className="color-mode" role="group" aria-label="Colour dots by">
             <button type="button" aria-pressed={colorMode === "state"} onClick={() => onColorModeChange("state")}>State</button>
@@ -32,7 +33,7 @@ const DiagramControls = ({className = "diagram-toolbar", colorMode, onColorModeC
                 <li><Swatch color={AGE_COLORS.overdue}/> Over 2× the average</li>
                 {!hasCycleTime && <li className="legend-note">No case finished yet, so ages can&apos;t be compared</li>}
             </ul>}
-            <div className="legend-note">Click a task for its queue · hover a dot for the case</div>
+            <button type="button" className="legend-link" onClick={onHelp}>How to read this</button>
         </div>
         <div className="zoom-controls" role="group" aria-label="Zoom">
             <button type="button" onClick={onZoomIn} aria-label="Zoom in" title="Zoom in">+</button>

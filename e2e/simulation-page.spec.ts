@@ -20,6 +20,7 @@ import { simulationFixture, workloadFixture, cycleTimeFixture, resumptionFixture
 const PROCESS_ID = 'test-sim-001';
 
 async function mockSimulationApis(page: Page) {
+    await page.addInitScript(() => localStorage.setItem('prosim-help-seen', '1'));
     await page.route(`**/api/simulation/${PROCESS_ID}`, async route => {
         await route.fulfill({
             status: 200,
@@ -141,7 +142,7 @@ test.describe('Simulation page', () => {
         }).toPass({ timeout: 8_000 });
     });
 
-    test('speed select changes to 2x and simulation continues running', async ({ page }) => {
+    test('changing the speed keeps the simulation running', async ({ page }) => {
         await mockSimulationApis(page);
         const sim = new SimulationPage(page);
         await sim.goto(PROCESS_ID);
@@ -151,9 +152,8 @@ test.describe('Simulation page', () => {
         await sim.waitForAutoPlay();
         const timeBeforeSpeedChange = await sim.getCurrentTime();
 
-        // Change speed to 2x — internally triggers a simulation reset with the new delta
-        await sim.setSpeed('2');
-        await expect(sim.speedSelect).toHaveValue('2');
+        await sim.setSpeed('0.5');
+        await expect(sim.speedSelect).toHaveValue('0.5');
 
         // Speed change resets simulation (300ms delay then restarts); time should keep advancing
         await expect(async () => {
@@ -200,25 +200,22 @@ test.describe('Simulation page', () => {
         expect(body.requestedDate).toContain('2024-01-01');
     });
 
-    test('stats sidebar toggles: hidden → visible → hidden', async ({ page }) => {
+    test('stats sidebar toggles: visible → hidden → visible', async ({ page }) => {
         await mockSimulationApis(page);
         const sim = new SimulationPage(page);
         await sim.goto(PROCESS_ID);
         await sim.waitForBpmnCanvas();
 
-        // Sidebar starts hidden (translateX(300px))
-        expect(await sim.isSidebarOpen()).toBe(false);
+        expect(await sim.isSidebarOpen()).toBe(true);
 
-        // Toggle open
-        await sim.toggleSidebar();
-        await expect(async () => {
-            expect(await sim.isSidebarOpen()).toBe(true);
-        }).toPass({ timeout: 3_000 });
-
-        // Toggle closed
         await sim.toggleSidebar();
         await expect(async () => {
             expect(await sim.isSidebarOpen()).toBe(false);
+        }).toPass({ timeout: 3_000 });
+
+        await sim.toggleSidebar();
+        await expect(async () => {
+            expect(await sim.isSidebarOpen()).toBe(true);
         }).toPass({ timeout: 3_000 });
     });
 
@@ -299,11 +296,10 @@ test.describe('Simulation page', () => {
         }).toPass({ timeout: 5_000 });
     });
 
-    test('2x speed advances simulated time faster than 1x over the same wall-clock interval', async ({ page }) => {
+    test('a slower speed advances simulated time more slowly over the same wall-clock interval', async ({ page }) => {
         const parseSimMs = (timeStr: string) =>
-            new Date(timeStr.replace(' ', 'T') + 'Z').getTime();
+            new Date(timeStr.slice(0, 19).replace(' ', 'T') + 'Z').getTime();
 
-        // --- Measure at 1x speed ---
         await mockSimulationApis(page);
         const sim = new SimulationPage(page);
         await sim.goto(PROCESS_ID);
@@ -315,15 +311,10 @@ test.describe('Simulation page', () => {
         const t1_end = parseSimMs(await sim.getCurrentTime());
         const delta1 = t1_end - t1_start;
 
-        // --- Measure at 2x speed ---
-        // Route handlers persist through reload — no need to re-register
         await page.reload();
         await sim.waitForBpmnCanvas();
-        await sim.waitForAutoPlay(); // make sure simulation has started before changing speed
-        await sim.setSpeed('2');
-        // Speed change aborts the current run, waits 300ms, then restarts via runSimulation().
-        // 400ms gives the restart enough time to complete (300ms delay + 100ms margin) while
-        // leaving the simulation well short of its end (12 batches × 250ms = 3s at 2×).
+        await sim.waitForAutoPlay();
+        await sim.setSpeed('0.5');
         await page.waitForTimeout(400);
 
         const t2_start = parseSimMs(await sim.getCurrentTime());
@@ -331,7 +322,63 @@ test.describe('Simulation page', () => {
         const t2_end = parseSimMs(await sim.getCurrentTime());
         const delta2 = t2_end - t2_start;
 
-        // At 2x speed, the same 1s wall time should advance ≥1.9× as much simulated time
-        expect(delta2).toBeGreaterThan(delta1 * 1.9);
+        expect(delta2).toBeLessThan(delta1 * 0.7);
+    });
+
+    test('a first-time visitor gets the explanation once', async ({ page }) => {
+        await mockSimulationApis(page);
+        await page.addInitScript(() => {
+            if (!sessionStorage.getItem('visited')) localStorage.removeItem('prosim-help-seen');
+            sessionStorage.setItem('visited', '1');
+        });
+        const sim = new SimulationPage(page);
+        await sim.goto(PROCESS_ID);
+        await sim.waitForBpmnCanvas();
+
+        await page.getByRole('button', { name: 'Got it' }).click();
+        await expect(page.getByRole('complementary', { name: 'How to read this' })).toHaveCount(0);
+
+        await page.reload();
+        await sim.waitForBpmnCanvas();
+        await expect(page.getByRole('complementary', { name: 'How to read this' })).toHaveCount(0);
+    });
+
+    test('a shared link opens paused at the same moment, speed and colouring', async ({ page }) => {
+        await mockSimulationApis(page);
+        const sim = new SimulationPage(page);
+        await page.goto(`/simulation/${PROCESS_ID}?t=2024-01-01T01:00:00Z&speed=3&colour=age`);
+        await sim.waitForBpmnCanvas();
+
+        await expect(sim.simulatedTimeBox).toContainText('2024-01-01 01:00:00');
+        await expect(sim.speedSelect).toHaveValue('3');
+        await expect(page.getByRole('button', { name: 'Case age' })).toHaveAttribute('aria-pressed', 'true');
+
+        await page.waitForTimeout(600);
+        await expect(sim.simulatedTimeBox).toContainText('2024-01-01 01:00:00');
+    });
+
+    test('clicking an activity in the statistics selects it on the diagram', async ({ page }) => {
+        await mockSimulationApis(page);
+        const sim = new SimulationPage(page);
+        await sim.goto(PROCESS_ID);
+        await sim.waitForBpmnCanvas();
+
+        await page.locator('.wtpt-row').first().click();
+
+        await expect(page.locator('.task-panel')).toBeVisible();
+        await expect(page.locator('.djs-element.selected-task')).toHaveCount(1);
+    });
+
+    test('the page fits a phone without sideways scrolling', async ({ page }) => {
+        await page.setViewportSize({ width: 390, height: 844 });
+        await mockSimulationApis(page);
+        const sim = new SimulationPage(page);
+        await sim.goto(PROCESS_ID);
+        await sim.waitForBpmnCanvas();
+
+        expect(await sim.isSidebarOpen()).toBe(false);
+        await expect(sim.playPauseBtn).toBeVisible();
+        const widths = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
+        expect(widths[0]).toBe(widths[1]);
     });
 });

@@ -26,6 +26,19 @@ export const readFlowTargets = (bpmnXml: string): Record<string, string> => {
     return targets;
 };
 
+const unescapeXml = (text: string) => text
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");
+
+export const readTaskNames = (bpmnXml: string): Record<string, string> => {
+    const names: Record<string, string> = {};
+    for (const [tag] of bpmnXml.matchAll(/<(?:\w+:)?\w*[tT]ask\b[^>]*>/g)) {
+        const id = tag.match(/\sid="([^"]+)"/)?.[1];
+        const name = tag.match(/\sname="([^"]*)"/)?.[1];
+        if (id) names[id] = unescapeXml(name ?? "").trim();
+    }
+    return names;
+};
+
 type TaskState = "waiting" | "inWork";
 
 export const buildProcessAnalysis = (

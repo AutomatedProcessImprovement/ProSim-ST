@@ -5,6 +5,7 @@ import {
     BatchEvent,
     ColorMode,
     FrameCase,
+    InitialView,
     PathMap,
     QueueEntry,
     SimulationHooks,
@@ -36,9 +37,11 @@ import {applyBatchFrameUpdates} from "@modules/simulation/frameUpdateHelpers";
 import {
     ageColor,
     classifyRest,
+    clearPillSpot,
     DOT_RADIUS,
     heatOpacity,
     isTaskType,
+    pillWidth,
     RestPlace,
     slotCapacity,
     slotPosition,
@@ -76,11 +79,12 @@ const simulation = (
     }>>,
     wtptSetter: Dispatch<SetStateAction<WTPTState>>,
     hooks: SimulationHooks = {},
+    initialView: InitialView = {},
 ) => {
     const tokenSimulation = function(canvas: Canvas, elementRegistry: ElementRegistry, eventBus?: EventBus) {
             let processId: string;
             const defaultDelta = msPerSimulatedHour(1);
-            let delta = msPerSimulatedHour(DEFAULT_HOURS_PER_SECOND);
+            let delta = msPerSimulatedHour(initialView.hoursPerSecond ?? DEFAULT_HOURS_PER_SECOND);
             let tokens: Tokens = {};
             let totalDuration: number;
             let viewport: SVGGElement;
@@ -112,7 +116,9 @@ const simulation = (
             let utcOffset = "+00:00";
             let abortController: AbortController = new AbortController();
             let hasEnded = false;
-            let colorMode: ColorMode = "state";
+            let colorMode: ColorMode = initialView.colorMode ?? "state";
+            let followedCase: number | null = null;
+            let openingMoment = false;
             let agePaintInterval: ReturnType<typeof setInterval> | null = null;
 
             const rests = new Map<string, Rest>();
@@ -261,7 +267,8 @@ const simulation = (
                 if (!members.length) groups.delete(groupId);
                 if (!element || !members.length) return;
 
-                members.sort((a, b) => (sinceOf(a) ?? 0) - (sinceOf(b) ?? 0));
+                members.sort((a, b) =>
+                    Number(b.caseId === followedCase) - Number(a.caseId === followedCase) || (sinceOf(a) ?? 0) - (sinceOf(b) ?? 0));
                 const capacity = slotCapacity(element);
                 const fits = members.length <= capacity;
                 const hideAll = !fits && members[0].place.kind === "working";
@@ -271,7 +278,7 @@ const simulation = (
                     const token = tokens[rest.caseId]?.[rest.tokenId];
                     if (!token) return;
                     setTokenPosition(token, slotPosition(element, Math.min(index, visible - 1), visible));
-                    token.style.visibility = !hideAll && index < capacity ? "" : "hidden";
+                    token.style.visibility = rest.caseId === followedCase || (!hideAll && index < capacity) ? "" : "hidden";
                 });
             }
 
@@ -294,13 +301,12 @@ const simulation = (
                 return group;
             }
 
-            function updatePill(pill: SVGGElement, label: string | null, x: number, y: number, centred: boolean) {
+            function updatePill(pill: SVGGElement, label: string | null, {x: left, y}: Waypoint) {
                 if (!label) {
                     pill.style.display = "none";
                     return;
                 }
-                const width = label.length * 7.4 + 14;
-                const left = centred ? x - width / 2 : x;
+                const width = pillWidth(label);
                 const rect = pill.querySelector("rect");
                 const text = pill.querySelector("text");
                 pill.style.display = "";
@@ -312,6 +318,14 @@ const simulation = (
                 text.setAttribute("x", (left + width / 2).toString());
                 text.setAttribute("y", (y + 14).toString());
                 text.textContent = label;
+            }
+
+            function connectedFlows(shape: Node) {
+                return [...(shape.incoming ?? []), ...(shape.outgoing ?? [])].map(flow => flow.waypoints ?? []);
+            }
+
+            function spotBeside(shape: Node, label: string | null): Waypoint {
+                return label ? clearPillSpot(shape, pillWidth(label), connectedFlows(shape)) : {x: 0, y: 0};
             }
 
             function renderLoad() {
@@ -347,10 +361,13 @@ const simulation = (
                         pills.set(taskId, taskPills);
                     }
                     if (!taskPills) return;
-                    updatePill(taskPills.waiting, showWaiting ? `${waiting} waiting` : null,
-                        shape.x + shape.width / 2, shape.y - 23, true);
-                    updatePill(taskPills.inWork, showInWork ? `${inWork} in work` : null,
-                        shape.x + shape.width / 2, shape.y + shape.height - 23, true);
+                    const waitingLabel = showWaiting ? `${waiting} waiting` : null;
+                    const inWorkLabel = showInWork ? `${inWork} in work` : null;
+                    updatePill(taskPills.waiting, waitingLabel, spotBeside(shape, waitingLabel));
+                    updatePill(taskPills.inWork, inWorkLabel, {
+                        x: shape.x + shape.width / 2 - pillWidth(inWorkLabel ?? "") / 2,
+                        y: shape.y + shape.height - 23,
+                    });
                 });
 
                 renderOtherLoad();
@@ -383,7 +400,8 @@ const simulation = (
                     let pill = otherPills.get(elementId);
                     if (!pill) otherPills.set(elementId, pill = createPill(elementId, "other", false));
                     const count = counts.get(elementId);
-                    updatePill(pill, count ? `${count} waiting` : null, shape.x + shape.width / 2, shape.y - 23, true);
+                    const label = count ? `${count} waiting` : null;
+                    updatePill(pill, label, spotBeside(shape, label));
                 });
             }
 
@@ -450,13 +468,38 @@ const simulation = (
                 return lines;
             }
 
+            function describeTask(taskId: string): string[] {
+                const {waiting = 0, inWork = 0} = taskCounts.get(taskId) ?? {};
+                return [elementName(taskId), `${waiting} waiting · ${inWork} in work`];
+            }
+
+            function describeHovered(target: Element): string[] | null {
+                if (target.classList?.contains("token")) {
+                    const caseId = Number(target.getAttribute("data-case"));
+                    const lines = describeToken(caseId, target.getAttribute("data-token"));
+                    return caseId === followedCase ? lines : [...lines, "Click to follow this case"];
+                }
+                const taskId = target.closest?.(".djs-shape")?.getAttribute("data-element-id");
+                return taskId && isTaskType(getElement(taskId)?.type) ? describeTask(taskId) : null;
+            }
+
             function enableTokenHover() {
+                const surface = canvas.getContainer();
+
+                let pressedAt: {x: number; y: number} | null = null;
+                tokenLayer.addEventListener("mousedown", event => { pressedAt = {x: event.clientX, y: event.clientY}; });
+                tokenLayer.addEventListener("click", event => {
+                    const target = event.target as Element;
+                    const dragged = pressedAt && Math.hypot(event.clientX - pressedAt.x, event.clientY - pressedAt.y) > 4;
+                    if (dragged || !target.classList?.contains("token")) return;
+                    hooks.onCaseClick?.(Number(target.getAttribute("data-case")));
+                });
+
                 if (!tokenTooltip) return;
 
                 const show = (event: MouseEvent) => {
-                    const target = event.target as Element;
-                    if (!target.classList?.contains("token")) return;
-                    const lines = describeToken(Number(target.getAttribute("data-case")), target.getAttribute("data-token"));
+                    const lines = describeHovered(event.target as Element);
+                    if (!lines) return;
                     tokenTooltip.replaceChildren(...lines.map((line, index) => {
                         const div = document.createElement("div");
                         if (index === 0) div.className = "token-tooltip-title";
@@ -472,9 +515,10 @@ const simulation = (
                 };
                 const hide = () => { tokenTooltip.style.display = "none"; };
 
-                tokenLayer.addEventListener("mouseover", show);
-                tokenLayer.addEventListener("mousemove", move);
-                tokenLayer.addEventListener("mouseout", hide);
+                surface.addEventListener("mouseover", show);
+                surface.addEventListener("mousemove", move);
+                surface.addEventListener("mouseout", hide);
+                surface.addEventListener("click", hide);
             }
 
 
@@ -504,6 +548,7 @@ const simulation = (
                 token.setAttribute("data-case", caseId.toString());
                 token.setAttribute("data-token", tokenId);
                 token.classList.add("token");
+                if (caseId === followedCase) token.classList.add("followed");
                 setTokenPosition(token, point);
                 tokens[caseId][tokenId] = token;
 
@@ -923,9 +968,12 @@ const simulation = (
                 playPauseButton.innerHTML = " ▶";
                 isPaused = true;
                 hasEnded = true;
+                hooks.onViewChange?.();
             }
 
             function handlePlayPause() {
+                if (openingMoment) return;
+
                 const action = decidePlayPauseResumeAction({
                     isPaused,
                     hasEnded,
@@ -939,6 +987,7 @@ const simulation = (
                     playPauseButton.innerHTML = " ▶";
                     isPaused = true;
                     abortController.abort();
+                    hooks.onViewChange?.();
                     return;
                 }
 
@@ -991,13 +1040,22 @@ const simulation = (
                 }
             }
 
-            async function handleTimelineRequest(progress: number) {
+            function openAtMoment(moment: number) {
+                currentProgress = totalDuration ? Math.max(0, Math.min(1, (moment - initialDate.getTime()) / totalDuration)) : 0;
+                isPaused = true;
+                playPauseButton.innerHTML = " ▶";
+                showProgress(currentProgress);
+                openingMoment = true;
+                handleTimelineRequest(currentProgress * 100, true).finally(() => { openingMoment = false; });
+            }
+
+            async function handleTimelineRequest(progress: number, stayPaused = false) {
                 try {
                     const res = await axios.post(`/api/simulation/${processId}/resumption`, {
                         requestedDate: new Date(initialDate.getTime() + (progress / 100) * totalDuration).toISOString(),
                     });
 
-                    const patch = buildTimelineResumptionPatch(res.data, isPaused);
+                    const patch = buildTimelineResumptionPatch(res.data, isPaused && !stayPaused);
 
                     queueGeneration++;
                     tokenProgresses = patch.tokenProgresses;
@@ -1016,11 +1074,21 @@ const simulation = (
                         isPaused = false;
                         playPauseButton.innerHTML = "⏸";
                     }
-                    hasEnded = false;
+                    hasEnded = stayPaused && progress >= 100;
                     abortController = new AbortController();
-                    restartFromFrames();
+                    if (stayPaused) {
+                        clearTokens();
+                        reconcileWithFrames();
+                    } else restartFromFrames();
+                    hooks.onViewChange?.();
                 } catch (error) {
                     console.log(error);
+                    if (stayPaused) {
+                        currentProgress = 0;
+                        showProgress(0);
+                        reconcileWithFrames();
+                        hooks.onOpenFailed?.();
+                    }
                 }
             }
 
@@ -1132,6 +1200,7 @@ const simulation = (
                         if (signal.aborted) {
                             currentProgress = Math.min(Math.max((appliedUntil - initialMs) / totalDuration, 0), 1);
                             showProgress(currentProgress);
+                            hooks.onViewChange?.();
                             resolve();
                             return;
                         }
@@ -1186,6 +1255,27 @@ const simulation = (
                 agePaintInterval = mode === "age" ? setInterval(paintAllTokens, 1000) : null;
             };
 
+            this.setFollowedCase = (caseId: number | null) => {
+                const previous = followedCase;
+                followedCase = caseId;
+                [previous, caseId].forEach(id => {
+                    if (id === null) return;
+                    Object.values(tokens[id] ?? {}).forEach(token => {
+                        token.classList.toggle("followed", id === followedCase);
+                        if (token.isConnected) tokenLayer.appendChild(token);
+                    });
+                });
+                rests.forEach(rest => {
+                    if (rest.caseId === previous || rest.caseId === caseId) markDirty(rest.place.groupId);
+                });
+            };
+
+            this.describeCase = (caseId: number): string[] => {
+                const details = Object.keys(tokens[caseId] ?? {}).map(tokenId => describeToken(caseId, tokenId).slice(1));
+                const places = new Set(details.map(lines => lines[0]));
+                return [...places, ...details.slice(0, 1).flatMap(lines => lines.slice(1))];
+            };
+
             this.getTaskQueue = (taskId: string): QueueEntry[] => {
                 const entries: QueueEntry[] = [];
                 rests.forEach(rest => {
@@ -1223,6 +1313,7 @@ const simulation = (
                 showCurrentTime(0);
                 enableTimeline();
                 enableTokenHover();
+                if (colorMode === "age") this.setColorMode(colorMode);
 
                 eventBus?.on("element.click", ({element}) => {
                     if (element && isTaskType(element.type)) hooks.onTaskClick?.(element.id);
@@ -1233,7 +1324,8 @@ const simulation = (
                     if (loadReportTimeout) clearTimeout(loadReportTimeout);
                 });
 
-                runSimulation();
+                if (initialView.moment !== undefined) openAtMoment(initialView.moment);
+                else runSimulation();
             }
         };
 

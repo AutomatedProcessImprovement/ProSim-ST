@@ -1,6 +1,6 @@
 import axios from "axios";
 import simulation from "@modules/simulation/index";
-import {Batch, BatchEvent, FrameCase, SimulationHooks, TokenSimulationApi, WTPTState} from "@definitions/simulation/types";
+import {Batch, BatchEvent, FrameCase, InitialView, SimulationHooks, TokenSimulationApi, WTPTState} from "@definitions/simulation/types";
 import {Canvas, ElementRegistry, EventBus} from "@definitions/simulation/interfaces";
 import {FlowTypes, LifecycleTypes, NodeTypes} from "@definitions/simulation/enums";
 import {SimulationData} from "@definitions/api/types";
@@ -94,7 +94,8 @@ function setup({
     pointer = -1,
     endHours = 6,
     hooks = {},
-}: {frames?: FrameCase[]; batches?: Batch[]; pointer?: number; endHours?: number; hooks?: SimulationHooks} = {}) {
+    initialView = {},
+}: {frames?: FrameCase[]; batches?: Batch[]; pointer?: number; endHours?: number; hooks?: SimulationHooks; initialView?: InitialView} = {}) {
     const container = document.createElement("div");
     container.innerHTML = `<svg><g data-element-id="root"></g></svg>`;
     document.body.appendChild(container);
@@ -107,7 +108,9 @@ function setup({
     });
 
     const elementRegistry: ElementRegistry = {
-        get: (id: string) => (shapes[id] ? {id, ...shapes[id]} : flows[id] ? {id, ...flows[id]} : undefined) as never,
+        get: (id: string) => (shapes[id]
+            ? {id, ...shapes[id], incoming: Object.values(flows).filter(({target}) => target.id === id)}
+            : flows[id] ? {id, ...flows[id]} : undefined) as never,
         getGraphics: (id: string) => graphics[id],
     };
     const busHandlers: Record<string, Array<(event: unknown) => void>> = {};
@@ -130,7 +133,7 @@ function setup({
         file: Buffer.from(""),
         pointer,
     };
-    const pluginDef = simulation(simulationData, caseNumberSetter, wtptSetter, hooks) as unknown as {
+    const pluginDef = simulation(simulationData, caseNumberSetter, wtptSetter, hooks, initialView) as unknown as {
         tokenSimulation: [string, (this: TokenSimulationApi, canvas: Canvas, registry: ElementRegistry, bus: EventBus) => void];
     };
     const api = {} as TokenSimulationApi;
@@ -146,6 +149,10 @@ function setup({
 
 const waitingAt = (count: number, elementId = "Flow_S_A", firstCase = 1): FrameCase[] =>
     Array.from({length: count}, (_, i) => ({caseId: firstCase + i, activeElements: {token_0: elementId}}));
+
+const pausedResumption = (overrides = {}) => ({
+    data: {frames: waitingAt(2), batches: emptyBatches(3, 6), pointer: -1, finishedCasesNumber: 4, wtpt: {}, ...overrides},
+});
 
 describe("modules/simulation/index", () => {
     beforeEach(() => {
@@ -165,6 +172,189 @@ describe("modules/simulation/index", () => {
     afterEach(() => {
         jest.useRealTimers();
         jest.restoreAllMocks();
+    });
+
+    describe("opening a shared view", () => {
+        it("opens paused at the shared moment, showing the cases of that moment", async () => {
+            mockedAxios.post.mockResolvedValue(pausedResumption());
+            const onViewChange = jest.fn();
+            const {api, dots} = setup({hooks: {onViewChange}, initialView: {moment: START + 3 * HOUR}});
+            api.start();
+            await play(100);
+
+            expect(mockedAxios.post).toHaveBeenCalledTimes(1);
+            expect(mockedAxios.post.mock.calls[0][1]).toEqual({requestedDate: iso(3)});
+            expect(document.getElementById("simulated-time-box").textContent).toContain("2024-01-01 03:00:00");
+            expect(document.getElementById("play-pause-btn").textContent).toContain("▶");
+            expect(dots()).toHaveLength(2);
+            expect(api.getCurrentTime()).toBe(START + 3 * HOUR);
+            expect(onViewChange).toHaveBeenCalled();
+
+            await play(2000);
+            expect(api.getCurrentTime()).toBe(START + 3 * HOUR);
+        });
+
+        it("plays on from that moment when asked", async () => {
+            mockedAxios.post.mockResolvedValue(pausedResumption());
+            const {api} = setup({initialView: {moment: START + 3 * HOUR}});
+            api.start();
+            await play(100);
+
+            document.getElementById("play-pause-btn").click();
+            await play(2000);
+
+            expect(api.getCurrentTime()).toBeGreaterThan(START + 3 * HOUR);
+            expect(api.getCurrentTime()).toBeLessThan(START + 6 * HOUR);
+            expect(mockedAxios.post).toHaveBeenCalledTimes(1);
+        });
+
+        it("ignores play until the moment has loaded", async () => {
+            let answer: (value: unknown) => void;
+            mockedAxios.post.mockReturnValue(new Promise(resolve => { answer = resolve; }));
+            const {api, dots} = setup({frames: waitingAt(5), initialView: {moment: START + 3 * HOUR}});
+            api.start();
+
+            document.getElementById("play-pause-btn").click();
+            answer(pausedResumption());
+            await play(100);
+
+            expect(document.getElementById("play-pause-btn").textContent).toContain("▶");
+            expect(dots()).toHaveLength(2);
+        });
+
+        it("clamps a moment past the end and restarts on play", async () => {
+            mockedAxios.post.mockResolvedValue(pausedResumption({frames: [], batches: []}));
+            const {api} = setup({initialView: {moment: START + 100 * HOUR}});
+            api.start();
+            await play(100);
+
+            expect(api.getCurrentTime()).toBe(START + 6 * HOUR);
+
+            document.getElementById("play-pause-btn").click();
+            await play(100);
+            expect(mockedAxios.post).toHaveBeenCalledTimes(2);
+            expect(mockedAxios.post.mock.calls[1][1]).toEqual({requestedDate: iso(0)});
+        });
+
+        it("falls back to the start, still paused, when the moment cannot be loaded", async () => {
+            jest.spyOn(console, "log").mockImplementation(() => {});
+            mockedAxios.post.mockRejectedValue(new Error("Too many requests"));
+            const onOpenFailed = jest.fn();
+            const {api, dots} = setup({frames: waitingAt(3), hooks: {onOpenFailed}, initialView: {moment: START + 3 * HOUR}});
+            api.start();
+            await play(100);
+
+            expect(onOpenFailed).toHaveBeenCalled();
+            expect(api.getCurrentTime()).toBe(START);
+            expect(dots()).toHaveLength(3);
+            expect(document.getElementById("play-pause-btn").textContent).toContain("▶");
+        });
+
+        it("starts at the shared speed and colouring", async () => {
+            const {api, dotsOf} = setup({
+                frames: waitingAt(1),
+                batches: emptyBatches(0, 6),
+                hooks: {getCaseArrival: () => START, getAverageCycleTime: () => 100 * HOUR},
+                initialView: {hoursPerSecond: 3, colorMode: "age"},
+            });
+            api.start();
+            await play(1000);
+
+            expect(api.getCurrentTime()).toBeGreaterThan(START + 2.5 * HOUR);
+            expect(dotsOf(1)[0].getAttribute("fill")).toBe(AGE_COLORS.young);
+        });
+
+        it("reports every pause, so the address bar can follow", async () => {
+            const onViewChange = jest.fn();
+            const {api} = setup({batches: emptyBatches(0, 6), hooks: {onViewChange}});
+            api.start();
+            await play(100);
+
+            document.getElementById("play-pause-btn").click();
+
+            expect(onViewChange).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    describe("following a case", () => {
+        it("reports a click on a dot, but not a drag that started on one", async () => {
+            const onCaseClick = jest.fn();
+            const {api, dotsOf} = setup({frames: waitingAt(1), batches: emptyBatches(0, 6), hooks: {onCaseClick}});
+            api.start();
+            await play(50);
+            const dot = dotsOf(1)[0];
+
+            dot.dispatchEvent(new MouseEvent("mousedown", {bubbles: true, clientX: 10, clientY: 10}));
+            dot.dispatchEvent(new MouseEvent("click", {bubbles: true, clientX: 11, clientY: 10}));
+            expect(onCaseClick).toHaveBeenCalledWith(1);
+
+            onCaseClick.mockClear();
+            dot.dispatchEvent(new MouseEvent("mousedown", {bubbles: true, clientX: 10, clientY: 10}));
+            dot.dispatchEvent(new MouseEvent("click", {bubbles: true, clientX: 60, clientY: 10}));
+            expect(onCaseClick).not.toHaveBeenCalled();
+        });
+
+        it("marks the dots of the followed case and only those", async () => {
+            const {api, dotsOf} = setup({frames: waitingAt(2), batches: emptyBatches(0, 6)});
+            api.start();
+            await play(50);
+
+            api.setFollowedCase(2);
+            expect(dotsOf(2)[0].classList.contains("followed")).toBe(true);
+            expect(dotsOf(1)[0].classList.contains("followed")).toBe(false);
+
+            api.setFollowedCase(1);
+            expect(dotsOf(2)[0].classList.contains("followed")).toBe(false);
+            expect(dotsOf(1)[0].classList.contains("followed")).toBe(true);
+
+            api.setFollowedCase(null);
+            expect(dotsOf(1)[0].classList.contains("followed")).toBe(false);
+        });
+
+        it("keeps the followed dot visible at the front of a long queue", async () => {
+            const {api, dotsOf, visible} = setup({frames: waitingAt(30), batches: emptyBatches(0, 6)});
+            api.start();
+            await play(50);
+            expect(visible(dotsOf(30)[0])).toBe(false);
+
+            api.setFollowedCase(30);
+            await play(50);
+
+            expect(visible(dotsOf(30)[0])).toBe(true);
+        });
+
+        it("keeps the followed dot visible when a task only shows a count", async () => {
+            const {api, dotsOf, visible} = setup({frames: waitingAt(20, "Task_A"), batches: emptyBatches(0, 6)});
+            api.start();
+            await play(50);
+            expect(visible(dotsOf(7)[0])).toBe(false);
+
+            api.setFollowedCase(7);
+            await play(50);
+
+            expect(visible(dotsOf(7)[0])).toBe(true);
+            expect(visible(dotsOf(8)[0])).toBe(false);
+        });
+
+        it("marks dots created later too", async () => {
+            const {api, dotsOf} = setup({batches: [batch(0, [
+                event(1, LifecycleTypes.CASE_ARRIVAL, 0.5, "Start", {token_0: ["Start", "Flow_S_A"]}),
+            ]), ...emptyBatches(1, 6)]});
+            api.start();
+            api.setFollowedCase(1);
+            await play(1500);
+
+            expect(dotsOf(1)[0].classList.contains("followed")).toBe(true);
+        });
+
+        it("says what a case is doing", async () => {
+            const {api} = setup({frames: waitingAt(1, "Task_A"), batches: emptyBatches(0, 6)});
+            api.start();
+            await play(50);
+
+            expect(api.describeCase(1)).toEqual(["In work: Check form", expect.stringMatching(/^Open since before /)]);
+            expect(api.describeCase(99)).toEqual([]);
+        });
     });
 
     describe("where the dots rest", () => {
@@ -268,7 +458,7 @@ describe("modules/simulation/index", () => {
             expect(pill.textContent).toBe("8 waiting");
             expect(pill.getAttribute("data-element")).toBe("J");
             const rect = pill.querySelector("rect");
-            expect(Number(rect.getAttribute("x")) + Number(rect.getAttribute("width")) / 2).toBe(600);
+            expect(Number(rect.getAttribute("x"))).toBe(604);
             expect(Number(rect.getAttribute("y"))).toBe(-8);
             pill.dispatchEvent(new MouseEvent("click"));
             expect(onTaskClick).not.toHaveBeenCalled();
@@ -383,6 +573,7 @@ describe("modules/simulation/index", () => {
                 "Case 1",
                 "Waiting for Check form for 54 min",
                 "Case open 54 min",
+                "Click to follow this case",
             ]);
 
             dotsOf(3)[0].dispatchEvent(new MouseEvent("mouseover", {bubbles: true}));
@@ -403,10 +594,37 @@ describe("modules/simulation/index", () => {
             const tooltip = document.getElementById("token-tooltip");
 
             dotsOf(1)[0].dispatchEvent(new MouseEvent("mouseover", {bubbles: true}));
-            expect(tooltip.lastElementChild.textContent).toMatch(/^Case open 2 d/);
+            expect(tooltip.children[2].textContent).toMatch(/^Case open 2 d/);
 
             dotsOf(2)[0].dispatchEvent(new MouseEvent("mouseover", {bubbles: true}));
-            expect(tooltip.lastElementChild.textContent).toMatch(/^Open since before /);
+            expect(tooltip.children[2].textContent).toMatch(/^Open since before /);
+        });
+
+        it("names a task and its load on hover", async () => {
+            const {api, container, graphics} = setup({frames: waitingAt(2), batches: emptyBatches(0, 6)});
+            api.start();
+            await play(50);
+            container.querySelector("svg").appendChild(graphics.Task_A);
+            graphics.Task_A.classList.add("djs-shape");
+            graphics.Task_A.setAttribute("data-element-id", "Task_A");
+
+            graphics.Task_A.querySelector("rect").dispatchEvent(new MouseEvent("mouseover", {bubbles: true}));
+
+            const tooltip = document.getElementById("token-tooltip");
+            expect(tooltip.style.display).toBe("block");
+            expect([...tooltip.children].map(line => line.textContent)).toEqual(["Check form", "2 waiting · 0 in work"]);
+        });
+
+        it("hides the tooltip after a tap, where no mouse will leave", async () => {
+            const {api, dotsOf} = setup({frames: waitingAt(1), batches: emptyBatches(0, 6)});
+            api.start();
+            await play(50);
+            const tooltip = document.getElementById("token-tooltip");
+
+            dotsOf(1)[0].dispatchEvent(new MouseEvent("mouseover", {bubbles: true}));
+            dotsOf(1)[0].dispatchEvent(new MouseEvent("click", {bubbles: true}));
+
+            expect(tooltip.style.display).toBe("none");
         });
 
         it("lists the cases at a task, waiting first and longest waiting first", async () => {

@@ -33,6 +33,8 @@ export interface Node {
     width: number,
     height: number,
     businessObject?: BusinessObject,
+    incoming?: Array<Flow>,
+    outgoing?: Array<Flow>,
 }
 
 export interface Waypoint {

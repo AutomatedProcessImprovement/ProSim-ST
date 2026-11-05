@@ -78,6 +78,12 @@ export type WTPTState = Record<string, ActivityStats>;
 
 export type ColorMode = "state" | "age";
 
+export type InitialView = {
+    moment?: number;
+    hoursPerSecond?: number;
+    colorMode?: ColorMode;
+};
+
 export type TaskLoad = Record<string, {waiting: number; inWork: number}>;
 
 export type QueueEntry = {
@@ -90,6 +96,9 @@ export type QueueEntry = {
 export type SimulationHooks = {
     onTaskLoad?: (load: TaskLoad) => void;
     onTaskClick?: (taskId: string) => void;
+    onCaseClick?: (caseId: number) => void;
+    onViewChange?: () => void;
+    onOpenFailed?: () => void;
     getCaseArrival?: (caseId: number) => number | undefined;
     getAverageCycleTime?: () => number | null;
     describeMoment?: (moment: number) => string | null;
@@ -98,6 +107,8 @@ export type SimulationHooks = {
 export type TokenSimulationApi = {
     start: () => void;
     setColorMode: (mode: ColorMode) => void;
+    setFollowedCase: (caseId: number | null) => void;
+    describeCase: (caseId: number) => string[];
     getTaskQueue: (taskId: string) => QueueEntry[];
     getCurrentTime: () => number | null;
 };
