@@ -9,6 +9,13 @@ export type RestPlace = {
     taskId?: string;
 };
 
+export type Rest = {
+    caseId: number;
+    tokenId: string;
+    elementId: string;
+    place: RestPlace;
+};
+
 type LayoutElement = {
     id?: string;
     type: string;
