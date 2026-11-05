@@ -15,7 +15,7 @@ test.describe('Setup wizard', () => {
         await page.route('**/api/simulation', async route => {
             if (route.request().method() === 'POST') {
                 await route.fulfill({
-                    status: 201,
+                    status: 202,
                     contentType: 'application/json',
                     body: JSON.stringify({ id: PROCESS_ID }),
                 });
@@ -23,6 +23,10 @@ test.describe('Setup wizard', () => {
                 await route.continue();
             }
         });
+        await page.route(`**/api/simulation/${PROCESS_ID}/status`, route => route.fulfill({
+            contentType: 'application/json',
+            body: JSON.stringify({ stage: 'done', durations: {} }),
+        }));
 
         // Mock the simulation retrieval so the page can load after navigation
         await page.route(`**/api/simulation/${PROCESS_ID}`, async route => {
@@ -166,7 +170,7 @@ test.describe('Setup wizard', () => {
         await setup.clickRun();
 
         // Error toast should appear
-        await setup.expectToastContaining('Error occurred!');
+        await setup.expectToastContaining('The simulation could not be started');
 
         // Should NOT have navigated away from /setup
         expect(page.url()).toContain('/setup');

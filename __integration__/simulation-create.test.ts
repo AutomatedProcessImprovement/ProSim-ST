@@ -52,14 +52,29 @@ jest.mock('@db/redis/redis', () => ({
     REDIS_KEY_PREFIX_CYCLE_TIME: 'cycle-time:',
 }));
 
+import {readFileSync} from 'fs';
+import {join} from 'path';
 import {POST} from '../app/api/simulation/route';
 import {createMySQLConnection} from '@db/mysql/typeorm';
 import {getRedisInstance} from '@db/redis/redis';
+import {getJob} from '@utils/simulationJobs';
 import axios from 'axios';
 import {startTestDb, stopTestDb, clearTables, TestDb} from './helpers/db';
 import {startTestRedis, stopTestRedis, makeRedisFactory, TestRedis} from './helpers/redis';
 
 const PROCESS_ID = 'integ-create-001';
+const FAILED_PROCESS_ID = 'integ-create-002';
+const BPMN = readFileSync(join(__dirname, '../e2e/fixtures/sample.bpmn'), 'utf8');
+const PARAMETERS = readFileSync(join(__dirname, '../e2e/fixtures/sample.json'), 'utf8');
+
+const finishedJob = async (id: string) => {
+    for (let attempt = 0; attempt < 200; attempt++) {
+        const job = getJob(id);
+        if (job?.stage === 'done' || job?.stage === 'failed') return job;
+        await new Promise(resolve => setTimeout(resolve, 25));
+    }
+    throw new Error(`Simulation ${id} did not finish`);
+};
 
 describe('POST /api/simulation (integration)', () => {
     let db: TestDb;
@@ -104,10 +119,10 @@ describe('POST /api/simulation (integration)', () => {
         formData.append('id', PROCESS_ID);
         formData.append(
             'bpmnFile',
-            new File([new Blob(['<definitions/>'])], 'model.bpmn', {type: 'application/xml'})
+            new File([new Blob([BPMN])], 'model.bpmn', {type: 'application/xml'})
         );
         formData.append('logFile', new File([''], 'log.csv'));
-        formData.append('jsonFile', new File(['{}'], 'params.json'));
+        formData.append('jsonFile', new File([PARAMETERS], 'params.json'));
         formData.append('config', JSON.stringify({
             startingPoint: '2024-01-01T00:00:00',
             simulationHorizonValue: 1,
@@ -118,8 +133,9 @@ describe('POST /api/simulation (integration)', () => {
         const request = new Request('http://localhost/api/simulation', {method: 'POST', body: formData});
         const response = await POST(request);
 
-        expect(response.status).toBe(201);
+        expect(response.status).toBe(202);
         expect(response.body).toEqual({id: PROCESS_ID});
+        expect((await finishedJob(PROCESS_ID)).stage).toBe('done');
 
         // MySQL: one Process row with correct dates
         const processes = await db.dataSource.query(
@@ -157,17 +173,17 @@ describe('POST /api/simulation (integration)', () => {
         expect(response.status).toBe(400);
     });
 
-    it('returns 500 when the Python microservice is unavailable', async () => {
+    it('fails the job when the Python microservice is unavailable', async () => {
         (axios.post as jest.Mock).mockRejectedValue(new Error('ECONNREFUSED'));
 
         const formData = new FormData();
-        formData.append('id', PROCESS_ID);
+        formData.append('id', FAILED_PROCESS_ID);
         formData.append(
             'bpmnFile',
-            new File([new Blob(['<definitions/>'])], 'model.bpmn')
+            new File([new Blob([BPMN])], 'model.bpmn')
         );
         formData.append('logFile', new File([''], 'log.csv'));
-        formData.append('jsonFile', new File(['{}'], 'params.json'));
+        formData.append('jsonFile', new File([PARAMETERS], 'params.json'));
         formData.append('config', JSON.stringify({
             startingPoint: '2024-01-01T00:00:00',
             simulationHorizonValue: 1,
@@ -178,11 +194,14 @@ describe('POST /api/simulation (integration)', () => {
         const request = new Request('http://localhost/api/simulation', {method: 'POST', body: formData});
         const response = await POST(request);
 
-        expect(response.status).toBe(500);
+        expect(response.status).toBe(202);
+        const job = await finishedJob(FAILED_PROCESS_ID);
+        expect(job.stage).toBe('failed');
+        expect(job.error?.message).toContain('could not be reached');
 
         // No rows should have been written
         const processes = await db.dataSource.query(
-            'SELECT id FROM process WHERE id = ?', [PROCESS_ID]
+            'SELECT id FROM process WHERE id = ?', [FAILED_PROCESS_ID]
         );
         expect(processes).toHaveLength(0);
     });
