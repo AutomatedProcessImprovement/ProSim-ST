@@ -7,7 +7,7 @@ The system has two parts:
 | Part | Repository | Stack |
 | --- | --- | --- |
 | Web app (this repository) | [ProSim-ST](https://github.com/AutomatedProcessImprovement/ProSim-ST) | Next.js, React, TypeORM |
-| Simulation service | [ongoing-bps-state](https://github.com/AutomatedProcessImprovement/ongoing-bps-state) | FastAPI, Prosimos |
+| Simulation service | [ongoing-bps-state](https://github.com/AutomatedProcessImprovement/ongoing-bps-state/tree/web-application-version), branch `web-application-version` | FastAPI, Prosimos |
 
 Both use the same MySQL database. The web app also needs Redis.
 
@@ -25,7 +25,7 @@ Clone both repositories side by side:
 
 ```bash
 git clone https://github.com/AutomatedProcessImprovement/ProSim-ST.git
-git clone https://github.com/AutomatedProcessImprovement/ongoing-bps-state.git
+git clone -b web-application-version https://github.com/AutomatedProcessImprovement/ongoing-bps-state.git
 ```
 
 Start MySQL and Redis:
@@ -80,7 +80,7 @@ Open http://localhost:3000. The start page offers two sample processes, so you c
 
 ## Run with Docker
 
-The commands below build and start all four containers on one network. Run them from this repository, with `ongoing-bps-state` cloned next to it, and use your own passwords.
+The commands below build and start all four containers on one network. Run them from this repository, with the `web-application-version` branch of `ongoing-bps-state` cloned next to it, and use your own passwords.
 
 ```bash
 docker network create prosim
