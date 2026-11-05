@@ -57,7 +57,6 @@ export class SetupPage {
     }
 
     async openMappingListbox(currentValue: string) {
-        // HeadlessUI Field sets aria-labelledby on the button; match by text content instead
         await this.page.locator('button').filter({ hasText: currentValue }).click();
     }
 
@@ -75,8 +74,6 @@ export class SetupPage {
     }
 
     async isOnStep(stepLabel: string) {
-        // Use .first() to avoid strict mode violation: both the stepper button span
-        // and the form h1 may contain the label text simultaneously
         await expect(this.page.getByText(stepLabel, { exact: false }).first()).toBeVisible();
     }
 }

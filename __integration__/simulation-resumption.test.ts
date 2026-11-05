@@ -1,13 +1,3 @@
-/**
- * Integration test: POST /api/simulation/[id]/resumption
- *
- * Verifies that seeking to a mid-simulation timestamp returns:
- * - Correct finished-case count
- * - Correct WTPT metrics up to that point
- * - Repaired token IDs consistent with pre-computed event paths
- * - Correct subsequent batch window
- */
-
 jest.mock('next/server', () => ({
     NextResponse: {
         json: (body: unknown, init?: {status?: number}) => ({body, status: init?.status ?? 200}),
@@ -90,7 +80,6 @@ describe('POST /api/simulation/[id]/resumption (integration)', () => {
 
         (axios.post as jest.Mock).mockResolvedValue({data: {frames: []}});
 
-        // Resume at hour 9 (UTC): cases 1 and 2 are done; case 3 is still active
         const requestedDate = new Date(BASE.getTime() + 9 * 3_600_000);
         const response = await POST(
             makeRequest({requestedDate: requestedDate.toISOString()}),
@@ -107,7 +96,6 @@ describe('POST /api/simulation/[id]/resumption (integration)', () => {
             startDate: ts(BASE, 0),
             endDate: ts(BASE, 10),
         });
-        // One complete enable→start→complete cycle for task1 before hour 5
         await seedEvents(db.dataSource, [
             {caseId: 1, lifecycle: LifecycleTypes.ENABLE,   timestamp: ts(BASE, 1), nodeId: 'task1', paths: {t1: ['task1']}, processId: PROCESS_ID},
             {caseId: 1, lifecycle: LifecycleTypes.START,    timestamp: ts(BASE, 2), nodeId: 'task1', paths: {t1: ['task1']}, processId: PROCESS_ID},
@@ -125,7 +113,6 @@ describe('POST /api/simulation/[id]/resumption (integration)', () => {
         expect(response.status).toBe(200);
         const wtpt = (response.body as any).wtpt as Record<string, any>;
         expect(wtpt).toHaveProperty('task1');
-        // WT = START - ENABLE = 1h; PT = COMPLETE - START = 1h (both in ms)
         const oneHourMs = 60 * 60 * 1000;
         expect(wtpt['task1'].averageWT).toBeCloseTo(oneHourMs, -5);
         expect(wtpt['task1'].averagePT).toBeCloseTo(oneHourMs, -5);
@@ -137,7 +124,6 @@ describe('POST /api/simulation/[id]/resumption (integration)', () => {
             startDate: ts(BASE, 0),
             endDate: ts(BASE, 10),
         });
-        // Pre-computed events establish that token "real-t1" is associated with "task1"
         await seedEvents(db.dataSource, [
             {
                 caseId: 1,
@@ -149,7 +135,6 @@ describe('POST /api/simulation/[id]/resumption (integration)', () => {
             },
         ]);
 
-        // Python returns a frame using a different token ID ("py-t1") for the same element
         (axios.post as jest.Mock).mockResolvedValue({
             data: {
                 frames: [
@@ -167,7 +152,6 @@ describe('POST /api/simulation/[id]/resumption (integration)', () => {
         expect(response.status).toBe(200);
         const frames = (response.body as any).frames as any[];
         expect(frames).toHaveLength(1);
-        // Token should be repaired to use "real-t1" (the ID seen in pre-computed events)
         expect(frames[0].activeElements).toHaveProperty('real-t1', 'task1');
         expect(frames[0].activeElements).not.toHaveProperty('py-t1');
     });
@@ -181,7 +165,7 @@ describe('POST /api/simulation/[id]/resumption (integration)', () => {
 
         (axios.post as jest.Mock).mockResolvedValue({data: {frames: []}});
 
-        const pastDate = new Date(BASE.getTime() + 10 * 3_600_000); // After endDate (hour 5)
+        const pastDate = new Date(BASE.getTime() + 10 * 3_600_000);
         const response = await POST(
             makeRequest({requestedDate: pastDate.toISOString()}),
             makeContext(PROCESS_ID)

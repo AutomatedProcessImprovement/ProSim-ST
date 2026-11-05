@@ -125,7 +125,6 @@ const Simulation = () => {
         if (initializedProcessIdRef.current === processId) return;
         initializedProcessIdRef.current = processId;
 
-        // Reset local state when switching to a new simulation id.
         xmlFetchedRef.current = false;
         setXml(null);
         setSimulationData(undefined);

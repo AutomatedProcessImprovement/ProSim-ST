@@ -19,7 +19,7 @@ export const buildWTPTState = (events: Array<{
 
         if (!state[nodeId]) {
             state[nodeId] = {
-                name: nodeId, // name will be overridden on the client side from the BPMN map anyway
+                name: nodeId,
                 averageWT: 0,
                 averagePT: 0,
                 _count: 0,

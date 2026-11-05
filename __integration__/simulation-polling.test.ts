@@ -1,10 +1,3 @@
-/**
- * Integration test: GET /api/simulation/[id]/polling
- *
- * Verifies incremental batch loading: correct events per window, pointer
- * arithmetic, and the -1 sentinel when the simulation is exhausted.
- */
-
 jest.mock('next/server', () => ({
     NextResponse: {
         json: (body: unknown, init?: {status?: number}) => ({body, status: init?.status ?? 200}),
@@ -64,7 +57,6 @@ describe('GET /api/simulation/[id]/polling (integration)', () => {
     });
 
     it('returns correct batch window and increments pointer', async () => {
-        // Simulation spans 40 hours; seed one arrival event per 10 hours
         await seedProcess(db.dataSource, {
             id: PROCESS_ID,
             startDate: ts(BASE, 0),
@@ -77,7 +69,6 @@ describe('GET /api/simulation/[id]/polling (integration)', () => {
             {caseId: 4, lifecycle: LifecycleTypes.CASE_ARRIVAL, timestamp: ts(BASE, 30), nodeId: 'start', paths: {}, processId: PROCESS_ID},
         ]);
 
-        // First poll: pointer=15 (after the 15-hour initial load), limit=10
         const r1 = await GET(
             makeRequest('http://localhost?pointer=15&limit=10'),
             makeContext(PROCESS_ID)
@@ -85,12 +76,10 @@ describe('GET /api/simulation/[id]/polling (integration)', () => {
         expect(r1.status).toBe(200);
         const d1 = r1.body as any;
         expect(d1.pointer).toBe(25);
-        // Only the event at hour 20 falls in the [15h, 25h) window
         const events1 = d1.batches.flatMap((b: any) => b.events);
         expect(events1).toHaveLength(1);
         expect(events1[0].caseId).toBe(3);
 
-        // Second poll: pointer=25, limit=10
         const r2 = await GET(
             makeRequest('http://localhost?pointer=25&limit=10'),
             makeContext(PROCESS_ID)
@@ -129,7 +118,6 @@ describe('GET /api/simulation/[id]/polling (integration)', () => {
             {caseId: 1, lifecycle: LifecycleTypes.CASE_END, timestamp: ts(BASE, 29), nodeId: 'end', paths: {}, processId: PROCESS_ID},
         ]);
 
-        // Request window [20h, 30h] — covers the end of the simulation
         const response = await GET(
             makeRequest('http://localhost?pointer=20&limit=10'),
             makeContext(PROCESS_ID)

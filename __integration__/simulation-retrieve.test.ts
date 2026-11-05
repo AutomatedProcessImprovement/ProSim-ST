@@ -1,11 +1,3 @@
-/**
- * Integration test: GET /api/simulation/[id]
- *
- * Verifies the initial data retrieval: event grouping into hourly batches,
- * Redis cache population on first load, cache hit on subsequent loads,
- * and correct 404/410 error responses.
- */
-
 jest.mock('next/server', () => ({
     NextResponse: {
         json: (body: unknown, init?: {status?: number}) => ({body, status: init?.status ?? 200}),
@@ -16,7 +8,6 @@ jest.mock('fs/promises', () => {
     const real = jest.requireActual<typeof import('fs/promises')>('fs/promises');
     return {
         ...real,
-        // Return dummy BPMN for public/assets reads; delegate everything else (incl. Docker config) to the real fs
         readFile: jest.fn((path: string, ...args: unknown[]) => {
             if (typeof path === 'string' && path.includes('public/assets')) {
                 return Promise.resolve(Buffer.from('<definitions/>'));
@@ -96,7 +87,6 @@ describe('GET /api/simulation/[id] (integration)', () => {
             endDate: ts(BASE, 20),
         });
 
-        // Seed events spread over 20 hours: one arrival per hour for 4 cases
         const events = Array.from({length: 4}, (_, i) => ({
             caseId: i + 1,
             lifecycle: LifecycleTypes.CASE_ARRIVAL,
@@ -114,7 +104,6 @@ describe('GET /api/simulation/[id] (integration)', () => {
         const data = response.body as any;
         expect(data.processId).toBe(PROCESS_ID);
         expect(Array.isArray(data.batches)).toBe(true);
-        // 15-hour window from hour 0 → only the first 3 arrivals (hours 0, 5, 10) are in range
         const allEvents = (data.batches as any[]).flatMap((b: any) => b.events);
         expect(allEvents.length).toBe(3);
         expect(data.pointer).toBe(15);
@@ -131,7 +120,6 @@ describe('GET /api/simulation/[id] (integration)', () => {
             {caseId: 2, activeElements: {t2: 'task2'}, processId: PROCESS_ID},
         ]);
 
-        // First load — cache miss, should populate Redis
         const r1 = await GET(makeRequest('http://localhost'), makeContext(PROCESS_ID));
         expect(r1.status).toBe(200);
         const cached = await redisTest.client.get(`frames:${PROCESS_ID}`);
@@ -139,7 +127,6 @@ describe('GET /api/simulation/[id] (integration)', () => {
         const cachedFrames = JSON.parse(cached!);
         expect(cachedFrames).toHaveLength(2);
 
-        // Delete frames from MySQL to confirm the second load comes from Redis
         await db.dataSource.query('DELETE FROM frame WHERE processId = ?', [PROCESS_ID]);
 
         const r2 = await GET(makeRequest('http://localhost'), makeContext(PROCESS_ID));

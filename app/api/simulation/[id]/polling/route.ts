@@ -43,7 +43,6 @@ export const GET = async (
             return NextResponse.json({ error: "Process is marked for deletion" }, { status: 410 });
         }
 
-        // Update lastAccessedAt
         await processRepository.update({ id: processId }, { lastAccessedAt: new Date() });
 
         const startDate = new Date(simulationProcess.startDate + "Z");

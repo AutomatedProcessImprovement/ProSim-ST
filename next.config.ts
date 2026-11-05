@@ -6,7 +6,6 @@ const nextConfig = {
   },
   webpack: (config, { isServer }) => {
     if (isServer) {
-      // Externalize typeorm on server side to avoid bundling optional drivers
       config.externals = config.externals || [];
       config.externals.push({
         'typeorm': 'typeorm',
@@ -14,7 +13,6 @@ const nextConfig = {
         'typeorm/driver/DriverFactory': 'typeorm/driver/DriverFactory',
       });
 
-      // Suppress warnings for optional typeorm drivers not included
       config.ignoreWarnings = config.ignoreWarnings || [];
       config.ignoreWarnings.push({
         module: /node_modules\/typeorm/,

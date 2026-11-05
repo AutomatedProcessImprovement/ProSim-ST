@@ -163,7 +163,7 @@ The simulation service keeps its own migrations, which run with `alembic upgrade
 
 ## Deployment
 
-Pushes to `main` run the tests in `.github/workflows/deploy.yml`, then deploy over SSH with Docker Compose. The Compose file lives on the server. Old simulations are removed by a nightly cleanup, described in [cron/README.md](cron/README.md).
+Pushes to `main` run the tests in `.github/workflows/deploy.yml`. Old simulations are removed by a nightly cleanup, described in [cron/README.md](cron/README.md).
 
 ## License
 

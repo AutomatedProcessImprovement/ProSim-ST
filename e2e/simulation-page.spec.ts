@@ -1,18 +1,3 @@
-/**
- * E2E tests: Simulation page (/simulation/[id])
- *
- * All API calls are mocked. The simulation auto-plays on load.
- * Token tests use the `circle.token` SVG selector.
- *
- * Fixture uses 4 batches of 15 min each (500ms real time per batch at default delta).
- * Timeline:
- *   t=0:     1 token (case 1 at Task_1, from frames)
- *   t~0.5s:  0 tokens (case 1 ends in batch 0)
- *   t~1.0s:  1 token  (case 2 starts in batch 1)
- *   t~1.5s:  2 tokens (case 3 starts in batch 2)
- *   t~2.0s:  0 tokens (cases 2 and 3 end in batch 3)
- */
-
 import { test, expect, type Page } from '@playwright/test';
 import { SimulationPage } from './pages/SimulationPage';
 import { simulationFixture, workloadFixture, cycleTimeFixture, resumptionFixture } from './fixtures/simulationFixtures';
@@ -78,12 +63,10 @@ test.describe('Simulation page', () => {
         await sim.goto(PROCESS_ID);
         await sim.waitForBpmnCanvas();
 
-        // Simulation auto-starts on BPMN import; wait for the time display to show a date
         await sim.waitForAutoPlay();
         const t1 = await sim.getCurrentTime();
         expect(t1).not.toBe('--');
 
-        // Verify it keeps advancing (not frozen after first update)
         await expect(async () => {
             const t2 = await sim.getCurrentTime();
             expect(t2).not.toBe(t1);
@@ -96,7 +79,6 @@ test.describe('Simulation page', () => {
         await sim.goto(PROCESS_ID);
         await sim.waitForBpmnCanvas();
 
-        // frames fixture has 1 case (caseId 1 at Task_1) → 1 token created on simulation start
         await expect(sim.tokens).toHaveCount(1, { timeout: 10_000 });
     });
 
@@ -106,16 +88,12 @@ test.describe('Simulation page', () => {
         await sim.goto(PROCESS_ID);
         await sim.waitForBpmnCanvas();
 
-        // Wait for simulation to start advancing
         await sim.waitForAutoPlay();
 
-        // Pause
         await sim.clickPlayPause();
 
-        // Record time immediately after pause
         const timePaused = await sim.getCurrentTime();
 
-        // Wait 1 second — if paused, the display should not change
         await page.waitForTimeout(1000);
 
         const timeAfterWait = await sim.getCurrentTime();
@@ -130,12 +108,10 @@ test.describe('Simulation page', () => {
 
         await sim.waitForAutoPlay();
 
-        // Pause, then immediately resume
         await sim.clickPlayPause();
         const timePaused = await sim.getCurrentTime();
         await sim.clickPlayPause();
 
-        // Wait for time to advance past the paused value
         await expect(async () => {
             const newTime = await sim.getCurrentTime();
             expect(newTime).not.toBe(timePaused);
@@ -148,14 +124,12 @@ test.describe('Simulation page', () => {
         await sim.goto(PROCESS_ID);
         await sim.waitForBpmnCanvas();
 
-        // Wait for simulation to start
         await sim.waitForAutoPlay();
         const timeBeforeSpeedChange = await sim.getCurrentTime();
 
         await sim.setSpeed('0.5');
         await expect(sim.speedSelect).toHaveValue('0.5');
 
-        // Speed change resets simulation (300ms delay then restarts); time should keep advancing
         await expect(async () => {
             const newTime = await sim.getCurrentTime();
             expect(newTime).not.toBe(timeBeforeSpeedChange);
@@ -177,7 +151,6 @@ test.describe('Simulation page', () => {
         ]);
 
         const body = resumptionRequest.postDataJSON();
-        // Progress 0 → requestedDate = initialDate (2024-01-01 00:00:00)
         expect(body.requestedDate).toContain('2024-01-01');
     });
 
@@ -196,7 +169,6 @@ test.describe('Simulation page', () => {
         ]);
 
         const body = resumptionRequest.postDataJSON();
-        // Progress 100 → requestedDate = finalDate (2024-01-01 01:00:00)
         expect(body.requestedDate).toContain('2024-01-01');
     });
 
@@ -225,8 +197,6 @@ test.describe('Simulation page', () => {
         await sim.goto(PROCESS_ID);
         await sim.waitForBpmnCanvas();
 
-        // Batch 1 creates t2 (case 2), batch 2 creates t3 (case 3).
-        // With 500ms per batch, both are active ~1.5s into the simulation.
         await expect(sim.tokens).toHaveCount(2, { timeout: 8_000 });
     });
 
@@ -236,10 +206,8 @@ test.describe('Simulation page', () => {
         await sim.goto(PROCESS_ID);
         await sim.waitForBpmnCanvas();
 
-        // Start with 1 token (from frames)
         await expect(sim.tokens).toHaveCount(1, { timeout: 8_000 });
 
-        // Batch 0 ends case 1 → token deleted (~0.5s later)
         await expect(sim.tokens).toHaveCount(0, { timeout: 5_000 });
     });
 
@@ -249,16 +217,12 @@ test.describe('Simulation page', () => {
         await sim.goto(PROCESS_ID);
         await sim.waitForBpmnCanvas();
 
-        // Wait for at least one token to be present
         await expect(sim.tokens).toHaveCount(1, { timeout: 10_000 });
 
-        // Pause
         await sim.clickPlayPause();
 
-        // Resume — the code calls querySelectorAll('.token').forEach(t => t.remove()) on resume
         await sim.clickPlayPause();
 
-        // Tokens are bulk-removed during the resume reset patch, before runSimulation re-creates them
         await expect(async () => {
             const count = await sim.getTokenCount();
             expect(count).toBe(0);
@@ -271,21 +235,16 @@ test.describe('Simulation page', () => {
         await sim.goto(PROCESS_ID);
         await sim.waitForBpmnCanvas();
 
-        // Wait for the initial token (case 1 at Task_1)
         await expect(sim.tokens).toHaveCount(1, { timeout: 10_000 });
 
-        // Record initial position
         const pos1 = await sim.tokens.first().evaluate((el: SVGCircleElement) => ({
             cx: el.getAttribute('cx'),
             cy: el.getAttribute('cy'),
         }));
 
-        // Batch 0 animates t1 from Task_1 along Flow_2 to EndEvent_1 (~500ms)
-        // Either the position changes mid-animation, or the token is deleted after reaching EndEvent_1.
-        // Both indicate the animation ran correctly.
         await expect(async () => {
             const count = await sim.getTokenCount();
-            if (count === 0) return; // token was deleted after completing animation — success
+            if (count === 0) return;
 
             const pos2 = await sim.tokens.first().evaluate((el: SVGCircleElement) => ({
                 cx: el.getAttribute('cx'),

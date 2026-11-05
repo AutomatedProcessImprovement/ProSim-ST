@@ -4,10 +4,6 @@ import { join } from 'path';
 const bpmnContent = readFileSync(join(__dirname, 'sample.bpmn'), 'utf-8');
 const bpmnBuffer = Buffer.from(bpmnContent, 'utf-8');
 
-// Simulation spans 3 hours in 12 batches of 15 minutes each.
-// At default delta=2000ms, each batch takes ~500ms real time → full run ~6s.
-// At 2x speed each batch takes ~250ms → full run ~3s, which is long enough for
-// the speed-comparison test to measure a full 1s window without the simulation ending.
 export const simulationFixture = {
     processId: 'test-sim-001',
     startDate: '2024-01-01 00:00:00',
@@ -82,7 +78,6 @@ export const simulationFixture = {
                 },
             ],
         },
-        // Empty batches extending the run to 3 hours so the 2x-speed test has room to measure
         { startDate: '2024-01-01T01:00:00.000Z', endDate: '2024-01-01T01:15:00.000Z', events: [] },
         { startDate: '2024-01-01T01:15:00.000Z', endDate: '2024-01-01T01:30:00.000Z', events: [] },
         { startDate: '2024-01-01T01:30:00.000Z', endDate: '2024-01-01T01:45:00.000Z', events: [] },

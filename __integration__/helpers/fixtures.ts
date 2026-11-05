@@ -59,7 +59,6 @@ export const seedFrames = async (
     }
 };
 
-// Produces a UTC datetime string like "2024-01-01 02:00:00" offset by `hours` from base
 export const ts = (base: Date, hours: number): string => {
     const d = new Date(base.getTime() + hours * 3_600_000);
     return d.toISOString().slice(0, 19).replace('T', ' ');

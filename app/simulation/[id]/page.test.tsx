@@ -82,7 +82,6 @@ describe("Simulation page", () => {
         routeId = "p1";
         window.history.replaceState(null, "", "/simulation/p1");
         localStorage.setItem("prosim-help-seen", "1");
-        // Ensure Buffer exists in jsdom tests for the conversion path in the component.
         (globalThis as unknown as { Buffer: typeof Buffer }).Buffer = Buffer;
         importXMLMock.mockResolvedValue(undefined);
         (globalThis as unknown as { Blob: typeof Blob }).Blob = class MockBlob {

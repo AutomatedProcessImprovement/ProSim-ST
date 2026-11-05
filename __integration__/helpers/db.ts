@@ -36,7 +36,6 @@ export const startTestDb = async (): Promise<TestDb> => {
         logging: false,
     });
 
-    // Retry a few times: MySQL may still be finalising auth setup despite the log message
     for (let attempt = 1; attempt <= 5; attempt++) {
         try {
             await dataSource.initialize();

@@ -1,10 +1,3 @@
-/**
- * Integration test: POST /api/simulation
- *
- * Verifies that the creation handler persists simulation data to real MySQL
- * and caches frames in real Redis when the Python microservice responds.
- */
-
 jest.mock('next/server', () => ({
     NextResponse: {
         json: (body: unknown, init?: {status?: number}) => ({body, status: init?.status ?? 200}),
@@ -15,7 +8,6 @@ jest.mock('fs/promises', () => {
     const real = jest.requireActual<typeof import('fs/promises')>('fs/promises');
     return {
         ...real,
-        // No-op writes to public/assets; let testcontainers use the real writeFile elsewhere
         writeFile: jest.fn((path: string, data: unknown, ...args: unknown[]) => {
             if (typeof path === 'string' && path.includes('public/assets')) {
                 return Promise.resolve();
@@ -29,7 +21,6 @@ jest.mock('fs', () => {
     const real = jest.requireActual<typeof import('fs')>('fs');
     return {
         ...real,
-        // Route handler checks/creates public/assets dir; everything else uses the real fs
         existsSync: jest.fn((path: string) => {
             if (typeof path === 'string' && path.includes('public/assets')) return true;
             return real.existsSync(path);
@@ -137,26 +128,22 @@ describe('POST /api/simulation (integration)', () => {
         expect(response.body).toEqual({id: PROCESS_ID});
         expect((await finishedJob(PROCESS_ID)).stage).toBe('done');
 
-        // MySQL: one Process row with correct dates
         const processes = await db.dataSource.query(
             'SELECT id, fileName FROM process WHERE id = ?', [PROCESS_ID]
         );
         expect(processes).toHaveLength(1);
         expect(processes[0].fileName).toContain('model.bpmn');
 
-        // MySQL: all 6 events stored
         const events = await db.dataSource.query(
             'SELECT lifecycle FROM event WHERE processId = ? ORDER BY timestamp', [PROCESS_ID]
         );
         expect(events).toHaveLength(6);
 
-        // MySQL: both frames stored
         const frames = await db.dataSource.query(
             'SELECT caseId FROM frame WHERE processId = ?', [PROCESS_ID]
         );
         expect(frames).toHaveLength(2);
 
-        // Redis: frames cached under the correct key
         const cached = await redisTest.client.get(`frames:${PROCESS_ID}`);
         expect(cached).not.toBeNull();
         const parsed = JSON.parse(cached!);
@@ -199,7 +186,6 @@ describe('POST /api/simulation (integration)', () => {
         expect(job.stage).toBe('failed');
         expect(job.error?.message).toContain('could not be reached');
 
-        // No rows should have been written
         const processes = await db.dataSource.query(
             'SELECT id FROM process WHERE id = ?', [FAILED_PROCESS_ID]
         );
