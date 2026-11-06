@@ -5,7 +5,7 @@ import path from "path";
 import {existsSync, mkdirSync} from "fs";
 import axios from "axios";
 import {AlgorithmConfiguration} from "@definitions/config/interfaces";
-import {calculateEndDate, logTimeToUtc} from "@utils/dateHelpers";
+import {calculateEndDate, logTimeToUtc, toOffsetIso} from "@utils/dateHelpers";
 import {
     mapPyBatchEvent,
     mapPyFrameCase,
@@ -122,13 +122,11 @@ const getSimulationData = async (body: FormData): Promise<SimulationSeedData> =>
     const utcOffset = /^[+-]\d{2}:\d{2}$/.test(configInput.utcOffset ?? "") ? configInput.utcOffset : "+00:00";
     const windowStart = logTimeToUtc(configInput.startingPoint, utcOffset);
     const windowEnd = logTimeToUtc(calculateEndDate(configInput).toISOString().slice(0, 19), utcOffset);
-    const startDate = windowStart.toISOString();
-    const endDate = windowEnd.toISOString();
 
     const reqBody = new FormData();
     reqBody.append("process_id", body.get("id"));
-    reqBody.append("start_time", startDate);
-    reqBody.append("simulation_horizon", endDate);
+    reqBody.append("start_time", toOffsetIso(windowStart, utcOffset));
+    reqBody.append("simulation_horizon", toOffsetIso(windowEnd, utcOffset));
     reqBody.append("event_log", body.get("logFile"));
     reqBody.append("bpmn_model", body.get("bpmnFile"));
     reqBody.append("json_parameters", body.get("jsonFile"));

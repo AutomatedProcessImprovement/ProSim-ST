@@ -1,4 +1,4 @@
-import {calculateEndDate, formatDateString, formatDuration, formatHorizon, formatInLogTime, formatReadableDate, formatShortDate, formatUtcOffset, getHourDifference, logTimeToUtc} from "@utils/dateHelpers";
+import {calculateEndDate, formatDateString, formatDuration, formatHorizon, formatInLogTime, formatReadableDate, formatShortDate, formatUtcOffset, getHourDifference, logTimeToUtc, toOffsetIso} from "@utils/dateHelpers";
 import {TimeUnits} from "@definitions/config/enums";
 
 describe("dateHelpers", () => {
@@ -70,5 +70,12 @@ describe("formatShortDate", () => {
         expect(formatShortDate(date)).toBe("30 May");
         expect(formatShortDate(date, "+02:00")).toBe("31 May");
         expect(formatShortDate(date, "+02:00", true)).toBe("31 May 00:30");
+    });
+});
+
+describe("toOffsetIso", () => {
+    it("writes the same moment on the log's wall clock", () => {
+        expect(toOffsetIso(new Date("2024-01-01T08:00:00Z"), "+02:00")).toBe("2024-01-01T10:00:00.000+02:00");
+        expect(toOffsetIso(new Date("2024-01-01T08:00:00Z"))).toBe("2024-01-01T08:00:00.000+00:00");
     });
 });

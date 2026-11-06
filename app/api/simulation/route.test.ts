@@ -262,8 +262,8 @@ describe("POST /api/simulation", () => {
         const response = await submit(body);
 
         const pythonBody = (axios.post as jest.Mock).mock.calls[0][1] as FormData;
-        expect(pythonBody.get("start_time")).toBe("2024-01-01T08:00:00.000Z");
-        expect(pythonBody.get("simulation_horizon")).toBe("2024-01-02T08:00:00.000Z");
+        expect(pythonBody.get("start_time")).toBe("2024-01-01T10:00:00.000+02:00");
+        expect(pythonBody.get("simulation_horizon")).toBe("2024-01-02T10:00:00.000+02:00");
         expect(queryRunner.query).toHaveBeenNthCalledWith(1, expect.stringContaining("INSERT INTO process"),
             ["process-1", "process-1_model_file.bpmn", "2024-01-01 08:00:00", "2024-01-02 08:00:00", "+02:00"]);
         expect(queryRunner.query).toHaveBeenNthCalledWith(2, expect.stringContaining("INSERT INTO event"),

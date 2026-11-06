@@ -46,6 +46,10 @@ export const formatInLogTime = (date: Date, utcOffset: string = "+00:00") => {
     return formatDateString(new Date(date.getTime() + offsetToMinutes(utcOffset) * 60000));
 }
 
+export const toOffsetIso = (date: Date, utcOffset: string = "+00:00") => {
+    return new Date(date.getTime() + offsetToMinutes(utcOffset) * 60000).toISOString().replace("Z", utcOffset);
+}
+
 export const formatUtcOffset = (utcOffset: string = "+00:00") => `UTC${utcOffset}`;
 
 export const formatReadableDate = (wallClock: string | Date) => {
