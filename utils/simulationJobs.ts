@@ -1,6 +1,7 @@
 export const SIMULATION_STAGES = ["queued", "state", "simulation", "playback", "saving"] as const;
+export const SCENARIO_STAGES = ["queued", "state", "simulation", "repeats", "playback", "saving"] as const;
 
-export type SimulationStage = typeof SIMULATION_STAGES[number];
+export type SimulationStage = typeof SCENARIO_STAGES[number];
 export type JobStage = SimulationStage | "running" | "done" | "failed";
 
 export type JobError = {stage: SimulationStage; message: string};
@@ -65,7 +66,7 @@ export const removeJob = (id: string) => jobs.delete(id);
 
 export type PythonProgress = {stage: string; error?: string | null; durations?: Record<string, number>};
 
-const PYTHON_STAGES = new Set<string>(["queued", "state", "simulation", "playback"]);
+const PYTHON_STAGES = new Set<string>(["queued", "state", "simulation", "repeats", "playback"]);
 
 export const jobStatus = (job: SimulationJob, progress: PythonProgress | null, now = Date.now()): JobStatus => {
     const durations: JobStatus["durations"] = {};

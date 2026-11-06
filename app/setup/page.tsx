@@ -30,12 +30,10 @@ import {
     validateSimulationInputs,
 } from "@utils/inputValidation";
 import {JobStatus} from "@utils/simulationJobs";
+import {pollRun} from "@utils/pollRun";
 import RunProgress, {STAGE_LABELS} from "@components/simulationSetup/RunProgress";
 
-const POLL_INTERVAL_MS = 1000;
-const MAX_POLL_FAILURES = 30;
 
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 const IssueList = ({issues}: {issues: string[]}) =>
     <ul className='list-disc pl-4'>{issues.map(issue => <li key={issue}>{issue}</li>)}</ul>;
@@ -253,31 +251,6 @@ const Setup = () => {
         return true;
     }
 
-    const pollRun = async (id: string): Promise<JobStatus | null> => {
-        let failures = 0;
-        while (mountedRef.current) {
-            await sleep(POLL_INTERVAL_MS);
-            try {
-                const {data: status} = await axios.get<JobStatus>(`/api/simulation/${id}/status`);
-                failures = 0;
-                if (mountedRef.current) setRunStatus(status);
-                if (status.stage === 'done' || status.stage === 'failed') return status;
-            } catch (error) {
-                if (error?.response?.status === 404 || ++failures >= MAX_POLL_FAILURES) {
-                    return {
-                        stage: 'failed',
-                        durations: {},
-                        error: {
-                            stage: 'queued',
-                            message: error?.response?.data?.error ?? 'Lost contact with the server while the simulation was running.',
-                        },
-                    };
-                }
-            }
-        }
-        return null;
-    }
-
     const onSubmit = async () => {
         if (isSubmitting) return;
 
@@ -308,7 +281,7 @@ const Setup = () => {
         }
 
         setRunStatus({stage: 'queued', durations: {}});
-        const status = await pollRun(id);
+        const status = await pollRun(id, setRunStatus, () => mountedRef.current);
         if (!status) return;
 
         if (status.stage === 'done') {
