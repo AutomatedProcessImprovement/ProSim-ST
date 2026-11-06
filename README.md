@@ -127,6 +127,14 @@ docker run -d --name prosim-st --network prosim \
 
 With `RUN_MIGRATIONS=1`, each app waits for MySQL and applies its migrations before it starts. The app is then at http://localhost:3000. The port is bound to `127.0.0.1`, so put a reverse proxy in front of it to serve it publicly.
 
+## What-if runs and resources
+
+Every run saves its computed process state and random seed. **What-if** reruns from that same state with changed pool sizes, arrival volume or task durations, and opens a comparison of queues, waiting times and resource use. With no changes, a rerun reproduces the original log exactly.
+
+A single run depends on chance, so each what-if also repeats both sides with up to 8 more seeds, and a change counts as clear only when all seeds moved the same way. The repeats share a 60-second budget, set by `SCENARIO_REPEAT_BUDGET_SECONDS` on the simulation service. Simulations that take long get fewer repeats, and the comparison then says it has too few to judge.
+
+**Resources** shows busy, idle and off-shift resources per pool, read from the simulated log and the resource calendars. Runs from before these features can show resources, but have to be run again for what-if.
+
 ## Configuration
 
 The web app reads these variables from `.env`, or from the container environment:

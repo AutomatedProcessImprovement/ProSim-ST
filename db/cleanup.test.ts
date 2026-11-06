@@ -6,6 +6,7 @@ import {cleanupOldProcesses} from "@db/cleanup";
 import {Process} from "@db/entities/Process";
 import {Event} from "@db/entities/Event";
 import {Frame} from "@db/entities/Frame";
+import {Scenario} from "@db/entities/Scenario";
 
 jest.mock("axios", () => ({delete: jest.fn(), post: jest.fn()}));
 
@@ -68,6 +69,7 @@ describe("cleanupOldProcesses", () => {
         expect(axios.delete).toHaveBeenCalledWith("http://py/delete/old");
         expect(manager.delete).toHaveBeenCalledWith(Event, {processId: "old"});
         expect(manager.delete).toHaveBeenCalledWith(Frame, {processId: "old"});
+        expect(manager.delete).toHaveBeenCalledWith(Scenario, {processId: "old"});
         expect(manager.delete).toHaveBeenCalledWith(Process, {id: "old"});
         expect(await readdir(assetsDir)).toEqual(["kept_model.bpmn"]);
         expect(axios.post).toHaveBeenCalledWith("http://py/prune", {keep: ["kept"], min_age_hours: 48});

@@ -4,6 +4,7 @@ import {DataSource} from 'typeorm';
 import {Process} from '../../db/entities/Process';
 import {Event} from '../../db/entities/Event';
 import {Frame} from '../../db/entities/Frame';
+import {Scenario} from '../../db/entities/Scenario';
 
 export type TestDb = {
     container: StartedTestContainer;
@@ -31,7 +32,7 @@ export const startTestDb = async (): Promise<TestDb> => {
         username: 'root',
         password: DB_ROOT_PASS,
         database: DB_NAME,
-        entities: [Process, Event, Frame],
+        entities: [Process, Event, Frame, Scenario],
         synchronize: true,
         logging: false,
     });
@@ -60,6 +61,7 @@ export const clearTables = async (dataSource: DataSource): Promise<void> => {
     await dataSource.query('SET FOREIGN_KEY_CHECKS = 0');
     await dataSource.query('TRUNCATE TABLE frame');
     await dataSource.query('TRUNCATE TABLE event');
+    await dataSource.query('TRUNCATE TABLE scenario');
     await dataSource.query('TRUNCATE TABLE process');
     await dataSource.query('SET FOREIGN_KEY_CHECKS = 1');
 };

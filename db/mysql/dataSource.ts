@@ -3,6 +3,7 @@ import {DataSource} from "typeorm";
 import {Process} from "../entities/Process";
 import {Event} from "../entities/Event";
 import {Frame} from "../entities/Frame";
+import {Scenario} from "../entities/Scenario";
 import {join} from "path";
 
 const parseBool = (value?: string) => value === 'true';
@@ -16,6 +17,6 @@ export const AppDataSource = new DataSource({
     database: process.env.MYSQL_DATABASE,
     synchronize: parseBool(process.env.TYPEORM_SYNCHRONIZE),
     logging: parseBool(process.env.TYPEORM_LOGGING),
-    entities: [Process, Event, Frame],
+    entities: [Process, Event, Frame, Scenario],
     migrations: [join(__dirname, '../migrations/*.ts')],
 });

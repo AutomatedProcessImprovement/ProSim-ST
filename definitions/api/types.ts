@@ -46,6 +46,92 @@ export type SimulationData = {
     utcOffset?: string | null,
     file: Buffer,
     pointer: number,
+    scenario?: ScenarioLink | null,
+}
+
+export type ScenarioEdits = {
+    pools: Record<string, number>;
+    arrivalPercent: number;
+    tasks: Record<string, number>;
+}
+
+export type ScenarioLink = {
+    baseProcessId: string;
+    label: string;
+    edits: ScenarioEdits;
+}
+
+export type WhatIfOptions = {
+    baseProcessId: string;
+    supported: boolean;
+    editablePools: boolean;
+    pools: Array<{id: string; name: string; size: number}>;
+    tasks: Array<{id: string; name: string}>;
+    scenarios: Array<{id: string; label: string}>;
+}
+
+export type TaskSummary = {
+    count: number;
+    waitMs: number | null;
+    queueAverage: number;
+    queuePeak: number;
+    queue: number[];
+}
+
+export type RunSummary = {
+    startDate: string;
+    endDate: string;
+    stepMs: number;
+    arrived: number;
+    finished: number;
+    openAtEnd: number;
+    cycleMs: number | null;
+    waitMs: number | null;
+    queueAverage: number;
+    queuePeak: number;
+    waitingAtEnd: number;
+    queue: number[];
+    tasks: Record<string, TaskSummary>;
+}
+
+export type SeedChange = {mean: number | null; low: number | null; high: number | null}
+
+export type PoolSummary = {id: string; name: string; size: number; utilization: number | null}
+
+export type Comparison = {
+    asIs: RunSummary;
+    toBe: RunSummary;
+    poolsAsIs: PoolSummary[];
+    poolsToBe: PoolSummary[];
+    repeats: {
+        seeds: number;
+        changes: Record<"waitMs" | "queueAverage" | "cycleMs" | "finished", SeedChange>;
+        tasks: Record<string, Record<"waitMs" | "queueAverage", SeedChange>>;
+    };
+}
+
+export type ComparisonResponse = ScenarioLink & {
+    processId: string;
+    utcOffset: string;
+    comparison: Comparison;
+}
+
+export type ResourcePool = {
+    id: string;
+    name: string;
+    size: number;
+    utilization: number | null;
+    busy: number[];
+    idle: number[];
+    resources: Array<{name: string; utilization: number | null}>;
+}
+
+export type ResourceTimeline = {
+    startDate: string;
+    endDate: string;
+    stepMs: number;
+    calendarsKnown: boolean;
+    pools: ResourcePool[];
 }
 
 export type SimulationSeedData = {

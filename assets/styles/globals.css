@@ -308,6 +308,16 @@ h1 {
   color: #115e59;
 }
 
+.count-idle {
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.count-off {
+  background: #f8fafc;
+  color: #64748b;
+}
+
 .task-panel-text {
   color: #334155;
   margin-bottom: 8px;
@@ -335,6 +345,21 @@ h1 {
 .work-line {
   fill: none;
   stroke: #0f766e;
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.busy-area {
+  fill: #0f766e;
+}
+
+.idle-area {
+  fill: #cbd5e1;
+}
+
+.as-is-line {
+  fill: none;
+  stroke: #475569;
   stroke-width: 1.5;
   vector-effect: non-scaling-stroke;
 }
@@ -480,6 +505,264 @@ h1 {
   font-size: 11px;
   color: #475569;
   pointer-events: none;
+}
+
+.swatch-idle {
+  background: #cbd5e1;
+}
+
+.swatch-as-is {
+  background: #475569;
+}
+
+.toolbar-btn[aria-pressed="true"] {
+  border-color: #0f766e;
+  background: #ccfbf1;
+  color: #115e59;
+}
+
+.toolbar-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.resource-pools {
+  margin-top: 4px;
+}
+
+.resource-pool {
+  padding: 6px 0;
+  border-top: 1px solid #e2e8f0;
+}
+
+.resource-pool:first-child {
+  border-top: 0;
+}
+
+.resource-pool-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+}
+
+.resource-pool-name {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.resource-chart svg {
+  height: 56px;
+}
+
+.resource-list {
+  margin-top: 6px;
+}
+
+.resource-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 1px 0;
+}
+
+.resource-name {
+  flex: 0 0 45%;
+  overflow: hidden;
+  color: #334155;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resource-bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: #e2e8f0;
+  overflow: hidden;
+}
+
+.resource-bar i {
+  display: block;
+  height: 100%;
+  background: #0f766e;
+}
+
+.whatif-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.whatif-name {
+  min-width: 0;
+  overflow: hidden;
+  color: #334155;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stepper {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+}
+
+.stepper button {
+  width: 24px;
+  height: 24px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #ffffff;
+  font-weight: 700;
+  color: #334155;
+}
+
+.stepper button:hover {
+  background: #f1f5f9;
+}
+
+.stepper output {
+  min-width: 48px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  color: #334155;
+}
+
+.stepper.changed output {
+  font-weight: 700;
+  color: #115e59;
+}
+
+.stepper-was {
+  position: absolute;
+  right: 100%;
+  margin-right: 6px;
+  white-space: nowrap;
+}
+
+.whatif-tasks summary {
+  cursor: pointer;
+}
+
+.whatif-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.whatif-run:not(:disabled) {
+  border-color: #0f766e;
+  background: #0f766e;
+  color: #ffffff;
+}
+
+.whatif-run:not(:disabled):hover {
+  background: #115e59;
+}
+
+.whatif-earlier li {
+  padding: 2px 0;
+}
+
+.whatif-earlier a {
+  color: #0f766e;
+  text-decoration: underline;
+}
+
+.compare-page {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 16px;
+  font-size: 13px;
+}
+
+.compare-header {
+  margin-bottom: 12px;
+}
+
+.compare-header h2 {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.compare-header p {
+  color: #334155;
+}
+
+.compare-card {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.compare-scroll {
+  overflow-x: auto;
+}
+
+.compare-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.compare-table th,
+.compare-table td {
+  padding: 4px 6px;
+  border-top: 1px solid #e2e8f0;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.compare-table thead th {
+  border-top: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.compare-table tbody th,
+.compare-table thead th:first-child {
+  max-width: 230px;
+  overflow: hidden;
+  font-weight: 600;
+  color: #0f172a;
+  text-align: left;
+  text-overflow: ellipsis;
+}
+
+.compare-table tbody th button {
+  max-width: 100%;
+  overflow: hidden;
+  font-weight: 600;
+  text-align: left;
+  text-overflow: ellipsis;
+  text-decoration: underline;
+  text-decoration-color: #cbd5e1;
+}
+
+.compare-table tr.selected {
+  background: #f1f5f9;
+}
+
+.compare-spread {
+  color: #475569;
+}
+
+.compare-note {
+  display: block;
+  margin-top: 8px;
+}
+
+.compare-card.task-panel-chart svg.compare-chart {
+  height: 170px;
 }
 
 .simulation-toolbar {
@@ -924,6 +1207,12 @@ h1 {
   touch-action: none;
 }
 
+@media (max-width: 1560px) {
+  body:has(.simulation-toolbar) h1 {
+    visibility: hidden;
+  }
+}
+
 @media (max-width: 1200px) {
   body:has(.simulation-toolbar) h1 {
     display: none;
@@ -964,8 +1253,13 @@ h1 {
     display: none;
   }
 
+  .simulation-toolbar {
+    flex-wrap: wrap;
+    gap: 4px 6px;
+  }
+
   .diagram-area {
-    height: calc(var(--timeline-top) - 150px);
+    height: calc(var(--timeline-top) - 180px);
   }
 
   .task-panel {

@@ -22,6 +22,8 @@ import DiagramControls from "@components/simulation/DiagramControls";
 import CaseBanner from "@components/simulation/CaseBanner";
 import ExportMenu from "@components/simulation/ExportMenu";
 import HelpOverlay from "@components/simulation/HelpOverlay";
+import ResourcePanel from "@components/simulation/ResourcePanel";
+import WhatIfPanel from "@components/simulation/WhatIfPanel";
 
 const HELP_SEEN_KEY = "prosim-help-seen";
 const NARROW_LAYOUT = "(max-width: 1200px)";
@@ -75,10 +77,14 @@ const Simulation = () => {
     const [speed, setSpeed] = useState(DEFAULT_HOURS_PER_SECOND);
     const [followedCase, setFollowedCase] = useState<number | null>(null);
     const [helpOpen, setHelpOpen] = useState(false);
+    const [sidePanel, setSidePanel] = useState<"resources" | "what-if" | null>(null);
     const sharedViewRef = useRef<SharedView>({});
     const syncAddressBarRef = useRef<() => void>(() => {});
     const hooksRef = useRef<SimulationHooks>({
-        onTaskClick: setSelectedTaskId,
+        onTaskClick: taskId => {
+            setSidePanel(null);
+            setSelectedTaskId(taskId);
+        },
         onCaseClick: caseId => setFollowedCase(current => current === caseId ? null : caseId),
         onViewChange: () => syncAddressBarRef.current(),
         onOpenFailed: () => toast.error("Could not open that moment", {description: "Showing the start of the simulation instead."}),
@@ -133,6 +139,7 @@ const Simulation = () => {
         setAnalysis(null);
         setSelectedTaskId(null);
         setFollowedCase(null);
+        setSidePanel(null);
 
         const sharedView = readSharedView(window.location.search);
         sharedViewRef.current = sharedView;
@@ -297,6 +304,7 @@ const Simulation = () => {
     };
 
     const focusTask = (taskId: string) => {
+        setSidePanel(null);
         setSelectedTaskId(taskId);
         if (isNarrowLayout()) setStatsVisible(false);
 
@@ -355,6 +363,12 @@ const Simulation = () => {
         toast.error("That case could not be found in this simulation");
     }, []);
 
+    const closeSidePanel = useCallback(() => setSidePanel(null), []);
+    const toggleSidePanel = (panel: "resources" | "what-if") => {
+        setSelectedTaskId(null);
+        setSidePanel(current => current === panel ? null : panel);
+    };
+
     const closeHelp = useCallback(() => {
         setHelpOpen(false);
         try {
@@ -394,12 +408,13 @@ const Simulation = () => {
         const handleEscape = (event: KeyboardEvent) => {
             if (event.key !== "Escape") return;
             if (helpOpen) closeHelp();
+            else if (sidePanel) closeSidePanel();
             else if (selectedTaskId) closeTaskPanel();
             else stopFollowing();
         };
         window.addEventListener("keydown", handleEscape);
         return () => window.removeEventListener("keydown", handleEscape);
-    }, [helpOpen, selectedTaskId, closeHelp, closeTaskPanel, stopFollowing]);
+    }, [helpOpen, sidePanel, selectedTaskId, closeHelp, closeSidePanel, closeTaskPanel, stopFollowing]);
 
     useEffect(() => {
         const actions: Record<string, string> = {" ": "play-pause-btn", Home: "go-to-start-btn", End: "go-to-end-btn"};
@@ -538,6 +553,12 @@ const Simulation = () => {
             <Link href="/" className="toolbar-btn">← New simulation</Link>
             <button type="button" className="toolbar-btn" onClick={copyLink}>Copy link</button>
             <ExportMenu processId={processId} onSnapshot={saveSnapshot}/>
+            <button type="button" className="toolbar-btn" aria-pressed={sidePanel === "resources"}
+                    onClick={() => toggleSidePanel("resources")}>Resources</button>
+            <button type="button" className="toolbar-btn" aria-pressed={sidePanel === "what-if"}
+                    onClick={() => toggleSidePanel("what-if")}>What-if</button>
+            {simulationData?.scenario && <Link href={`/simulation/${processId}/compare`} className="toolbar-btn"
+                                               title={simulationData.scenario.label}>Compare with as-is</Link>}
             <span className="toolbar-hint">Space: play/pause · Home/End: jump</span>
         </div>
         <DiagramControls
@@ -564,6 +585,17 @@ const Simulation = () => {
                 followedCase={followedCase}
                 onFollowCase={setFollowedCase}
                 onClose={closeTaskPanel}
+            />}
+            {sidePanel === "resources" && <ResourcePanel
+                processId={processId}
+                utcOffset={utcOffset}
+                getCurrentTime={getCurrentTime}
+                onClose={closeSidePanel}
+            />}
+            {sidePanel === "what-if" && <WhatIfPanel
+                processId={processId}
+                initialEdits={simulationData?.scenario?.edits}
+                onClose={closeSidePanel}
             />}
             {followedCase !== null && <CaseBanner
                 processId={processId}

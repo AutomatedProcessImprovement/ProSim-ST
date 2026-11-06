@@ -20,6 +20,9 @@ const HelpOverlay = ({onClose}: {onClose: () => void}) => (
         <p className="task-panel-text">
             Click a task to see its queue. Click a dot to follow that case. The curve above the timeline is the number of cases in progress.
         </p>
+        <p className="task-panel-text">
+            Resources shows who is busy, idle or off shift. What-if reruns from the same starting state with your changes and compares the results.
+        </p>
         <button type="button" className="toolbar-btn" onClick={onClose}>Got it</button>
     </aside>
 );

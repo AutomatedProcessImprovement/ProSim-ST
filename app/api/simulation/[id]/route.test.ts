@@ -32,12 +32,14 @@ import {groupEvents} from "@utils/events";
 import {readFile} from "fs/promises";
 import {Process} from "@db/entities/Process";
 import {Frame} from "@db/entities/Frame";
+import {Scenario} from "@db/entities/Scenario";
 
 describe("GET /api/simulation/[id]", () => {
     const processRepository = {
         createQueryBuilder: jest.fn(),
         update: jest.fn(),
     };
+    const scenarioRepo = {findOne: jest.fn().mockResolvedValue(null)};
     const redis = {
         get: jest.fn(),
         set: jest.fn(),
@@ -101,6 +103,7 @@ describe("GET /api/simulation/[id]", () => {
             getRepository: jest.fn((entity) => {
                 if (entity === Process) return processRepository;
                 if (entity === Frame) return frameRepo;
+                if (entity === Scenario) return scenarioRepo;
                 throw new Error("unexpected repository");
             }),
             query: jest.fn().mockResolvedValue([
@@ -142,6 +145,7 @@ describe("GET /api/simulation/[id]", () => {
                 endDate: "2024-01-01 20:00:00",
                 utcOffset: "+00:00",
                 pointer: 15,
+                scenario: null,
             },
             status: 200,
         });
@@ -161,6 +165,7 @@ describe("GET /api/simulation/[id]", () => {
         (createMySQLConnection as jest.Mock).mockResolvedValue({
             getRepository: jest.fn((entity) => {
                 if (entity === Process) return processRepository;
+                if (entity === Scenario) return scenarioRepo;
                 throw new Error("unexpected repository");
             }),
             query: jest.fn().mockResolvedValue([]),
@@ -182,6 +187,7 @@ describe("GET /api/simulation/[id]", () => {
                 endDate: "2024-01-01 02:00:00",
                 utcOffset: "+02:00",
                 pointer: -1,
+                scenario: null,
             },
             status: 200,
         });

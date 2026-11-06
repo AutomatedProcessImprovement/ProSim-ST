@@ -6,6 +6,7 @@ import {createMySQLConnection} from "@db/mysql/typeorm";
 import {Process} from "@db/entities/Process";
 import {loadInitialFrames} from "@db/mysql/frames";
 import {Event} from "@db/entities/Event";
+import {Scenario} from "@db/entities/Scenario";
 import {BatchEvent} from "@definitions/simulation/types";
 import {SimulationData} from "@definitions/api/types";
 import {groupEvents} from "@utils/events";
@@ -83,6 +84,11 @@ export const GET = async (
         const filePath = join(process.cwd(), 'public/assets', simulationProcess.fileName);
         const file = await readFile(filePath);
 
+        const scenario = await appDataSource.getRepository(Scenario).findOne({
+            select: {baseProcessId: true, label: true, edits: true},
+            where: {processId},
+        });
+
         return NextResponse.json({
             processId,
             batches,
@@ -92,6 +98,7 @@ export const GET = async (
             endDate: simulationProcess.endDate,
             utcOffset: simulationProcess.utcOffset ?? "+00:00",
             pointer: simulationHasFinished ? -1 : limit,
+            scenario,
         }, { status: 200 });
     } catch (e) {
         console.log(e)

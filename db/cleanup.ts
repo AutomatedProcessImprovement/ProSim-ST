@@ -5,6 +5,7 @@ import {DataSource} from "typeorm";
 import {Process} from "./entities/Process";
 import {Event} from "./entities/Event";
 import {Frame} from "./entities/Frame";
+import {Scenario} from "./entities/Scenario";
 
 const HOUR = 60 * 60 * 1000;
 
@@ -53,6 +54,7 @@ export async function cleanupOldProcesses(dataSource: DataSource, options: Clean
             await dataSource.transaction(async manager => {
                 await manager.delete(Event, {processId: process.id});
                 await manager.delete(Frame, {processId: process.id});
+                await manager.delete(Scenario, {processId: process.id});
                 await manager.delete(Process, {id: process.id});
             });
             await removeFile(join(options.assetsDir, basename(process.fileName)));
