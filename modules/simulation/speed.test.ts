@@ -7,8 +7,8 @@ import {
 } from "@modules/simulation/speed";
 
 describe("playback speeds", () => {
-    it("offers speeds from half an hour to a week per second", () => {
-        expect(SPEEDS[0]).toEqual({hoursPerSecond: 0.5, label: "30 min/s"});
+    it("offers speeds from a minute to a week per second", () => {
+        expect(SPEEDS[0]).toEqual({hoursPerSecond: 1 / 60, label: "1 min/s"});
         expect(SPEEDS[SPEEDS.length - 1]).toEqual({hoursPerSecond: 168, label: "1 week/s"});
     });
 
@@ -18,6 +18,7 @@ describe("playback speeds", () => {
     });
 
     it("loads about four seconds of batches, between 15 and 720", () => {
+        expect(batchFetchLimit(msPerSimulatedHour(1 / 60))).toBe(15);
         expect(batchFetchLimit(msPerSimulatedHour(1))).toBe(15);
         expect(batchFetchLimit(msPerSimulatedHour(24))).toBe(96);
         expect(batchFetchLimit(msPerSimulatedHour(168))).toBe(672);

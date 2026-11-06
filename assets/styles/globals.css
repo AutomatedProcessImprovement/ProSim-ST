@@ -1179,6 +1179,20 @@ h1 {
     background: #d97706;
 }
 
+.peak-legend {
+    margin-left: 10px;
+    color: #64748b;
+}
+
+.peak-swatch {
+    display: inline-block;
+    width: 2px;
+    height: 10px;
+    margin-right: 5px;
+    vertical-align: -1px;
+    background: #d97706;
+}
+
 .run-tasks {
     margin-bottom: 8px;
 }

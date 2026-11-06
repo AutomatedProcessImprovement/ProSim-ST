@@ -14,6 +14,12 @@ describe("utils/viewLink", () => {
         expect(readSharedView("?colour=origin")).toEqual({colorMode: "origin"});
     });
 
+    it("keeps the slowest speeds in the link", () => {
+        for (const hoursPerSecond of [1 / 60, 1 / 12, 0.25]) {
+            expect(readSharedView(writeSharedView({hoursPerSecond}))).toEqual({hoursPerSecond});
+        }
+    });
+
     it("leaves out what is at its default", () => {
         expect(writeSharedView({hoursPerSecond: 1, colorMode: "state"})).toBe("");
         expect(readSharedView("")).toEqual({});

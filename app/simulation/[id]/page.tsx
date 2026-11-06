@@ -664,7 +664,10 @@ const Simulation = () => {
             <div className="timeline-shade-wrapper">
                 {workloadBars}
             </div>
-            {workloadMax !== null && <span className="workload-label">Cases in progress <span className="stats-unit">(highest {workloadMax})</span></span>}
+            {workloadMax !== null && <span className="workload-label">
+                Cases in progress <span className="stats-unit">(highest {workloadMax})</span>
+                {analysis && peaks.length > 0 && <span className="peak-legend"><i className="peak-swatch"/>queue peak</span>}
+            </span>}
             {analysis && peaks.map(peak => <i
                 key={peak.taskId}
                 className="timeline-peak"

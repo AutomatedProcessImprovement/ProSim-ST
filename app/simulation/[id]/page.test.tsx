@@ -604,6 +604,14 @@ describe("Simulation page", () => {
             expect(screen.queryByText("Longest queues now")).not.toBeInTheDocument();
         });
 
+        it("names the marks on the timeline", async () => {
+            await renderWithAnalysis();
+            const marks = document.querySelectorAll(".timeline-peak");
+
+            expect(marks.length).toBeGreaterThan(0);
+            expect(screen.getByText("queue peak")).toBeInTheDocument();
+        });
+
         it("opens a task's details when the simulation reports a click on it", async () => {
             const hooks = await renderWithAnalysis();
             act(() => hooks.onTaskClick("Task_1"));

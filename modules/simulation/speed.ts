@@ -1,4 +1,7 @@
 export const SPEEDS: Array<{hoursPerSecond: number; label: string}> = [
+    {hoursPerSecond: 1 / 60, label: "1 min/s"},
+    {hoursPerSecond: 1 / 12, label: "5 min/s"},
+    {hoursPerSecond: 0.25, label: "15 min/s"},
     {hoursPerSecond: 0.5, label: "30 min/s"},
     {hoursPerSecond: 1, label: "1 hour/s"},
     {hoursPerSecond: 3, label: "3 hours/s"},
