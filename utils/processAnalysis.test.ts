@@ -1,4 +1,11 @@
-import {buildProcessAnalysis, readFlowTargets, sampleIndexAt, toUtcMs} from "@utils/processAnalysis";
+import {
+    buildProcessAnalysis,
+    longestQueueOf,
+    queuePeaks,
+    readFlowTargets,
+    sampleIndexAt,
+    toUtcMs,
+} from "@utils/processAnalysis";
 import {LifecycleTypes} from "@definitions/simulation/enums";
 
 const HOUR = 3600000;
@@ -117,5 +124,51 @@ describe("buildProcessAnalysis", () => {
         expect(sampleIndexAt(analysis, toUtcMs("2024-01-01 02:59:00"))).toBe(2);
         expect(sampleIndexAt(analysis, toUtcMs("2023-12-31 00:00:00"))).toBe(0);
         expect(sampleIndexAt(analysis, toUtcMs("2024-02-01 00:00:00"))).toBe(4);
+    });
+});
+
+describe("starting state", () => {
+    it("records where the open cases sit, before anything is simulated", () => {
+        const analysis = buildProcessAnalysis(
+            [event(1, LifecycleTypes.COMPLETE, "2024-01-01 00:00:00", "Task_A"), event(2, LifecycleTypes.START, "2024-01-01 00:00:00", "Task_B")],
+            [
+                {caseId: 1, activeElements: {token_0: "Task_A"}},
+                {caseId: 2, activeElements: {token_0: "Flow_B"}},
+                {caseId: 3, activeElements: {token_0: "Flow_B"}},
+            ],
+            {Flow_B: "Task_B"},
+            "2024-01-01 00:00:00",
+            "2024-01-01 02:00:00",
+        );
+        expect(analysis.startTasks).toEqual({Task_A: {waiting: 0, inWork: 1}, Task_B: {waiting: 2, inWork: 0}});
+    });
+});
+
+describe("longestQueueOf", () => {
+    it("picks the longest queue and ignores tasks nobody waits for", () => {
+        expect(longestQueueOf({a: {waiting: 2, inWork: 9}, b: {waiting: 5, inWork: 0}})).toEqual({taskId: "b", waiting: 5});
+        expect(longestQueueOf({a: {waiting: 0, inWork: 3}})).toBeNull();
+    });
+
+    it("stays on the same task when two queues tie", () => {
+        expect(longestQueueOf({b: {waiting: 4, inWork: 0}, a: {waiting: 4, inWork: 0}})).toEqual({taskId: "a", waiting: 4});
+    });
+});
+
+describe("queuePeaks", () => {
+    it("returns the highest queues with the moment each one peaked", () => {
+        const peaks = queuePeaks({
+            startDate: "2024-01-01T00:00:00.000Z",
+            stepMs: HOUR,
+            tasks: {
+                a: {waiting: [0, 3, 1], inWork: []},
+                b: {waiting: [9, 2, 0], inWork: []},
+                c: {waiting: [0, 0, 0], inWork: []},
+            },
+        }, 2);
+        expect(peaks).toEqual([
+            {taskId: "b", waiting: 9, moment: Date.UTC(2024, 0, 1)},
+            {taskId: "a", waiting: 3, moment: Date.UTC(2024, 0, 1, 1)},
+        ]);
     });
 });

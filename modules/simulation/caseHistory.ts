@@ -1,14 +1,18 @@
 import {LifecycleTypes} from "@definitions/simulation/enums";
-import {BatchEvent, SimulationHooks, WTPTState} from "@definitions/simulation/types";
+import {BatchEvent, FrameCase, SimulationHooks, WTPTState} from "@definitions/simulation/types";
 import {Rest} from "@modules/simulation/restLayout";
 import {toUtcMs} from "@utils/processAnalysis";
 
 export type CaseHistory = ReturnType<typeof createCaseHistory>;
 
-export function createCaseHistory(hooks: SimulationHooks, openCaseIds: number[]) {
-    const taskTimes = new Map<number, Map<string, {enabled?: number; started?: number}>>();
+export function createCaseHistory(hooks: SimulationHooks, openCases: FrameCase[]) {
+    const taskTimes = new Map<number, Map<string, {enabled?: number; started?: number}>>(openCases.map(frame => [
+        frame.caseId,
+        new Map(Object.entries(frame.taskTimes ?? {}).map(([taskId, {enabled, started}]) =>
+            [taskId, {enabled, started: started ?? undefined}])),
+    ]));
     const seenArrivals = new Map<number, number>();
-    const openAtStart = new Set(openCaseIds);
+    const openAtStart = new Set(openCases.map(frame => frame.caseId));
 
     function arrivalOf(caseId: number): number | null {
         return hooks.getCaseArrival?.(caseId) ?? seenArrivals.get(caseId) ?? null;

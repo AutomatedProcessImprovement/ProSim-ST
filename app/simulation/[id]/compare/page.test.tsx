@@ -51,6 +51,17 @@ describe("Compare page", () => {
 
     const row = (name: string) => screen.getByRole("row", {name: new RegExp(`^${name}`)});
 
+    it("compares an empty start without calling either side better", async () => {
+        (axios.get as jest.Mock).mockResolvedValue({data: {...data, label: "Empty start", edits: {pools: {}, arrivalPercent: 0, tasks: {}, emptyStart: true}}});
+        render(<Compare/>);
+
+        await screen.findByRole("heading", {name: "Current state vs empty start"});
+        expect(screen.getByRole("link", {name: "Open empty start"})).toBeInTheDocument();
+        expect(screen.getByText("An empty start ignores the work already in the process.", {exact: false})).toBeInTheDocument();
+        expect(screen.getAllByText("Clearly different").length).toBeGreaterThan(0);
+        expect(screen.queryByText("Clearly better")).not.toBeInTheDocument();
+    });
+
     it("shows both sides, the change and how far to trust it", async () => {
         (axios.get as jest.Mock).mockResolvedValue({data});
         render(<Compare/>);

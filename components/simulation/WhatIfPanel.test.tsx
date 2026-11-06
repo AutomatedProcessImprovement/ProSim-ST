@@ -42,6 +42,24 @@ describe("WhatIfPanel", () => {
         expect(screen.getByRole("button", {name: "Run what-if"})).toBeDisabled();
     });
 
+    it("runs an empty start without any other change", async () => {
+        (axios.post as jest.Mock).mockResolvedValue({data: {id: "s1", existing: true}});
+        show();
+        await loaded();
+
+        fireEvent.click(screen.getByRole("button", {name: "Compare with an empty start"}));
+
+        await waitFor(() => expect(push).toHaveBeenCalledWith("/simulation/s1/compare"));
+        expect(axios.post).toHaveBeenCalledWith("/api/simulation/p1/what-if", {pools: {}, arrivalPercent: 0, tasks: {}, emptyStart: true});
+    });
+
+    it("does not carry an empty start over into the next what-if", async () => {
+        show({initialEdits: {pools: {}, arrivalPercent: 0, tasks: {}, emptyStart: true}});
+        await loaded();
+
+        expect(screen.getByRole("button", {name: "Run what-if"})).toBeDisabled();
+    });
+
     it("keeps at least one resource in a pool", async () => {
         show({initialEdits: {pools: {c: 1}, arrivalPercent: 0, tasks: {}}});
         await loaded();

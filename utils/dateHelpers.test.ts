@@ -1,4 +1,4 @@
-import {calculateEndDate, formatDateString, formatDuration, formatHorizon, formatInLogTime, formatReadableDate, formatShortDate, formatUtcOffset, getHourDifference, logTimeToUtc, toOffsetIso} from "@utils/dateHelpers";
+import {calculateEndDate, formatDateString, formatDuration, formatHorizon, formatInLogTime, formatReadableDate, formatShortDate, formatUtcOffset, getHourDifference, logTimeToUtc, toOffsetIso, formatLogMoment} from "@utils/dateHelpers";
 import {TimeUnits} from "@definitions/config/enums";
 
 describe("dateHelpers", () => {
@@ -77,5 +77,22 @@ describe("toOffsetIso", () => {
     it("writes the same moment on the log's wall clock", () => {
         expect(toOffsetIso(new Date("2024-01-01T08:00:00Z"), "+02:00")).toBe("2024-01-01T10:00:00.000+02:00");
         expect(toOffsetIso(new Date("2024-01-01T08:00:00Z"))).toBe("2024-01-01T08:00:00.000+00:00");
+    });
+});
+
+describe("calculateEndDate", () => {
+    it("adds whole days of log time, whatever clock change the machine goes through", () => {
+        const end = calculateEndDate({
+            startingPoint: "2025-03-28T17:09:00",
+            simulationHorizonValue: 8,
+            simulationHorizonUnit: TimeUnits.WEEKS,
+        });
+        expect(end.toISOString()).toBe("2025-05-23T17:09:00.000Z");
+    });
+});
+
+describe("formatLogMoment", () => {
+    it("writes a moment on the log's wall clock", () => {
+        expect(formatLogMoment(new Date("2025-04-04T13:46:14Z"), "+02:00")).toBe("4 Apr 2025, 15:46");
     });
 });

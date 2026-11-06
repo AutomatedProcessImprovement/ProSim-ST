@@ -15,7 +15,10 @@ export type FrameCase = {
         [tokenId: string]: string,
     },
     arrivalTime?: string | null,
+    taskTimes?: OpenTaskTimes | null,
 }
+
+export type OpenTaskTimes = Record<string, {enabled: number; started: number | null}>;
 
 export type BatchEvent = {
     caseId: number,
@@ -76,12 +79,13 @@ export type ActivityStats = {
 
 export type WTPTState = Record<string, ActivityStats>;
 
-export type ColorMode = "state" | "age";
+export type ColorMode = "state" | "age" | "origin";
 
 export type InitialView = {
     moment?: number;
     hoursPerSecond?: number;
     colorMode?: ColorMode;
+    holdStart?: () => boolean;
 };
 
 export type TaskLoad = Record<string, {waiting: number; inWork: number}>;
@@ -111,4 +115,5 @@ export type TokenSimulationApi = {
     describeCase: (caseId: number) => string[];
     getTaskQueue: (taskId: string) => QueueEntry[];
     getCurrentTime: () => number | null;
+    play: () => void;
 };

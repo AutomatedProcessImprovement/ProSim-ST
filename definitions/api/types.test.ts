@@ -18,6 +18,28 @@ describe("API type mappers", () => {
         });
     });
 
+    it("keeps the times of tasks a case was already at, in milliseconds", () => {
+        expect(mapPyFrameCase({
+            case_id: 9,
+            active_elements: {tokenA: "Task_3"},
+            task_times: {
+                Task_3: {enabled: "2024-01-01T10:00:00.000000+0200", started: null},
+                Task_4: {enabled: "2024-01-01T10:00:00.000000+0200", started: "2024-01-01T11:00:00.000000+0200"},
+            },
+        })).toEqual({
+            caseId: 9,
+            activeElements: {tokenA: "Task_3"},
+            taskTimes: {
+                Task_3: {enabled: Date.UTC(2024, 0, 1, 8), started: null},
+                Task_4: {enabled: Date.UTC(2024, 0, 1, 8), started: Date.UTC(2024, 0, 1, 9)},
+            },
+        });
+    });
+
+    it("drops an empty set of task times", () => {
+        expect(mapPyFrameCase({case_id: 9, active_elements: {}, task_times: {}})).toEqual({caseId: 9, activeElements: {}});
+    });
+
     it("maps python frames into app frame cases", () => {
         expect(mapPyFrameCase({
             case_id: 9,

@@ -8,13 +8,13 @@ export const calculateEndDate = (data: AlgorithmConfiguration): Date => {
 
     switch (data.simulationHorizonUnit) {
         case TimeUnits.DAYS:
-            newEndDate.setDate(currentDate.getDate() + Number(horizon));
+            newEndDate.setUTCDate(currentDate.getUTCDate() + Number(horizon));
             break;
         case TimeUnits.WEEKS:
-            newEndDate.setDate(currentDate.getDate() + Number(horizon) * 7);
+            newEndDate.setUTCDate(currentDate.getUTCDate() + Number(horizon) * 7);
             break;
         case TimeUnits.MONTHS:
-            newEndDate.setMonth(currentDate.getMonth() + Number(horizon));
+            newEndDate.setUTCMonth(currentDate.getUTCMonth() + Number(horizon));
             break;
     }
 
@@ -60,6 +60,9 @@ export const formatReadableDate = (wallClock: string | Date) => {
         day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "UTC",
     }).format(date);
 }
+
+export const formatLogMoment = (date: Date, utcOffset: string = "+00:00") =>
+    formatReadableDate(new Date(date.getTime() + offsetToMinutes(utcOffset) * 60000));
 
 export const formatHorizon = (value: number, unit: string) => `${value} ${value === 1 ? unit.replace(/s$/, "") : unit}`;
 

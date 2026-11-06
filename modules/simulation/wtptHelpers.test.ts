@@ -1,6 +1,6 @@
 import {LifecycleTypes} from "@definitions/simulation/enums";
 import {BatchEvent, WTPTState} from "@definitions/simulation/types";
-import {hydrateWTPTNames, setNewWTPTState} from "@modules/simulation/wtptHelpers";
+import {hydrateWTPTNames, seedOpenCases, setNewWTPTState} from "@modules/simulation/wtptHelpers";
 
 function makeBatchEvent(overrides: Partial<BatchEvent>): BatchEvent {
     return {
@@ -172,3 +172,28 @@ describe("hydrateWTPTNames", () => {
     });
 });
 
+describe("seedOpenCases", () => {
+    it("lets a case that was waiting at the start finish with its real wait", () => {
+        const enabled = new Date("2024-01-01T06:00:00.000Z").getTime();
+        const state = seedOpenCases(makeState(), [
+            {caseId: 7, activeElements: {}, taskTimes: {Task_A: {enabled, started: null}, Unknown: {enabled, started: null}}},
+            {caseId: 8, activeElements: {}},
+        ]);
+
+        expect(state.Task_A.incompleteCases[7]).toEqual({enablementTime: enabled});
+        expect(state.Unknown).toBeUndefined();
+
+        const started = setNewWTPTState(state, makeBatchEvent({caseId: 7, lifecycle: LifecycleTypes.START, timestamp: "2024-01-01T09:00:00.000Z"}));
+        const finished = setNewWTPTState(started, makeBatchEvent({caseId: 7, lifecycle: LifecycleTypes.COMPLETE, timestamp: "2024-01-01T10:00:00.000Z"}));
+
+        expect(finished.Task_A.averageWT).toBe(3 * 3600000);
+        expect(finished.Task_A.averagePT).toBe(3600000);
+        expect(finished.Task_A._count).toBe(1);
+    });
+
+    it("leaves the state it was given untouched", () => {
+        const base = makeState();
+        seedOpenCases(base, [{caseId: 7, activeElements: {}, taskTimes: {Task_A: {enabled: 1, started: 2}}}]);
+        expect(base.Task_A.incompleteCases[7]).toBeUndefined();
+    });
+});

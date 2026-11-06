@@ -34,17 +34,17 @@ const FileForm = () => {
         setFiles([...files, ..._files.filter(file => !filenames.includes(file.name))]);
     };
 
-    const startSetup = async (logFile: File, configFiles: { bpmnFile?: File, jsonFile?: File } = {}) => {
+    const startSetup = async (logFile: File, sample: { bpmnFile?: File, jsonFile?: File, startingPoint?: string } = {}) => {
         const { fileHeaders, fileFirstLine, fileLastLine } = await parseCsvFile(logFile);
 
         setData(prevData => ({
             ...prevData,
             id: uuid(),
             mapping: {},
-            config: { ...prevData.config, startingPoint: '' },
+            config: { ...prevData.config, startingPoint: sample.startingPoint ?? '' },
             logFile,
-            bpmnFile: configFiles.bpmnFile ?? null,
-            jsonFile: configFiles.jsonFile ?? null,
+            bpmnFile: sample.bpmnFile ?? null,
+            jsonFile: sample.jsonFile ?? null,
         }));
         setCsvData(prevData => ({
             ...prevData,
@@ -62,7 +62,7 @@ const FileForm = () => {
         await startSetup(files[0]);
     }
 
-    const onSampleSelected = async (name: string) => {
+    const onSampleSelected = async (name: string, startingPoint: string) => {
         if (loadingSample) return;
         setLoadingSample(name);
 
@@ -74,7 +74,7 @@ const FileForm = () => {
                     return new File([await response.blob()], fileName, { type: contentType });
                 })
             );
-            await startSetup(logFile, { bpmnFile, jsonFile });
+            await startSetup(logFile, { bpmnFile, jsonFile, startingPoint });
         } catch (error) {
             console.log(error);
             toast.error('Could not load the sample', { description: 'Please try again in a moment.' });
@@ -105,7 +105,7 @@ const FileForm = () => {
               <span>No log at hand? Try with sample data:</span>
               {
                   SAMPLE_PROCESSES.map(sample =>
-                      <button key={sample.name} type='button' onClick={() => onSampleSelected(sample.name)}
+                      <button key={sample.name} type='button' onClick={() => onSampleSelected(sample.name, sample.startingPoint)}
                               disabled={loadingSample !== null}
                               className='rounded-2xl border border-slate-300 bg-white px-3 py-1 font-semibold hover:bg-slate-100 disabled:text-slate-300'>
                           {loadingSample === sample.name ? 'Loading…' : `${sample.label} (${sample.size})`}

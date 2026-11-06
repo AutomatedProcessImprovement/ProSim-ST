@@ -19,7 +19,8 @@ export const readSharedView = (search: string): SharedView => {
     const speed = Number(params.get("speed"));
     if (SPEEDS.some(({hoursPerSecond}) => hoursPerSecond === speed)) view.hoursPerSecond = speed;
 
-    if (params.get("colour") === "age") view.colorMode = "age";
+    const colour = params.get("colour");
+    if (colour === "age" || colour === "origin") view.colorMode = colour;
 
     const task = params.get("task");
     if (task) view.taskId = task;
@@ -34,7 +35,7 @@ export const writeSharedView = ({moment, hoursPerSecond, colorMode, taskId, case
     const params = new URLSearchParams();
     if (moment !== undefined) params.set("t", new Date(moment).toISOString().slice(0, 19) + "Z");
     if (hoursPerSecond !== undefined && hoursPerSecond !== DEFAULT_HOURS_PER_SECOND) params.set("speed", String(hoursPerSecond));
-    if (colorMode === "age") params.set("colour", "age");
+    if (colorMode && colorMode !== "state") params.set("colour", colorMode);
     if (taskId) params.set("task", taskId);
     if (caseId !== undefined) params.set("case", String(caseId));
 

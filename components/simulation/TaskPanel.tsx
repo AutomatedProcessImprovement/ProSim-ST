@@ -56,6 +56,8 @@ const TaskPanel = ({taskId, name, stats, analysis, utcOffset, getQueue, getCurre
     const waiting = queue.filter(entry => entry.state === "waiting");
     const inWork = queue.filter(entry => entry.state === "working");
     const now = currentTime ?? 0;
+    const longestWait = waiting.reduce((longest, entry) =>
+        entry.since === null ? longest : Math.max(longest, now - entry.since), 0);
     const markerX = analysis && currentTime !== null
         ? Math.max(0, Math.min(1, (currentTime - Date.parse(analysis.startDate)) / (Date.parse(analysis.endDate) - Date.parse(analysis.startDate)))) * CHART_WIDTH
         : null;
@@ -82,9 +84,10 @@ const TaskPanel = ({taskId, name, stats, analysis, utcOffset, getQueue, getCurre
 
         <p className="task-panel-text">
             {stats?._count
-                ? <>Average so far: waiting {formatDuration(stats.averageWT)}, processing {formatDuration(stats.averagePT)} <span className="stats-unit">({stats._count} cases)</span></>
+                ? <>Average so far: waiting {formatDuration(stats.averageWT)}, processing {formatDuration(stats.averagePT)} <span className="stats-unit">({stats._count} finished)</span></>
                 : "No case has finished this task yet."}
         </p>
+        {longestWait > 0 && <p className="task-panel-text">Longest wait right now: {formatDuration(longestWait)}</p>}
 
         {chart && analysis && <div className="task-panel-chart">
             <div className="task-panel-subtitle">

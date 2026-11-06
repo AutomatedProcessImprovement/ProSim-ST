@@ -155,6 +155,11 @@ export const AGE_COLORS = {
     unknown: "#94a3b8",
 };
 
+export const ORIGIN_COLORS = {
+    ongoing: "#2563eb",
+    arrived: "#94a3b8",
+};
+
 export function ageColor(ageMs: number | null, averageCycleTimeMs: number | null): string {
     if (ageMs === null || !averageCycleTimeMs) return AGE_COLORS.unknown;
     if (ageMs < averageCycleTimeMs) return AGE_COLORS.young;

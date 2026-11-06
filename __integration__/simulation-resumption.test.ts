@@ -17,10 +17,11 @@ jest.mock('@db/redis/redis', () => ({
 
 import {POST} from '../app/api/simulation/[id]/resumption/route';
 import {createMySQLConnection} from '@db/mysql/typeorm';
+import {getRedisInstance} from '@db/redis/redis';
 import axios from 'axios';
 import {startTestDb, stopTestDb, clearTables, TestDb} from './helpers/db';
-import {startTestRedis, stopTestRedis, TestRedis} from './helpers/redis';
-import {seedProcess, seedEvents, ts} from './helpers/fixtures';
+import {startTestRedis, stopTestRedis, makeRedisFactory, TestRedis} from './helpers/redis';
+import {seedProcess, seedEvents, seedFrames, ts} from './helpers/fixtures';
 import {LifecycleTypes} from '../definitions/simulation/enums';
 
 const BASE = new Date('2024-01-01T00:00:00.000Z');
@@ -51,6 +52,7 @@ describe('POST /api/simulation/[id]/resumption (integration)', () => {
         await redisTest.client.flushall();
 
         (createMySQLConnection as jest.Mock).mockResolvedValue(db.dataSource);
+        (getRedisInstance as jest.Mock).mockImplementation(makeRedisFactory(redisTest.container));
     });
 
     it('returns 404 for an unknown process', async () => {
@@ -61,6 +63,29 @@ describe('POST /api/simulation/[id]/resumption (integration)', () => {
             makeContext('unknown-id')
         );
         expect(response.status).toBe(404);
+    });
+
+    it('counts the wait a case had before the simulation began', async () => {
+        await seedProcess(db.dataSource, {id: PROCESS_ID, startDate: ts(BASE, 0), endDate: ts(BASE, 20)});
+        await seedFrames(db.dataSource, [{
+            caseId: 1,
+            activeElements: {token_0: 'flow1'},
+            taskTimes: {task1: {enabled: BASE.getTime() - 3 * 3600000, started: null}},
+            processId: PROCESS_ID,
+        }]);
+        await seedEvents(db.dataSource, [
+            {caseId: 1, lifecycle: LifecycleTypes.START,    timestamp: ts(BASE, 1), nodeId: 'task1', paths: {}, processId: PROCESS_ID},
+            {caseId: 1, lifecycle: LifecycleTypes.COMPLETE, timestamp: ts(BASE, 2), nodeId: 'task1', paths: {}, processId: PROCESS_ID},
+        ]);
+        (axios.post as jest.Mock).mockResolvedValue({data: {frames: []}});
+
+        const response = await POST(makeRequest({requestedDate: ts(BASE, 5)}), makeContext(PROCESS_ID));
+
+        expect(response.status).toBe(200);
+        const task = (response.body as any).wtpt.task1;
+        expect(task._count).toBe(1);
+        expect(task.averageWT).toBe(4 * 3600000);
+        expect(task.averagePT).toBe(3600000);
     });
 
     it('counts finished cases correctly up to the requested timestamp', async () => {

@@ -1,13 +1,30 @@
 import {LifecycleTypes} from "@definitions/simulation/enums";
-import {CaseTimes, WTPTState} from "@definitions/simulation/types";
+import {CaseTimes, FrameCase, WTPTState} from "@definitions/simulation/types";
+
+const emptyStats = (nodeId: string): WTPTState[string] => ({
+    name: nodeId,
+    averageWT: 0,
+    averagePT: 0,
+    _count: 0,
+    incompleteCases: {},
+});
 
 export const buildWTPTState = (events: Array<{
     nodeId: string;
     caseId: number;
     lifecycle: LifecycleTypes;
     timestamp: string;
-}>): WTPTState => {
+}>, openCases: FrameCase[] = []): WTPTState => {
     const state: WTPTState = {};
+
+    for (const {caseId, taskTimes} of openCases) {
+        for (const [nodeId, {enabled, started}] of Object.entries(taskTimes ?? {})) {
+            state[nodeId] ??= emptyStats(nodeId);
+            state[nodeId].incompleteCases[caseId] = started === null
+                ? {enablementTime: enabled}
+                : {enablementTime: enabled, startTime: started};
+        }
+    }
 
     for (const ev of events) {
         const nodeId = ev.nodeId;
@@ -17,15 +34,7 @@ export const buildWTPTState = (events: Array<{
 
         const ts = new Date(ev.timestamp + "Z").getTime();
 
-        if (!state[nodeId]) {
-            state[nodeId] = {
-                name: nodeId,
-                averageWT: 0,
-                averagePT: 0,
-                _count: 0,
-                incompleteCases: {},
-            };
-        }
+        state[nodeId] ??= emptyStats(nodeId);
 
         const nodeState = state[nodeId];
         const prevCase: CaseTimes = nodeState.incompleteCases?.[caseId] ?? {};

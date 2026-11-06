@@ -1,5 +1,5 @@
 import {ColorMode} from "@definitions/simulation/types";
-import {AGE_COLORS, STATE_COLORS} from "@modules/simulation/restLayout";
+import {AGE_COLORS, ORIGIN_COLORS, STATE_COLORS} from "@modules/simulation/restLayout";
 
 type Props = {
     className?: string;
@@ -19,15 +19,21 @@ const DiagramControls = ({className = "diagram-toolbar", colorMode, onColorModeC
         <div className="color-mode" role="group" aria-label="Colour dots by">
             <button type="button" aria-pressed={colorMode === "state"} onClick={() => onColorModeChange("state")}>State</button>
             <button type="button" aria-pressed={colorMode === "age"} onClick={() => onColorModeChange("age")}>Case age</button>
+            <button type="button" aria-pressed={colorMode === "origin"} onClick={() => onColorModeChange("origin")}>Origin</button>
         </div>
         <div className="diagram-legend">
-            {colorMode === "state" ? <ul className="diagram-legend">
+            {colorMode === "origin" && <ul className="diagram-legend">
+                <li><Swatch color={ORIGIN_COLORS.ongoing}/> In progress at the start</li>
+                <li><Swatch color={ORIGIN_COLORS.arrived}/> Arrived later</li>
+            </ul>}
+            {colorMode === "state" && <ul className="diagram-legend">
                 <li><Swatch color={STATE_COLORS.waiting}/> Waiting</li>
                 <li><Swatch color={STATE_COLORS.working}/> In work</li>
                 <li><Swatch color={STATE_COLORS.moving}/> Moving</li>
                 <li><Swatch color={STATE_COLORS.sync}/> Waiting for parallel branches</li>
                 <li><i className="legend-shade"/> Shading: longer queue</li>
-            </ul> : <ul className="diagram-legend">
+            </ul>}
+            {colorMode === "age" && <ul className="diagram-legend">
                 <li><Swatch color={AGE_COLORS.young}/> Open less than the average cycle time</li>
                 <li><Swatch color={AGE_COLORS.late}/> 1–2× the average</li>
                 <li><Swatch color={AGE_COLORS.overdue}/> Over 2× the average</li>

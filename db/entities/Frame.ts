@@ -1,5 +1,6 @@
 import {Column, Entity, PrimaryGeneratedColumn, JoinColumn, ManyToOne} from "typeorm";
 import {Process} from "./Process";
+import type {OpenTaskTimes} from "@definitions/simulation/types";
 
 @Entity("frame")
 export class Frame {
@@ -14,6 +15,9 @@ export class Frame {
 
     @Column({ type: "datetime", nullable: true })
     arrivalTime: string | null;
+
+    @Column({ type: "json", nullable: true })
+    taskTimes: OpenTaskTimes | null;
 
     @ManyToOne(() => Process)
     @JoinColumn({ name: "processId" })

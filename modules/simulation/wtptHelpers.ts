@@ -1,4 +1,4 @@
-import {BatchEvent, WTPTState} from "@definitions/simulation/types";
+import {BatchEvent, FrameCase, WTPTState} from "@definitions/simulation/types";
 import {LifecycleTypes} from "@definitions/simulation/enums";
 
 export function setNewWTPTState(previousState: WTPTState, event: BatchEvent): WTPTState {
@@ -83,6 +83,19 @@ export function setNewWTPTState(previousState: WTPTState, event: BatchEvent): WT
             incompleteCases: restIncomplete,
         },
     };
+}
+
+export function seedOpenCases(state: WTPTState, frames: FrameCase[]): WTPTState {
+    const seeded = {...state};
+    frames.forEach(({caseId, taskTimes}) => {
+        Object.entries(taskTimes ?? {}).forEach(([taskId, {enabled, started}]) => {
+            const stats = seeded[taskId];
+            if (!stats) return;
+            const times = started === null ? {enablementTime: enabled} : {enablementTime: enabled, startTime: started};
+            seeded[taskId] = {...stats, incompleteCases: {...stats.incompleteCases, [caseId]: times}};
+        });
+    });
+    return seeded;
 }
 
 export function hydrateWTPTNames(base: WTPTState, incoming: WTPTState): WTPTState {

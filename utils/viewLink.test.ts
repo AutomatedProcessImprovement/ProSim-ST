@@ -9,6 +9,11 @@ describe("utils/viewLink", () => {
         expect(readSharedView(query)).toEqual(view);
     });
 
+    it("keeps the origin colouring in the link", () => {
+        expect(writeSharedView({colorMode: "origin"})).toBe("?colour=origin");
+        expect(readSharedView("?colour=origin")).toEqual({colorMode: "origin"});
+    });
+
     it("leaves out what is at its default", () => {
         expect(writeSharedView({hoursPerSecond: 1, colorMode: "state"})).toBe("");
         expect(readSharedView("")).toEqual({});

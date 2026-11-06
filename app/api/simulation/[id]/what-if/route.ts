@@ -135,7 +135,12 @@ const runScenario = async (id: string, base: BaseRun, edits: ScenarioEdits, labe
         const {data} = await axios.post(`${process.env.PYTHON_MICROSERVICE_BASE_URL}/scenario`, {
             process_id: id,
             base_process_id: base.id,
-            edits: {pools: edits.pools, arrival_percent: edits.arrivalPercent, tasks: edits.tasks},
+            edits: {
+                pools: edits.pools,
+                arrival_percent: edits.arrivalPercent,
+                tasks: edits.tasks,
+                empty_start: Boolean(edits.emptyStart),
+            },
         });
         response = data;
     } catch (error) {

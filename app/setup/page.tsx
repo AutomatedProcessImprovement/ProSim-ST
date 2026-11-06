@@ -1,6 +1,6 @@
 "use client";
 
-import {useContext, useEffect, useRef, useState} from "react";
+import {useContext, useEffect, useMemo, useRef, useState} from "react";
 import {DataContext} from "@context/DataContext";
 import {useRouter} from "next/navigation";
 import {
@@ -14,15 +14,15 @@ import {
 import {AlgorithmConfiguration, LogMapping} from "@definitions/config/interfaces";
 import {FileTypes, TimeUnits} from "@definitions/config/enums";
 import {toast} from "sonner";
-import {ConfigFileInput, MappingInput, Preview, Step, Stepper} from "@components/simulationSetup";
+import {ConfigFileInput, MappingInput, OpenCasesChart, Preview, Step, Stepper} from "@components/simulationSetup";
 import {ConfigInput, SimulationHorizonInput, StartingPointInput} from "@components/simulationSetup/configInput";
 import {CsvContext} from "@context/CsvContext";
 import {clsx} from "clsx/lite";
 import axios from "axios";
-import {calculateEndDate, formatHorizon, formatReadableDate, formatUtcOffset, logTimeToUtc} from "@utils/dateHelpers";
+import {calculateEndDate, formatHorizon, formatInLogTime, formatReadableDate, formatUtcOffset, logTimeToUtc} from "@utils/dateHelpers";
 import {getCellByHeader, getLogUtcOffset, normalizeLogDate, readLines, readText} from "@utils/fileHelpers";
 import {clearSetup, loadSetup, saveSetup} from "@utils/setupStorage";
-import {CaseSpans, countOngoingCases, readCaseSpans} from "@utils/ongoingCases";
+import {CaseSpans, countOngoingCases, openCasesOverTime, readCaseSpans} from "@utils/ongoingCases";
 import {
     activitiesMissingFromModel,
     collectActivities,
@@ -34,6 +34,9 @@ import {pollRun} from "@utils/pollRun";
 import RunProgress, {STAGE_LABELS} from "@components/simulationSetup/RunProgress";
 
 
+
+const QUIET_SHARE = 0.25;
+const MINUTE = 60000;
 
 const IssueList = ({issues}: {issues: string[]}) =>
     <ul className='list-disc pl-4'>{issues.map(issue => <li key={issue}>{issue}</li>)}</ul>;
@@ -163,6 +166,17 @@ const Setup = () => {
         ? countOngoingCases(caseSpans, logTimeToUtc(data.config.startingPoint, csvData.logUtcOffset).getTime())
         : null;
 
+    const openCases = useMemo(() => caseSpans && openCasesOverTime(caseSpans), [caseSpans]);
+    const quietStart = ongoingCases !== null && openCases !== null && ongoingCases > 0
+        && ongoingCases < openCases.peak * QUIET_SHARE;
+
+    const pickStartingPoint = (moment: number) => {
+        const picked = formatInLogTime(new Date(Math.floor(moment / MINUTE) * MINUTE), csvData.logUtcOffset).replace(' ', 'T');
+        const {logStartDate, logEndDate} = csvData;
+        const startingPoint = picked < logStartDate ? logStartDate : picked > logEndDate ? logEndDate : picked;
+        setData(prev => ({...prev, config: {...prev.config, startingPoint}}));
+    };
+
     const ongoingCasesNote = ongoingCases === null
         ? null
         : ongoingCases === 0
@@ -171,10 +185,15 @@ const Setup = () => {
                 without ongoing work and only shows new arrivals. Choose an earlier starting point to start from
                 a busy process.
             </p>
-            : <p className='text-sm text-slate-600'>
-                {ongoingCases} {ongoingCases === 1 ? 'case is' : 'cases are'} in progress in the uploaded log at
-                this starting point.
-            </p>;
+            : quietStart
+                ? <p className='rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900'>
+                    Only {ongoingCases} {ongoingCases === 1 ? 'case is' : 'cases are'} in progress at this starting
+                    point, while the log reaches {openCases.peak}. Pick a busier moment to start from a loaded process.
+                </p>
+                : <p className='text-sm text-slate-600'>
+                    {ongoingCases} {ongoingCases === 1 ? 'case is' : 'cases are'} in progress in the uploaded log at
+                    this starting point.
+                </p>;
 
     const onMappingCompleted = (data: FormData) => {
         const logMapping: LogMapping = {
@@ -331,9 +350,13 @@ const Setup = () => {
                   onNext={onConfigCompleted}
             >
                 <div className = 'flex flex-col gap-4 p-4'>
-                    <ConfigInput label='Starting Point' description='The time at which the short-term simulation begins (by default, the end of the uploaded event log).'>
+                    <ConfigInput label='Starting Point' description='The time at which the short-term simulation begins. Type it, or pick a moment on the chart.'>
                         <StartingPointInput minDate={csvData.logStartDate} maxDate={csvData.logEndDate} />
                     </ConfigInput>
+                    {openCases && <OpenCasesChart series={openCases}
+                                                  selected={data.config.startingPoint ? logTimeToUtc(data.config.startingPoint, csvData.logUtcOffset).getTime() : null}
+                                                  utcOffset={csvData.logUtcOffset}
+                                                  onPick={pickStartingPoint}/>}
                     <ConfigInput label='Simulation Horizon' description='The duration (in time) to simulate, starting from the specified starting point.'>
                         <SimulationHorizonInput />
                     </ConfigInput>
@@ -404,7 +427,7 @@ const Setup = () => {
                                                     <ArrowRightIcon className='size-3'/>
                                                 </td>
                                                 <td className = { clsx('text-right', value === '__DISCOVER__' && 'italic') }>
-                                                    {value === '__DISCOVER__' ? 'Discover' : value as string}
+                                                    {value === '__DISCOVER__' ? 'Computed from the log' : value as string}
                                                 </td>
                                             </tr>
                                         )
@@ -429,7 +452,7 @@ const Setup = () => {
                                     )
                                 }
                             </dl>
-                            {ongoingCases === 0 && <div className='mt-3'>{ongoingCasesNote}</div>}
+                            {(ongoingCases === 0 || quietStart) && <div className='mt-3'>{ongoingCasesNote}</div>}
                         </Preview>
                     </div>
                     {fileIssuesNote}

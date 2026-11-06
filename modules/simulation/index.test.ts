@@ -4,7 +4,7 @@ import {Batch, BatchEvent, FrameCase, InitialView, SimulationHooks, TokenSimulat
 import {Canvas, ElementRegistry, EventBus} from "@definitions/simulation/interfaces";
 import {FlowTypes, LifecycleTypes, NodeTypes} from "@definitions/simulation/enums";
 import {SimulationData} from "@definitions/api/types";
-import {STATE_COLORS, AGE_COLORS} from "@modules/simulation/restLayout";
+import {STATE_COLORS, AGE_COLORS, ORIGIN_COLORS} from "@modules/simulation/restLayout";
 
 jest.mock("axios", () => ({
     post: jest.fn(),
@@ -184,7 +184,7 @@ describe("modules/simulation/index", () => {
 
             expect(mockedAxios.post).toHaveBeenCalledTimes(1);
             expect(mockedAxios.post.mock.calls[0][1]).toEqual({requestedDate: iso(3)});
-            expect(document.getElementById("simulated-time-box").textContent).toContain("2024-01-01 03:00:00");
+            expect(document.getElementById("simulated-time-box").textContent).toContain("1 Jan 2024, 03:00");
             expect(document.getElementById("play-pause-btn").textContent).toContain("▶");
             expect(dots()).toHaveLength(2);
             expect(api.getCurrentTime()).toBe(START + 3 * HOUR);
@@ -682,25 +682,68 @@ describe("modules/simulation/index", () => {
             expect(dotsOf(1)[0].getAttribute("fill")).toBe(STATE_COLORS.waiting);
         });
 
+        it("colours dots by whether the case was already open at the start", async () => {
+            const {api, dotsOf} = setup({
+                frames: waitingAt(1),
+                batches: [{
+                    startDate: iso(0),
+                    endDate: iso(2),
+                    events: [event(9, LifecycleTypes.CASE_ARRIVAL, 0.5, "Start", {token_0: ["Start", "Flow_S_A"]})],
+                }],
+                endHours: 2,
+                initialView: {colorMode: "origin"},
+            });
+            api.start();
+            await play(1000);
+
+            expect(dotsOf(1)[0].getAttribute("fill")).toBe(ORIGIN_COLORS.ongoing);
+            expect(dotsOf(9)[0].getAttribute("fill")).toBe(ORIGIN_COLORS.arrived);
+        });
+
         it("adds the hook's text to the timeline tooltip", async () => {
             const {api} = setup({batches: emptyBatches(0, 6), hooks: {describeMoment: () => "12 cases in progress"}});
             api.start();
 
             document.getElementById("timeline").dispatchEvent(new MouseEvent("mousemove", {clientX: 50, clientY: 5}));
-            expect(document.getElementById("timeline-tooltip").textContent).toBe("2024-01-01 03:00:00 · 12 cases in progress");
+            expect(document.getElementById("timeline-tooltip").textContent).toBe("1 Jan 2024, 03:00 · 12 cases in progress");
         });
     });
 
     describe("playback", () => {
+        it("waits on a held start and shows the opening state until asked to play", async () => {
+            const {api, dots} = setup({frames: waitingAt(2), batches: emptyBatches(0, 2), endHours: 2, initialView: {holdStart: () => true}});
+            api.start();
+            await play(1000);
+            expect(document.getElementById("simulated-time-box").textContent).toBe("1 Jan 2024, 00:00 UTC+00:00");
+            expect(document.getElementById("play-pause-btn").textContent).toContain("▶");
+            expect(dots()).toHaveLength(2);
+
+            api.play();
+            await play(1200);
+            expect(document.getElementById("simulated-time-box").textContent).not.toBe("1 Jan 2024, 00:00 UTC+00:00");
+            expect(document.getElementById("play-pause-btn").textContent).not.toContain("▶");
+        });
+
+        it("does not restart a finished playback when asked to play", async () => {
+            const {api} = setup({batches: emptyBatches(0, 1), endHours: 1});
+            api.start();
+            await play(1200);
+            expect(document.getElementById("play-pause-btn").innerHTML).toBe(" ▶");
+
+            api.play();
+            await play(100);
+            expect(document.getElementById("play-pause-btn").innerHTML).toBe(" ▶");
+        });
+
         it("plays every batch at the chosen pace and stops at the end", async () => {
             const {api} = setup({batches: emptyBatches(0, 2), endHours: 2});
             api.start();
             await play(1000);
-            expect(document.getElementById("simulated-time-box").textContent).toBe("2024-01-01 01:00:00 UTC+00:00");
+            expect(document.getElementById("simulated-time-box").textContent).toBe("1 Jan 2024, 01:00 UTC+00:00");
             expect(document.getElementById("play-pause-btn").innerHTML).toBe("");
 
             await play(1200);
-            expect(document.getElementById("simulated-time-box").textContent).toBe("2024-01-01 02:00:00 UTC+00:00");
+            expect(document.getElementById("simulated-time-box").textContent).toBe("1 Jan 2024, 02:00 UTC+00:00");
             expect(document.getElementById("play-pause-btn").innerHTML).toBe(" ▶");
         });
 
@@ -729,7 +772,7 @@ describe("modules/simulation/index", () => {
 
             await play(300);
             expect(document.getElementById("play-pause-btn").innerHTML).toBe(" ▶");
-            expect(document.getElementById("simulated-time-box").textContent).toBe("2024-01-01 06:00:00 UTC+00:00");
+            expect(document.getElementById("simulated-time-box").textContent).toBe("1 Jan 2024, 06:00 UTC+00:00");
         });
 
         it("loads more batches as the queue runs low, in chunks sized to the speed", async () => {
@@ -739,7 +782,7 @@ describe("modules/simulation/index", () => {
             await play(4500);
 
             expect(mockedAxios.get).toHaveBeenCalledWith("/api/simulation/p1/polling?pointer=2&limit=15");
-            expect(document.getElementById("simulated-time-box").textContent).toBe("2024-01-01 04:00:00 UTC+00:00");
+            expect(document.getElementById("simulated-time-box").textContent).toBe("1 Jan 2024, 04:00 UTC+00:00");
             expect(document.getElementById("play-pause-btn").innerHTML).toBe(" ▶");
         });
 
@@ -800,6 +843,16 @@ describe("modules/simulation/index", () => {
             expect(dotsOf(9)[0].getAttribute("fill")).toBe(STATE_COLORS.waiting);
         });
 
+        it("starts the clock of a case already waiting at the beginning from its real wait", async () => {
+            const enabled = START - 30 * HOUR;
+            const frames = waitingAt(1).map(frame => ({...frame, taskTimes: {Task_A: {enabled, started: null}}}));
+            const {api} = setup({frames, batches: emptyBatches(0, 6)});
+            api.start();
+            await play(100);
+
+            expect(api.getTaskQueue("Task_A")).toEqual([expect.objectContaining({state: "waiting", since: enabled})]);
+        });
+
         it("drops batches still loading for a position the user jumped away from", async () => {
             let answer: (value: unknown) => void;
             mockedAxios.get.mockReturnValueOnce(new Promise(resolve => { answer = resolve; }));
@@ -813,7 +866,7 @@ describe("modules/simulation/index", () => {
             answer({data: {batches: emptyBatches(1, 30), pointer: -1}});
             await play(7000);
 
-            expect(document.getElementById("simulated-time-box").textContent).toBe("2024-01-01 06:00:00 UTC+00:00");
+            expect(document.getElementById("simulated-time-box").textContent).toBe("1 Jan 2024, 06:00 UTC+00:00");
         });
     });
 });

@@ -40,7 +40,7 @@ const WhatIfPanel = ({processId, initialEdits = NO_EDITS, onClose}: Props) => {
     const router = useRouter();
     const [options, setOptions] = useState<WhatIfOptions | null>(null);
     const [failed, setFailed] = useState(false);
-    const [edits, setEdits] = useState<ScenarioEdits>(initialEdits);
+    const [edits, setEdits] = useState<ScenarioEdits>({...initialEdits, emptyStart: false});
     const [running, setRunning] = useState(false);
     const [status, setStatus] = useState<JobStatus | null>(null);
     const mountedRef = useRef(true);
@@ -65,11 +65,11 @@ const WhatIfPanel = ({processId, initialEdits = NO_EDITS, onClose}: Props) => {
     const stepPercent = (percent: number, direction: 1 | -1) =>
         clamp(percent + direction * PERCENT_STEP, MIN_PERCENT, MAX_PERCENT);
 
-    const run = async () => {
+    const run = async (requested: ScenarioEdits) => {
         setRunning(true);
         setStatus({stage: "queued", durations: {}});
         try {
-            const {data} = await axios.post<{id: string; existing?: boolean}>(`/api/simulation/${processId}/what-if`, changed);
+            const {data} = await axios.post<{id: string; existing?: boolean}>(`/api/simulation/${processId}/what-if`, requested);
             const result = data.existing ? {stage: "done"} : await pollRun(data.id, setStatus, () => mountedRef.current);
             if (!result) return;
             if (result.stage === "done") {
@@ -147,11 +147,19 @@ const WhatIfPanel = ({processId, initialEdits = NO_EDITS, onClose}: Props) => {
             </details>
 
             <div className="whatif-actions">
-                <button type="button" className="toolbar-btn whatif-run" disabled={!hasEdits(changed) || running} onClick={run}>
+                <button type="button" className="toolbar-btn whatif-run" disabled={!hasEdits(changed) || running} onClick={() => run(changed)}>
                     Run what-if
                 </button>
                 <button type="button" className="toolbar-btn" disabled={!hasEdits(changed)} onClick={() => setEdits(NO_EDITS)}>
                     Reset
+                </button>
+            </div>
+
+            <div className="task-panel-subtitle">Starting state</div>
+            <p className="task-panel-text">Run the same model with no case in progress, to see what the current state changes.</p>
+            <div className="whatif-actions">
+                <button type="button" className="toolbar-btn" disabled={running} onClick={() => run({...NO_EDITS, emptyStart: true})}>
+                    Compare with an empty start
                 </button>
             </div>
 

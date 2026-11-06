@@ -1,5 +1,6 @@
 import {LifecycleTypes} from "@definitions/simulation/enums";
 import {ProcessAnalysis} from "@definitions/api/types";
+import {TaskLoad} from "@definitions/simulation/types";
 
 const HOUR = 3600000;
 const MAX_SAMPLES = 1500;
@@ -40,6 +41,9 @@ export const readTaskNames = (bpmnXml: string): Record<string, string> => {
 };
 
 type TaskState = "waiting" | "inWork";
+
+export type LongestQueue = {taskId: string; waiting: number};
+export type QueuePeak = LongestQueue & {moment: number};
 
 export const buildProcessAnalysis = (
     events: AnalysisEvent[],
@@ -100,6 +104,12 @@ export const buildProcessAnalysis = (
         });
     });
 
+    const startTasks: ProcessAnalysis["startTasks"] = {};
+    taskIds.forEach(taskId => {
+        const {waiting, inWork} = counts[taskId];
+        if (waiting || inWork) startTasks[taskId] = {waiting, inWork};
+    });
+
     const open: number[] = [];
     let openCases = frames.length;
     let index = 0;
@@ -156,6 +166,7 @@ export const buildProcessAnalysis = (
         stepMs,
         open,
         tasks: series,
+        startTasks,
         caseArrivals,
         openAtStart: openAtStartIds.size,
         openAtStartFinished: [...openAtStartIds].filter(caseId => caseEnds[caseId] !== undefined).length,
@@ -165,6 +176,25 @@ export const buildProcessAnalysis = (
         averageCycleTimeMs: cycleTimes.length ? cycleTimes.reduce((sum, value) => sum + value, 0) / cycleTimes.length : null,
     };
 };
+
+export const longestQueueOf = (load: TaskLoad): LongestQueue | null => {
+    let longest: LongestQueue | null = null;
+    Object.keys(load).sort().forEach(taskId => {
+        const {waiting} = load[taskId];
+        if (waiting > 0 && waiting > (longest?.waiting ?? 0)) longest = {taskId, waiting};
+    });
+    return longest;
+};
+
+export const queuePeaks = (analysis: Pick<ProcessAnalysis, "startDate" | "stepMs" | "tasks">, limit = 3): QueuePeak[] =>
+    Object.entries(analysis.tasks)
+        .map(([taskId, {waiting}]) => {
+            const peak = waiting.reduce((highest, value) => Math.max(highest, value), 0);
+            return {taskId, waiting: peak, moment: Date.parse(analysis.startDate) + waiting.indexOf(peak) * analysis.stepMs};
+        })
+        .filter(({waiting}) => waiting > 0)
+        .sort((a, b) => b.waiting - a.waiting)
+        .slice(0, limit);
 
 export const sampleIndexAt = (analysis: Pick<ProcessAnalysis, "startDate" | "stepMs" | "open">, moment: number): number => {
     const index = Math.floor((moment - Date.parse(analysis.startDate)) / analysis.stepMs);

@@ -5,6 +5,7 @@ import {CaseHistory} from "@modules/simulation/caseHistory";
 import {nowOf, SimulationClock} from "@modules/simulation/clock";
 import {
     ageColor,
+    ORIGIN_COLORS,
     classifyRest,
     DOT_RADIUS,
     Rest,
@@ -70,6 +71,7 @@ export function createDots({getElement, clock, history, hooks, colorMode: initia
             const arrival = history.arrivalOf(caseId);
             return ageColor(arrival === null ? null : nowOf(clock) - arrival, hooks.getAverageCycleTime?.() ?? null);
         }
+        if (colorMode === "origin") return history.wasOpenAtStart(caseId) ? ORIGIN_COLORS.ongoing : ORIGIN_COLORS.arrived;
         const rest = rests.get(tokenKey(caseId, tokenId));
         return STATE_COLORS[rest ? rest.place.kind : "moving"];
     }

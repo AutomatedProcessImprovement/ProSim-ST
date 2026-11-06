@@ -39,7 +39,7 @@ const MappingInput = ({field, label}: Props) => {
                     justify-between rounded-2xl bg-white px-4 py-1 text-left
                     data-[invalid]:border-2 data-[invalid]:border-red-500 
                     data-[open]:bg-slate-200`}>
-                <span className = {value === '__DISCOVER__' ? 'italic' : ''} >{value === '__DISCOVER__' ? 'Discover from log' : value as string}</span>
+                <span className = {value === '__DISCOVER__' ? 'italic' : ''} >{value === '__DISCOVER__' ? 'Compute from the log' : value as string}</span>
                 <ChevronDownIcon className='size-4 text-slate-500 group-data-[open]:rotate-180'/>
             </ListboxButton>
             <ListboxOptions anchor='bottom' className='mt-1 flex w-[var(--button-width)] flex-col gap-1 rounded-2xl bg-white p-1 shadow'>
@@ -50,7 +50,7 @@ const MappingInput = ({field, label}: Props) => {
                                        value = '__DISCOVER__'>
                             <span className = 'flex flex-row items-center gap-2 italic'>
                                 <CommandLineIcon className = 'size-4 stroke-1'/>
-                                Discover from log
+                                Compute from the log
                             </span>
                             <CheckIcon className = 'hidden size-4 group-data-[selected]:inline'/>
                         </ListboxOption>

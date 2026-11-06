@@ -1,4 +1,4 @@
-import {Batch, BatchEvent, FrameCase, WTPTState} from "@definitions/simulation/types";
+import {Batch, BatchEvent, FrameCase, OpenTaskTimes, WTPTState} from "@definitions/simulation/types";
 import {LifecycleTypes} from "@definitions/simulation/enums";
 
 export type PyBatchEvent = {
@@ -25,7 +25,12 @@ export type PyFrameCase = {
         [tokenId: string]: string,
     },
     arrival_time?: string | null,
+    task_times?: Record<string, {enabled: string; started: string | null}>,
 }
+
+const mapPyTaskTimes = (taskTimes: PyFrameCase["task_times"]): OpenTaskTimes =>
+    Object.fromEntries(Object.entries(taskTimes).map(([taskId, {enabled, started}]) =>
+        [taskId, {enabled: new Date(enabled).getTime(), started: started ? new Date(started).getTime() : null}]));
 
 export const mapPyFrameCase = (frame: PyFrameCase): FrameCase => {
     const arrival = frame.arrival_time ? new Date(frame.arrival_time) : null;
@@ -34,6 +39,7 @@ export const mapPyFrameCase = (frame: PyFrameCase): FrameCase => {
         caseId: frame.case_id,
         activeElements: frame.active_elements,
         ...(known ? {arrivalTime: arrival.toISOString()} : {}),
+        ...(frame.task_times && Object.keys(frame.task_times).length ? {taskTimes: mapPyTaskTimes(frame.task_times)} : {}),
     };
 };
 
@@ -53,6 +59,14 @@ export type ScenarioEdits = {
     pools: Record<string, number>;
     arrivalPercent: number;
     tasks: Record<string, number>;
+    emptyStart?: boolean;
+}
+
+export type RunDetails = {
+    seed: number;
+    files: {log: string; bpmn: string; parameters: string} | null;
+    stateSeconds: number | null;
+    simulationSeconds: number | null;
 }
 
 export type ScenarioLink = {
@@ -158,6 +172,7 @@ export type ProcessAnalysis = {
     stepMs: number;
     open: number[];
     tasks: Record<string, {waiting: number[]; inWork: number[]}>;
+    startTasks: Record<string, {waiting: number; inWork: number}>;
     caseArrivals: Record<string, number>;
     openAtStart: number;
     openAtStartFinished: number;

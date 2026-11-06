@@ -51,6 +51,26 @@ export const readCaseSpans = async (logFile: File, caseColumn: string, startColu
     return buildCaseSpans(lines, caseColumn, startColumn, endColumn);
 };
 
+export type OpenCasesSeries = {
+    from: number;
+    to: number;
+    counts: number[];
+    peak: number;
+    peakMoment: number;
+};
+
+export const openCasesOverTime = (spans: CaseSpans, points = 120): OpenCasesSeries | null => {
+    if (!spans.starts.length) return null;
+    const from = spans.starts.reduce((earliest, start) => Math.min(earliest, start), Infinity);
+    const to = spans.ends.reduce((latest, end) => Math.max(latest, end), -Infinity);
+    if (to <= from) return null;
+
+    const step = (to - from) / (points - 1);
+    const counts = Array.from({length: points}, (_, index) => countOngoingCases(spans, from + index * step));
+    const peak = Math.max(...counts);
+    return {from, to, counts, peak, peakMoment: from + counts.indexOf(peak) * step};
+};
+
 export const countOngoingCases = (spans: CaseSpans, moment: number): number => {
     let count = 0;
     for (let i = 0; i < spans.starts.length; i++) {

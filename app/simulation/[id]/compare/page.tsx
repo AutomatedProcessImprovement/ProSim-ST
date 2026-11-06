@@ -37,9 +37,12 @@ const line = (values: number[], max: number) => values
     })
     .join(" ");
 
-const VerdictChip = ({verdict}: {verdict: Verdict}) => (
-    <span className={`count-chip ${VERDICT_CLASSES[verdict]}`}>{VERDICT_LABELS[verdict]}</span>
-);
+const VerdictChip = ({verdict, neutral}: {verdict: Verdict; neutral: boolean}) => {
+    const decided = verdict === "better" || verdict === "worse";
+    return <span className={`count-chip ${neutral && decided ? "count-waiting" : VERDICT_CLASSES[verdict]}`}>
+        {neutral && decided ? "Clearly different" : VERDICT_LABELS[verdict]}
+    </span>;
+};
 
 const Compare = () => {
     const {id} = useParams();
@@ -89,6 +92,9 @@ const Compare = () => {
 
     const {asIs, toBe, poolsAsIs, poolsToBe, repeats} = data.comparison;
     const {changes, seeds} = repeats;
+    const emptyStart = Boolean(data.edits.emptyStart);
+    const asIsName = emptyStart ? "Current state" : "As-is";
+    const toBeName = emptyStart ? "Empty start" : "To-be";
     const metrics = [
         {
             name: "Average waiting",
@@ -133,14 +139,14 @@ const Compare = () => {
     return <div className="compare-page">
         <div className="simulation-toolbar">
             <Link href={`/simulation/${data.baseProcessId}`} className="toolbar-btn">← As-is simulation</Link>
-            <Link href={`/simulation/${processId}`} className="toolbar-btn">Open to-be</Link>
+            <Link href={`/simulation/${processId}`} className="toolbar-btn">Open {toBeName.toLowerCase()}</Link>
         </div>
 
         <header className="compare-header">
-            <h2>As-is vs to-be</h2>
-            <p>{data.label}</p>
+            <h2>{asIsName} vs {toBeName.toLowerCase()}</h2>
+            <p>{emptyStart ? "The same model, started with and without the cases in progress" : data.label}</p>
             <p className="stats-unit">
-                Both start from the same state. {formatShortDate(new Date(asIs.startDate), data.utcOffset)} to {formatShortDate(new Date(asIs.endDate), data.utcOffset)}.
+                {emptyStart ? "An empty start ignores the work already in the process." : "Both start from the same state."} {formatShortDate(new Date(asIs.startDate), data.utcOffset)} to {formatShortDate(new Date(asIs.endDate), data.utcOffset)}.
             </p>
         </header>
 
@@ -150,8 +156,8 @@ const Compare = () => {
                     <thead>
                         <tr>
                             <th scope="col"/>
-                            <th scope="col">As-is</th>
-                            <th scope="col">To-be</th>
+                            <th scope="col">{asIsName}</th>
+                            <th scope="col">{toBeName}</th>
                             <th scope="col">Change</th>
                             <th scope="col">Across {seeds} {seeds === 1 ? "seed" : "seeds"}</th>
                             <th scope="col"/>
@@ -164,7 +170,7 @@ const Compare = () => {
                             <td>{metric.after}</td>
                             <td>{metric.change}</td>
                             <td className="compare-spread">{metric.spread}</td>
-                            <td><VerdictChip verdict={metric.verdict}/></td>
+                            <td><VerdictChip verdict={metric.verdict} neutral={emptyStart}/></td>
                         </tr>)}
                         {details.map(detail => <tr key={detail.name}>
                             <th scope="row">{detail.name}</th>
@@ -191,13 +197,13 @@ const Compare = () => {
                 Cases waiting over the simulation <span className="stats-unit">{task || "all tasks"}</span>
             </div>
             <svg className="compare-chart" viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`} preserveAspectRatio="none" role="img"
-                 aria-label={`Cases waiting over the simulation, as-is and to-be, at most ${chart.max}`}>
+                 aria-label={`Cases waiting over the simulation, ${asIsName.toLowerCase()} and ${toBeName.toLowerCase()}, at most ${chart.max}`}>
                 <polygon points={chart.after} className="queue-area"/>
                 <polyline points={chart.before} className="as-is-line"/>
             </svg>
             <div className="task-panel-axis">
                 <span>{formatShortDate(new Date(asIs.startDate), data.utcOffset)}</span>
-                <span><i className="legend-swatch swatch-as-is"/> as-is <i className="legend-swatch swatch-waiting"/> to-be · max {chart.max}</span>
+                <span><i className="legend-swatch swatch-as-is"/> {asIsName.toLowerCase()} <i className="legend-swatch swatch-waiting"/> {toBeName.toLowerCase()} · max {chart.max}</span>
                 <span>{formatShortDate(new Date(asIs.endDate), data.utcOffset)}</span>
             </div>
         </section>
@@ -209,12 +215,12 @@ const Compare = () => {
                     <thead>
                         <tr>
                             <th scope="col">Task</th>
-                            <th scope="col">Waiting as-is</th>
-                            <th scope="col">Waiting to-be</th>
-                            <th scope="col">Queue as-is</th>
-                            <th scope="col">Queue to-be</th>
-                            <th scope="col">Peak as-is</th>
-                            <th scope="col">Peak to-be</th>
+                            <th scope="col">Waiting {asIsName.toLowerCase()}</th>
+                            <th scope="col">Waiting {toBeName.toLowerCase()}</th>
+                            <th scope="col">Queue {asIsName.toLowerCase()}</th>
+                            <th scope="col">Queue {toBeName.toLowerCase()}</th>
+                            <th scope="col">Peak {asIsName.toLowerCase()}</th>
+                            <th scope="col">Peak {toBeName.toLowerCase()}</th>
                             <th scope="col"/>
                         </tr>
                     </thead>
@@ -230,7 +236,7 @@ const Compare = () => {
                             <td>{decimal(row.queueToBe)}</td>
                             <td>{row.peakAsIs}</td>
                             <td>{row.peakToBe}</td>
-                            <td><VerdictChip verdict={row.verdict}/></td>
+                            <td><VerdictChip verdict={row.verdict} neutral={emptyStart}/></td>
                         </tr>)}
                     </tbody>
                 </table>
@@ -244,10 +250,10 @@ const Compare = () => {
                     <thead>
                         <tr>
                             <th scope="col">Pool</th>
-                            <th scope="col">Resources as-is</th>
-                            <th scope="col">Resources to-be</th>
-                            <th scope="col">Busy as-is</th>
-                            <th scope="col">Busy to-be</th>
+                            <th scope="col">Resources {asIsName.toLowerCase()}</th>
+                            <th scope="col">Resources {toBeName.toLowerCase()}</th>
+                            <th scope="col">Busy {asIsName.toLowerCase()}</th>
+                            <th scope="col">Busy {toBeName.toLowerCase()}</th>
                         </tr>
                     </thead>
                     <tbody>

@@ -2,12 +2,13 @@ import Redis from "ioredis";
 import {DataSource} from "typeorm";
 import {Frame} from "@db/entities/Frame";
 import {REDIS_KEY_PREFIX_FRAMES} from "@db/redis/redis";
-import {FrameCase} from "@definitions/simulation/types";
+import {FrameCase, OpenTaskTimes} from "@definitions/simulation/types";
 
 type FrameRow = {
     caseId: number | string;
     activeElements: Record<string, string> | string;
     arrivalTime: string | null;
+    taskTimes: OpenTaskTimes | string | null;
 };
 
 const storedToIso = (value: string | null): string | null => {
@@ -27,6 +28,7 @@ export const loadInitialFrames = async (redis: Redis, dataSource: DataSource, pr
             "frame.caseId AS caseId",
             "frame.activeElements AS activeElements",
             "CAST(frame.arrivalTime AS CHAR) AS arrivalTime",
+            "frame.taskTimes AS taskTimes",
         ])
         .where("frame.processId = :processId", { processId })
         .getRawMany();
@@ -37,6 +39,7 @@ export const loadInitialFrames = async (redis: Redis, dataSource: DataSource, pr
             caseId: Number(row.caseId),
             activeElements: typeof row.activeElements === "string" ? JSON.parse(row.activeElements) : row.activeElements,
             ...(arrivalTime ? {arrivalTime} : {}),
+            ...(row.taskTimes ? {taskTimes: typeof row.taskTimes === "string" ? JSON.parse(row.taskTimes) : row.taskTimes} : {}),
         };
     });
 

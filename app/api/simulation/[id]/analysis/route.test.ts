@@ -12,7 +12,7 @@ jest.mock("@db/mysql/typeorm", () => ({
 
 jest.mock("@db/redis/redis", () => ({
     getRedisInstance: jest.fn(),
-    REDIS_KEY_PREFIX_ANALYSIS: "analysis-v2:",
+    REDIS_KEY_PREFIX_ANALYSIS: "analysis-v3:",
 }));
 
 jest.mock("@db/mysql/frames", () => ({
@@ -88,7 +88,7 @@ describe("GET /api/simulation/[id]/analysis", () => {
         expect(loadInitialFrames).toHaveBeenCalledWith(redis, dataSource, "p1");
         expect(readFile).toHaveBeenCalledWith(expect.stringContaining("p1_bpmn_model.bpmn"), "utf-8");
         expect(buildProcessAnalysis).toHaveBeenCalledWith(events, frames, {Flow_1: "Task_A"}, "2024-01-01 00:00:00", "2024-01-01 02:00:00");
-        expect(redis.set).toHaveBeenCalledWith("analysis-v2:p1", JSON.stringify({open: [1, 2]}), "EX", 60 * 60 * 24);
+        expect(redis.set).toHaveBeenCalledWith("analysis-v3:p1", JSON.stringify({open: [1, 2]}), "EX", 60 * 60 * 24);
         expect(response).toEqual({body: {open: [1, 2]}, status: 200});
     });
 

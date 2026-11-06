@@ -152,8 +152,8 @@ describe("Simulation page", () => {
 
         expect(screen.getByText("Statistics")).toBeInTheDocument();
         expect(screen.getByText("Task One")).toBeInTheDocument();
-        fireEvent.click(screen.getByRole("button", {name: "A→Z"}));
-        expect(screen.getByRole("button", {name: "Z→A"})).toBeInTheDocument();
+        fireEvent.click(screen.getByRole("button", {name: "Longest wait"}));
+        expect(screen.getByRole("button", {name: "A→Z"})).toBeInTheDocument();
     });
 
     it("says the simulation was not found or expired when the API returns 404", async () => {
@@ -334,7 +334,8 @@ describe("Simulation page", () => {
             expect(await screen.findByText("2.0")).toBeInTheDocument();
             expect(screen.getByText("1 Jan")).toBeInTheDocument();
             expect(screen.getByText("8 Jan")).toBeInTheDocument();
-            expect(screen.getAllByText("No data yet").length).toBeGreaterThan(0);
+            expect(screen.getByText("1 task without data yet")).toBeInTheDocument();
+            expect(screen.getByText("No task has finished yet.")).toBeInTheDocument();
             expect(screen.queryByText("Diagnostics")).not.toBeInTheDocument();
         });
 
@@ -370,6 +371,7 @@ describe("Simulation page", () => {
                 moment: Date.UTC(2024, 0, 1, 1),
                 hoursPerSecond: 6,
                 colorMode: "age",
+                holdStart: expect.any(Function),
             });
             expect(screen.getByRole("combobox")).toHaveValue("6");
             expect(screen.getByRole("button", {name: "Case age"})).toHaveAttribute("aria-pressed", "true");

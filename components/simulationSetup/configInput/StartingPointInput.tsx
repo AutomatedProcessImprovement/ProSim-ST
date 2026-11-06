@@ -1,6 +1,6 @@
 "use client";
 
-import {ChangeEvent, useContext, useEffect, useState} from "react";
+import {ChangeEvent, useCallback, useContext, useEffect} from "react";
 import {DataContext} from "@context/DataContext";
 
 interface Props {
@@ -10,14 +10,18 @@ interface Props {
 
 const StartingPointInput = ({ minDate, maxDate }: Props) => {
     const { data: { config: { startingPoint } }, setData } = useContext(DataContext);
-    const [value, setValue] = useState<string>(startingPoint || maxDate);
+    const value = startingPoint || maxDate;
 
-    useEffect(() => {
+    const setStartingPoint = useCallback((newDate: string) => {
         setData((prev) => ({
             ...prev,
-            config: { ...prev.config, startingPoint: value },
+            config: { ...prev.config, startingPoint: newDate },
         }));
-    }, [value, setData]);
+    }, [setData]);
+
+    useEffect(() => {
+        if (!startingPoint && maxDate) setStartingPoint(maxDate);
+    }, [startingPoint, maxDate, setStartingPoint]);
 
     const handleDateChange = (e: ChangeEvent<HTMLInputElement>) => {
         let newDate = e.target.value;
@@ -25,7 +29,7 @@ const StartingPointInput = ({ minDate, maxDate }: Props) => {
         if (newDate < minDate) newDate = minDate;
         else if (newDate > maxDate) newDate = maxDate;
 
-        setValue(newDate);
+        setStartingPoint(newDate);
     }
 
     return <input type="datetime-local" name="startingPoint" value={value} min={minDate} max={maxDate} step={1} onChange={handleDateChange}

@@ -25,7 +25,7 @@ const simulation = (
     const tokenSimulation = function(canvas: Canvas, elementRegistry: ElementRegistry, eventBus?: EventBus) {
             const getElement = (elementId: string): Flow | Node | undefined => elementRegistry.get(elementId);
             const clock = createClock(simulationData);
-            const history = createCaseHistory(hooks, simulationData.frames.map(frame => frame.caseId));
+            const history = createCaseHistory(hooks, simulationData.frames);
             const dots = createDots({
                 getElement,
                 clock,
@@ -53,6 +53,7 @@ const simulation = (
             this.describeCase = (caseId: number) => hover.describeCase(caseId);
             this.getTaskQueue = (taskId: string) => dots.getTaskQueue(taskId);
             this.getCurrentTime = () => clock.current?.getTime() ?? null;
+            this.play = () => playback.play();
 
             this.start = () => {
                 const viewport = canvas.getContainer().querySelector('svg g[data-element-id]');

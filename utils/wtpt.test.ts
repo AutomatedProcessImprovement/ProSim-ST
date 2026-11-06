@@ -65,4 +65,27 @@ describe("buildWTPTState", () => {
             },
         });
     });
+
+    it("counts cases that were already at a task when the simulation began", () => {
+        const enabled = Date.UTC(2024, 0, 1, 6);
+        const started = Date.UTC(2024, 0, 1, 7);
+        const result = buildWTPTState([
+            makeEvent({caseId: 1, lifecycle: LifecycleTypes.START,    timestamp: "2024-01-01 10:00:00", nodeId: "Task_A"}),
+            makeEvent({caseId: 1, lifecycle: LifecycleTypes.COMPLETE, timestamp: "2024-01-01 11:00:00", nodeId: "Task_A"}),
+            makeEvent({caseId: 2, lifecycle: LifecycleTypes.COMPLETE, timestamp: "2024-01-01 09:00:00", nodeId: "Task_A"}),
+        ], [
+            {caseId: 1, activeElements: {}, taskTimes: {Task_A: {enabled, started: null}}},
+            {caseId: 2, activeElements: {}, taskTimes: {Task_A: {enabled, started}}},
+            {caseId: 3, activeElements: {}, taskTimes: {Task_A: {enabled, started: null}}},
+            {caseId: 4, activeElements: {}},
+        ]);
+
+        expect(result.Task_A).toEqual({
+            name: "Task_A",
+            averageWT: 2.5 * 3600000,
+            averagePT: 1.5 * 3600000,
+            _count: 2,
+            incompleteCases: {3: {enablementTime: enabled}},
+        });
+    });
 });

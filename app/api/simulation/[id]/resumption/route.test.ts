@@ -22,6 +22,14 @@ jest.mock("@utils/wtpt", () => ({
     buildWTPTState: jest.fn(),
 }));
 
+jest.mock("@db/redis/redis", () => ({
+    getRedisInstance: jest.fn(() => ({disconnect: jest.fn()})),
+}));
+
+jest.mock("@db/mysql/frames", () => ({
+    loadInitialFrames: jest.fn(),
+}));
+
 jest.mock("@utils/dateHelpers", () => ({
     formatDateString: jest.fn((date: Date) => date.toISOString().slice(0, 19).replace("T", " ")),
     getHourDifference: jest.fn(() => 7),
@@ -32,6 +40,7 @@ import {createMySQLConnection} from "@db/mysql/typeorm";
 import axios from "axios";
 import {groupEvents} from "@utils/events";
 import {buildWTPTState} from "@utils/wtpt";
+import {loadInitialFrames} from "@db/mysql/frames";
 import {Process} from "@db/entities/Process";
 import {LifecycleTypes} from "@definitions/simulation/enums";
 
@@ -52,6 +61,7 @@ describe("POST /api/simulation/[id]/resumption", () => {
         finishedCasesBuilder.where.mockReturnThis();
         finishedCasesBuilder.andWhere.mockReturnThis();
         finishedCasesBuilder.select.mockReturnThis();
+        (loadInitialFrames as jest.Mock).mockResolvedValue([]);
     });
 
     const buildRequest = (requestedDate: string) => ({
@@ -280,6 +290,30 @@ describe("POST /api/simulation/[id]/resumption", () => {
             },
             status: 200,
         });
+    });
+
+    it("counts the cases open at the start in the statistics after a jump", async () => {
+        processRepository.createQueryBuilder.mockReturnValue(createQueryBuilderMock({
+            id: "p1",
+            fileName: "file.bpmn",
+            startDate: "2024-01-01 00:00:00",
+            endDate: "2024-01-02 00:00:00",
+            setToDelete: false,
+        }));
+        finishedCasesBuilder.getRawOne.mockResolvedValue({count: "0"});
+        const openCases = [{caseId: 1, activeElements: {}, taskTimes: {Task_A: {enabled: 5, started: null}}}];
+        (loadInitialFrames as jest.Mock).mockResolvedValue(openCases);
+        const wtptEvents = [{nodeId: "Task_A", caseId: 1, lifecycle: LifecycleTypes.START, timestamp: "2024-01-01 01:00:00"}];
+        (buildWTPTState as jest.Mock).mockReturnValue({});
+        (createMySQLConnection as jest.Mock).mockResolvedValue({
+            getRepository: jest.fn(() => processRepository),
+            createQueryBuilder: jest.fn(() => finishedCasesBuilder),
+            query: jest.fn().mockResolvedValueOnce(wtptEvents),
+        });
+
+        await POST(buildRequest("2024-01-03T00:00:00.000Z"), {params: Promise.resolve({id: "p1"})});
+
+        expect(buildWTPTState).toHaveBeenCalledWith(wtptEvents, openCases);
     });
 
     it("returns 500 when resumption fails unexpectedly", async () => {

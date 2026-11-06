@@ -298,7 +298,7 @@ test.describe('Simulation page', () => {
 
     test('a slower speed advances simulated time more slowly over the same wall-clock interval', async ({ page }) => {
         const parseSimMs = (timeStr: string) =>
-            new Date(timeStr.slice(0, 19).replace(' ', 'T') + 'Z').getTime();
+            new Date(timeStr.split(' UTC')[0] + ' UTC').getTime();
 
         await mockSimulationApis(page);
         const sim = new SimulationPage(page);
@@ -349,12 +349,12 @@ test.describe('Simulation page', () => {
         await page.goto(`/simulation/${PROCESS_ID}?t=2024-01-01T01:00:00Z&speed=3&colour=age`);
         await sim.waitForBpmnCanvas();
 
-        await expect(sim.simulatedTimeBox).toContainText('2024-01-01 01:00:00');
+        await expect(sim.simulatedTimeBox).toContainText('1 Jan 2024, 01:00');
         await expect(sim.speedSelect).toHaveValue('3');
         await expect(page.getByRole('button', { name: 'Case age' })).toHaveAttribute('aria-pressed', 'true');
 
         await page.waitForTimeout(600);
-        await expect(sim.simulatedTimeBox).toContainText('2024-01-01 01:00:00');
+        await expect(sim.simulatedTimeBox).toContainText('1 Jan 2024, 01:00');
     });
 
     test('clicking an activity in the statistics selects it on the diagram', async ({ page }) => {
@@ -363,6 +363,7 @@ test.describe('Simulation page', () => {
         await sim.goto(PROCESS_ID);
         await sim.waitForBpmnCanvas();
 
+        await page.locator('.wtpt-empty summary').click();
         await page.locator('.wtpt-row').first().click();
 
         await expect(page.locator('.task-panel')).toBeVisible();

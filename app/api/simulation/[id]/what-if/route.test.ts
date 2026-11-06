@@ -114,7 +114,7 @@ describe("what-if route", () => {
         expect(axios.post).toHaveBeenCalledWith("http://py/scenario", {
             process_id: id,
             base_process_id: "base",
-            edits: {pools: {c: 11}, arrival_percent: 20, tasks: {}},
+            edits: {pools: {c: 11}, arrival_percent: 20, tasks: {}, empty_start: false},
         });
         expect(saveSimulation).toHaveBeenCalledWith(
             expect.objectContaining({

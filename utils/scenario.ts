@@ -21,7 +21,8 @@ export const parseEdits = (value: unknown): ScenarioEdits | null => {
     const percents = [arrivalPercent, ...Object.values(tasks)];
     if (percents.some(percent => percent < MIN_PERCENT || percent > MAX_PERCENT)) return null;
     if (Object.values(pools).some(size => size < 1 || size > MAX_POOL_SIZE)) return null;
-    return {pools, tasks, arrivalPercent};
+    if (edits.emptyStart !== undefined && typeof edits.emptyStart !== "boolean") return null;
+    return {pools, tasks, arrivalPercent, ...(edits.emptyStart && {emptyStart: true})};
 };
 
 export const changedEdits = (edits: ScenarioEdits, options: Pick<WhatIfOptions, "pools">): ScenarioEdits => ({
@@ -29,14 +30,17 @@ export const changedEdits = (edits: ScenarioEdits, options: Pick<WhatIfOptions, 
         options.pools.find(pool => pool.id === id)?.size !== size)),
     arrivalPercent: edits.arrivalPercent,
     tasks: Object.fromEntries(Object.entries(edits.tasks).filter(([, percent]) => percent !== 0)),
+    ...(edits.emptyStart && {emptyStart: true}),
 });
 
 export const hasEdits = (edits: ScenarioEdits) =>
-    Object.keys(edits.pools).length > 0 || edits.arrivalPercent !== 0 || Object.keys(edits.tasks).length > 0;
+    Boolean(edits.emptyStart) || Object.keys(edits.pools).length > 0 || edits.arrivalPercent !== 0
+    || Object.keys(edits.tasks).length > 0;
 
 export const formatPercent = (percent: number) => percent > 0 ? `+${percent}%` : percent < 0 ? `−${-percent}%` : "0%";
 
 export const describeEdits = (edits: ScenarioEdits, options: Pick<WhatIfOptions, "pools" | "tasks">) => [
+    ...(edits.emptyStart ? ["Empty start"] : []),
     ...options.pools.filter(pool => edits.pools[pool.id] !== undefined)
         .map(pool => `${pool.name} ${pool.size} → ${edits.pools[pool.id]}`),
     ...(edits.arrivalPercent ? [`Arrivals ${formatPercent(edits.arrivalPercent)}`] : []),

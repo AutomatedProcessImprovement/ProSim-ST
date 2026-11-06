@@ -92,13 +92,14 @@ const insertSimulationData = async (
             frame.caseId,
             JSON.stringify(frame.activeElements),
             frame.arrivalTime ? new Date(frame.arrivalTime).toISOString().slice(0, 19).replace("T", " ") : null,
+            frame.taskTimes ? JSON.stringify(frame.taskTimes) : null,
             processId,
         ]);
 
-        const framePlaceholders = frameValues.map(() => `(?, ?, ?, ?)`).join(", ");
+        const framePlaceholders = frameValues.map(() => `(?, ?, ?, ?, ?)`).join(", ");
 
         const frameSql = `
-            INSERT INTO frame (caseId, activeElements, arrivalTime, processId)
+            INSERT INTO frame (caseId, activeElements, arrivalTime, taskTimes, processId)
             VALUES ${framePlaceholders};
         `;
 

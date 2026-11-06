@@ -3,6 +3,7 @@ import Step from "./Step";
 import Stepper from "./Stepper";
 import ConfigFileInput from "./ConfigFileInput";
 import Preview from "./Preview";
+import OpenCasesChart from "./OpenCasesChart";
 
 export {
     MappingInput,
@@ -10,4 +11,5 @@ export {
     Stepper,
     ConfigFileInput,
     Preview,
+    OpenCasesChart,
 }

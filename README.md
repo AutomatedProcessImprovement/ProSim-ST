@@ -133,7 +133,11 @@ Every run saves its computed process state and random seed. **What-if** reruns f
 
 A single run depends on chance, so each what-if also repeats both sides with up to 8 more seeds, and a change counts as clear only when all seeds moved the same way. The repeats share a 60-second budget, set by `SCENARIO_REPEAT_BUDGET_SECONDS` on the simulation service. Simulations that take long get fewer repeats, and the comparison then says it has too few to judge.
 
+**Compare with an empty start**, in the same panel, reruns the model with no case in progress to show what the current state changes.
+
 **Resources** shows busy, idle and off-shift resources per pool, read from the simulated log and the resource calendars. Runs from before these features can show resources, but have to be run again for what-if.
+
+**This run** lists the starting state, input files, starting point, horizon, time zone, seed and case counts of a run. Waiting and processing times count the time a case spent at a task before the starting point, so runs saved before the `taskTimes` frame column existed show less of it until they are run again.
 
 ## Configuration
 

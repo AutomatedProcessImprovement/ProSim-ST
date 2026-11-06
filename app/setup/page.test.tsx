@@ -328,7 +328,7 @@ describe("Setup page", () => {
             },
         });
 
-        expect(screen.getByText("Discover")).toBeInTheDocument();
+        expect(screen.getByText("Computed from the log")).toBeInTheDocument();
         expect(screen.getByText("model.bpmn")).toBeInTheDocument();
         expect(screen.getByText("params.json")).toBeInTheDocument();
 

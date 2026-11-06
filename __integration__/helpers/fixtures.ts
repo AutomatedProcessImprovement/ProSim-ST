@@ -13,6 +13,7 @@ export type EventSeed = {
 export type FrameSeed = {
     caseId: number;
     activeElements: object;
+    taskTimes?: object;
     processId: string;
 };
 
@@ -52,9 +53,9 @@ export const seedFrames = async (
 ): Promise<void> => {
     for (const frame of frames) {
         await dataSource.query(
-            `INSERT INTO frame (caseId, activeElements, processId)
-             VALUES (?, ?, ?)`,
-            [frame.caseId, JSON.stringify(frame.activeElements), frame.processId]
+            `INSERT INTO frame (caseId, activeElements, taskTimes, processId)
+             VALUES (?, ?, ?, ?)`,
+            [frame.caseId, JSON.stringify(frame.activeElements), frame.taskTimes ? JSON.stringify(frame.taskTimes) : null, frame.processId]
         );
     }
 };

@@ -3,7 +3,7 @@ import {Dispatch, SetStateAction} from "react";
 import {Flow, Node} from "@definitions/simulation/interfaces";
 import {Batch, FrameCase, InitialView, SimulationHooks, WTPTState} from "@definitions/simulation/types";
 import {SimulationData} from "@definitions/api/types";
-import {formatInLogTime, formatUtcOffset} from "@utils/dateHelpers";
+import {formatLogMoment, formatUtcOffset} from "@utils/dateHelpers";
 import {toUtcMs} from "@utils/processAnalysis";
 import {CaseHistory} from "@modules/simulation/caseHistory";
 import {SimulationClock} from "@modules/simulation/clock";
@@ -72,7 +72,7 @@ export function createPlayback({simulationData, caseNumberSetter, wtptSetter, ho
     const {handleBatchEvents} = createTokenAnimation({getElement, dots, session});
 
     function formatTime(date: Date) {
-        return formatInLogTime(date, clock.utcOffset);
+        return formatLogMoment(date, clock.utcOffset);
     }
 
     function showCurrentTime(progress: number) {
@@ -84,7 +84,7 @@ export function createPlayback({simulationData, caseNumberSetter, wtptSetter, ho
         const progressPercentage = `${progress * 100}%`;
         progressBar.style.width = progressPercentage;
         pointer.style.left = progressPercentage;
-        ctTimeBar.style.width = `calc((100% - 24px) * ${progress})`;
+        ctTimeBar.style.left = `calc(24px + (100% - 24px) * ${progress})`;
         showCurrentTime(progress);
     }
 
@@ -192,9 +192,9 @@ export function createPlayback({simulationData, caseNumberSetter, wtptSetter, ho
             const extra = hooks.describeMoment?.(moment.getTime());
 
             tooltip.textContent = extra ? `${formatTime(moment)} · ${extra}` : formatTime(moment);
-            tooltip.style.left = `${event.clientX + 10}px`;
-            tooltip.style.top = `${event.clientY - 30}px`;
             tooltip.style.display = "block";
+            tooltip.style.left = `${Math.max(8, Math.min(event.clientX + 10, window.innerWidth - tooltip.offsetWidth - 8))}px`;
+            tooltip.style.top = `${event.clientY - 30}px`;
         }
 
         function hideTooltip() {
@@ -499,11 +499,16 @@ export function createPlayback({simulationData, caseNumberSetter, wtptSetter, ho
         showCurrentTime(0);
         enableTimeline();
         if (initialView.moment !== undefined) openAtMoment(initialView.moment);
-        else runSimulation();
+        else if (initialView.holdStart?.()) {
+            isPaused = true;
+            playPauseButton.innerHTML = " ▶";
+            dots.reconcileWithFrames(frames);
+        } else runSimulation();
     }
 
     return {
         start,
+        play: () => { if (isPaused && !hasEnded) handlePlayPause(); },
         stop: () => session.abortController.abort(),
     };
 }

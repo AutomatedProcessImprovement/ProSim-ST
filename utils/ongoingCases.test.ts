@@ -1,4 +1,4 @@
-import {buildCaseSpans, countOngoingCases, parseLogTimestamp} from "@utils/ongoingCases";
+import {buildCaseSpans, countOngoingCases, openCasesOverTime, parseLogTimestamp} from "@utils/ongoingCases";
 
 describe("ongoingCases", () => {
     const lines = [
@@ -22,6 +22,19 @@ describe("ongoingCases", () => {
         expect(countOngoingCases(spans, at("2025-04-04T09:30:00"))).toBe(1);
         expect(countOngoingCases(spans, at("2025-04-04T11:15:00"))).toBe(2);
         expect(countOngoingCases(spans, at("2025-04-04T14:00:00"))).toBe(0);
+    });
+
+    it("follows the open cases across the log and finds the busiest moment", () => {
+        const series = openCasesOverTime(spans, 7);
+        expect(series.from).toBe(at("2025-04-04T08:00:00"));
+        expect(series.to).toBe(at("2025-04-04T14:00:00"));
+        expect(series.counts).toEqual([1, 1, 1, 2, 0, 1, 0]);
+        expect(series.peak).toBe(2);
+        expect(series.peakMoment).toBe(at("2025-04-04T11:00:00"));
+    });
+
+    it("has no series for an empty log", () => {
+        expect(openCasesOverTime({starts: new Float64Array(), ends: new Float64Array()})).toBeNull();
     });
 
     it("returns no spans when the mapped columns are not in the log", () => {

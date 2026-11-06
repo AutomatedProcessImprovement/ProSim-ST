@@ -14,6 +14,8 @@ import {formatDateString, getHourDifference} from "@utils/dateHelpers";
 import {groupEvents} from "@utils/events";
 import axios from "axios";
 import {buildWTPTState} from "@utils/wtpt";
+import {getRedisInstance} from "@db/redis/redis";
+import {loadInitialFrames} from "@db/mysql/frames";
 
 export const POST = async (
     request: Request,
@@ -90,7 +92,10 @@ export const POST = async (
             LifecycleTypes.COMPLETE,
         ]);
 
-        const wtpt = buildWTPTState(wtptEvents);
+        const redis = getRedisInstance();
+        const openCases = await loadInitialFrames(redis, appDataSource, processId);
+        redis.disconnect();
+        const wtpt = buildWTPTState(wtptEvents, openCases);
 
         if (startDate >= simulationFinishDate) {
             return NextResponse.json({

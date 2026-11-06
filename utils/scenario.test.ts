@@ -11,6 +11,18 @@ describe("parseEdits", () => {
         expect(parseEdits({arrivalPercent: 20})).toEqual({pools: {}, tasks: {}, arrivalPercent: 20});
     });
 
+    it("keeps an empty start and refuses a value that is not a yes or no", () => {
+        expect(parseEdits({emptyStart: true})).toEqual({pools: {}, tasks: {}, arrivalPercent: 0, emptyStart: true});
+        expect(parseEdits({emptyStart: false})).toEqual({pools: {}, tasks: {}, arrivalPercent: 0});
+        expect(parseEdits({emptyStart: "yes"})).toBeNull();
+    });
+
+    it("counts an empty start as a change and names it", () => {
+        const edits = changedEdits({...NO_EDITS, emptyStart: true}, options);
+        expect(hasEdits(edits)).toBe(true);
+        expect(describeEdits(edits, options)).toBe("Empty start");
+    });
+
     it("refuses anything that is not a whole number in range", () => {
         expect(parseEdits(null)).toBeNull();
         expect(parseEdits({arrivalPercent: "10"})).toBeNull();

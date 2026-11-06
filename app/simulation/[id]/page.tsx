@@ -4,7 +4,7 @@ import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import {toast} from "sonner";
-import {formatInLogTime, formatUtcOffset} from "@utils/dateHelpers";
+import {formatDuration, formatInLogTime, formatLogMoment, formatUtcOffset} from "@utils/dateHelpers";
 import NavigatedViewer from 'bpmn-js/lib/NavigatedViewer';
 import simulation from "@modules/simulation";
 import axios from "axios";
@@ -12,9 +12,10 @@ import {ProcessAnalysis, SimulationData} from "@definitions/api/types";
 import {Canvas} from "bpmn-js/lib/features/context-pad/ContextPadProvider";
 import {ColorMode, SimulationHooks, TokenSimulationApi, WTPTState} from "@definitions/simulation/types";
 import {isTaskType} from "@modules/simulation/restLayout";
+import {seedOpenCases} from "@modules/simulation/wtptHelpers";
 import {DEFAULT_HOURS_PER_SECOND, SPEEDS} from "@modules/simulation/speed";
 import {enableTouchNavigation} from "@modules/simulation/touchNavigation";
-import {sampleIndexAt} from "@utils/processAnalysis";
+import {LongestQueue, longestQueueOf, queuePeaks, sampleIndexAt} from "@utils/processAnalysis";
 import {readSharedView, SharedView, writeSharedView} from "@utils/viewLink";
 import {buildDiagramSvg, downloadPng, downloadSvg} from "@utils/diagramSnapshot";
 import TaskPanel from "@components/simulation/TaskPanel";
@@ -23,6 +24,7 @@ import CaseBanner from "@components/simulation/CaseBanner";
 import ExportMenu from "@components/simulation/ExportMenu";
 import HelpOverlay from "@components/simulation/HelpOverlay";
 import ResourcePanel from "@components/simulation/ResourcePanel";
+import RunPanel from "@components/simulation/RunPanel";
 import WhatIfPanel from "@components/simulation/WhatIfPanel";
 
 const HELP_SEEN_KEY = "prosim-help-seen";
@@ -32,6 +34,11 @@ const ZOOMED_OUT_BELOW = 0.6;
 const TASK_PANEL_SPACE = 360;
 const PHONE_WIDTH = 640;
 const NO_ELEMENTS: string[] = [];
+const PEAK_REACH = 0.01;
+const DAYS_FROM_HOURS = 48;
+
+type SidePanel = "run" | "resources" | "what-if";
+type WtptSort = "wait" | "name";
 
 const isNarrowLayout = () => window.matchMedia?.(NARROW_LAYOUT).matches ?? false;
 
@@ -69,7 +76,8 @@ const Simulation = () => {
         finished: 0,
     });
     const [waitingProcessingTimes, setWaitingProcessingTimes] = useState<WTPTState>({});
-    const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+    const [sortBy, setSortBy] = useState<WtptSort>("wait");
+    const [longestQueue, setLongestQueue] = useState<LongestQueue | null>(null);
     const [loadError, setLoadError] = useState<"missing" | "failed" | null>(null);
     const [analysis, setAnalysis] = useState<ProcessAnalysis | null>(null);
     const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -77,7 +85,10 @@ const Simulation = () => {
     const [speed, setSpeed] = useState(DEFAULT_HOURS_PER_SECOND);
     const [followedCase, setFollowedCase] = useState<number | null>(null);
     const [helpOpen, setHelpOpen] = useState(false);
-    const [sidePanel, setSidePanel] = useState<"resources" | "what-if" | null>(null);
+    const [sidePanel, setSidePanel] = useState<SidePanel | null>(null);
+    const helpOpenRef = useRef(false);
+    helpOpenRef.current = helpOpen;
+    const heldForHelpRef = useRef(false);
     const sharedViewRef = useRef<SharedView>({});
     const syncAddressBarRef = useRef<() => void>(() => {});
     const hooksRef = useRef<SimulationHooks>({
@@ -87,6 +98,11 @@ const Simulation = () => {
         },
         onCaseClick: caseId => setFollowedCase(current => current === caseId ? null : caseId),
         onViewChange: () => syncAddressBarRef.current(),
+        onTaskLoad: load => {
+            const next = longestQueueOf(load);
+            setLongestQueue(current =>
+                current?.taskId === next?.taskId && current?.waiting === next?.waiting ? current : next);
+        },
         onOpenFailed: () => toast.error("Could not open that moment", {description: "Showing the start of the simulation instead."}),
     });
     const { id } = useParams();
@@ -140,6 +156,7 @@ const Simulation = () => {
         setSelectedTaskId(null);
         setFollowedCase(null);
         setSidePanel(null);
+        setLongestQueue(null);
 
         const sharedView = readSharedView(window.location.search);
         sharedViewRef.current = sharedView;
@@ -221,25 +238,35 @@ const Simulation = () => {
         fetchAnalysis().then(setAnalysis);
     }, [processId]);
 
+    const peaks = useMemo(() => analysis ? queuePeaks(analysis) : [], [analysis]);
+    const taskNameRef = useRef<(taskId: string) => string>(taskId => taskId);
+    taskNameRef.current = taskId => waitingProcessingTimes[taskId]?.name || taskId;
+
     useEffect(() => {
         const hooks = hooksRef.current;
         hooks.getCaseArrival = caseId => analysis?.caseArrivals[caseId];
         hooks.getAverageCycleTime = () => analysis?.averageCycleTimeMs ?? null;
         hooks.describeMoment = moment => {
-            if (analysis) return `${analysis.open[sampleIndexAt(analysis, moment)]} cases in progress`;
+            if (analysis) {
+                const reach = (Date.parse(analysis.endDate) - Date.parse(analysis.startDate)) * PEAK_REACH;
+                const peak = peaks.find(candidate => Math.abs(candidate.moment - moment) <= reach);
+                const open = `${analysis.open[sampleIndexAt(analysis, moment)]} cases in progress`;
+                return peak ? `${open} · queue peak: ${taskNameRef.current(peak.taskId)}, ${peak.waiting} waiting` : open;
+            }
             if (!workload?.length || !simulationData) return null;
             const start = new Date(simulationData.startDate + "Z").getTime();
             const end = new Date(simulationData.endDate + "Z").getTime();
             const index = Math.floor((moment - start) / Math.max(end - start, 1) * workload.length);
             return `${workload[Math.max(0, Math.min(workload.length - 1, index))]} cases in progress`;
         };
-    }, [analysis, workload, simulationData]);
+    }, [analysis, peaks, workload, simulationData]);
 
     useEffect(() => {
         if (xml !== null && simulationData && typeof window !== "undefined") {
             if (viewerInstanceRef.current) return;
 
             const {moment, hoursPerSecond, colorMode: sharedColorMode, taskId, caseId} = sharedViewRef.current;
+            heldForHelpRef.current = helpOpenRef.current && moment === undefined;
             const viewer = new NavigatedViewer({
                 container: viewerRef.current,
                 textRenderer: {defaultStyle: {fontSize: 13}},
@@ -247,6 +274,7 @@ const Simulation = () => {
                     moment,
                     hoursPerSecond,
                     colorMode: sharedColorMode,
+                    holdStart: () => heldForHelpRef.current,
                 })]
             });
             viewerInstanceRef.current = viewer;
@@ -256,7 +284,7 @@ const Simulation = () => {
                 canvas.zoom('fit-viewport');
 
                 const activityNodeIdMap = getTaskIdToNameMap(viewer);
-                setWaitingProcessingTimes(activityNodeIdMap);
+                setWaitingProcessingTimes(seedOpenCases(activityNodeIdMap, simulationData.frames));
 
                 const tokenSimulation = viewer.get('tokenSimulation') as TokenSimulationApi;
                 tokenSimulation.start();
@@ -364,19 +392,23 @@ const Simulation = () => {
     }, []);
 
     const closeSidePanel = useCallback(() => setSidePanel(null), []);
-    const toggleSidePanel = (panel: "resources" | "what-if") => {
+    const toggleSidePanel = (panel: SidePanel) => {
         setSelectedTaskId(null);
         setSidePanel(current => current === panel ? null : panel);
     };
 
     const closeHelp = useCallback(() => {
         setHelpOpen(false);
+        if (heldForHelpRef.current) {
+            heldForHelpRef.current = false;
+            getTokenSimulation()?.play?.();
+        }
         try {
             localStorage.setItem(HELP_SEEN_KEY, "1");
         } catch {
             return;
         }
-    }, []);
+    }, [getTokenSimulation]);
 
     const startElements = useMemo(() => {
         const frame = simulationData?.frames.find(({caseId}) => caseId === followedCase);
@@ -455,11 +487,10 @@ const Simulation = () => {
         const svg = viewerRef.current?.querySelector("svg");
         if (!layer || !svg) return;
 
-        const moment = getCurrentTime() ?? 0;
-        const time = formatInLogTime(new Date(moment), utcOffset);
+        const moment = new Date(getCurrentTime() ?? 0);
         const {markup, width, height} = buildDiagramSvg(svg, layer,
-            `${time} ${formatUtcOffset(utcOffset)} · ${numberOfCases.ongoing} cases in progress`);
-        const fileName = `simulation-${processId.slice(0, 8)}-${time.replace(/\D/g, "")}.${format}`;
+            `${formatLogMoment(moment, utcOffset)} ${formatUtcOffset(utcOffset)} · ${numberOfCases.ongoing} cases in progress`);
+        const fileName = `simulation-${processId.slice(0, 8)}-${formatInLogTime(moment, utcOffset).replace(/\D/g, "")}.${format}`;
 
         try {
             if (format === "svg") downloadSvg(markup, fileName);
@@ -516,6 +547,8 @@ const Simulation = () => {
     }, [cycleTimeData]);
 
     const ctMaxHours = cycleTimeData && cycleTimeData.length > 0 ? Math.max(...cycleTimeData) / 3600000 : null;
+    const ctInDays = ctMaxHours !== null && ctMaxHours >= DAYS_FROM_HOURS;
+    const ctMaxValue = ctMaxHours !== null ? (ctInDays ? ctMaxHours / 24 : ctMaxHours) : null;
     const formatChartDate = (date: string) =>
         new Intl.DateTimeFormat("en-GB", {day: "numeric", month: "short", timeZone: "UTC"}).format(
             new Date(formatInLogTime(new Date(date + "Z"), simulationData?.utcOffset ?? "+00:00").replace(" ", "T") + "Z"));
@@ -526,11 +559,13 @@ const Simulation = () => {
     const wtptList = useMemo(() => {
         return Object.entries(waitingProcessingTimes)
             .map(([nodeId, stats]) => ({ nodeId, stats }))
-            .sort((a, b) => {
-                const comparison = a.stats.name.localeCompare(b.stats.name);
-                return sortOrder === "asc" ? comparison : -comparison;
-            });
-    }, [waitingProcessingTimes, sortOrder]);
+            .sort((a, b) => (sortBy === "wait" ? b.stats.averageWT - a.stats.averageWT : 0)
+                || a.stats.name.localeCompare(b.stats.name));
+    }, [waitingProcessingTimes, sortBy]);
+    const taskHasData = ({averageWT, averagePT}: WTPTState[string]) =>
+        averageWT >= 0 && averagePT >= 0 && averageWT + averagePT > 0;
+    const tasksWithData = wtptList.filter(({stats}) => taskHasData(stats));
+    const tasksWithoutData = wtptList.filter(({stats}) => !taskHasData(stats));
 
     if (loadError) {
         return <div className="mx-auto mt-16 max-w-xl rounded-2xl border-2 border-slate-300 bg-slate-100 p-8 text-center">
@@ -553,6 +588,8 @@ const Simulation = () => {
             <Link href="/" className="toolbar-btn">← New simulation</Link>
             <button type="button" className="toolbar-btn" onClick={copyLink}>Copy link</button>
             <ExportMenu processId={processId} onSnapshot={saveSnapshot}/>
+            <button type="button" className="toolbar-btn" aria-pressed={sidePanel === "run"}
+                    onClick={() => toggleSidePanel("run")}>This run</button>
             <button type="button" className="toolbar-btn" aria-pressed={sidePanel === "resources"}
                     onClick={() => toggleSidePanel("resources")}>Resources</button>
             <button type="button" className="toolbar-btn" aria-pressed={sidePanel === "what-if"}
@@ -586,6 +623,18 @@ const Simulation = () => {
                 onFollowCase={setFollowedCase}
                 onClose={closeTaskPanel}
             />}
+            {sidePanel === "run" && simulationData && <RunPanel
+                processId={processId}
+                scenario={simulationData.scenario}
+                startDate={simulationData.startDate}
+                endDate={simulationData.endDate}
+                utcOffset={utcOffset}
+                openAtStart={simulationData.frames.length}
+                analysis={analysis}
+                taskName={taskId => waitingProcessingTimes[taskId]?.name || taskId}
+                onShowTask={focusTask}
+                onClose={closeSidePanel}
+            />}
             {sidePanel === "resources" && <ResourcePanel
                 processId={processId}
                 utcOffset={utcOffset}
@@ -616,6 +665,11 @@ const Simulation = () => {
                 {workloadBars}
             </div>
             {workloadMax !== null && <span className="workload-label">Cases in progress <span className="stats-unit">(highest {workloadMax})</span></span>}
+            {analysis && peaks.map(peak => <i
+                key={peak.taskId}
+                className="timeline-peak"
+                style={{left: `${(peak.moment - Date.parse(analysis.startDate)) / (Date.parse(analysis.endDate) - Date.parse(analysis.startDate)) * 100}%`}}
+            />)}
             <div id={'progress-bar'} className={'progress-bar'}></div>
             <div id={'pointer'} className={'pointer'}></div>
             <small id={'start-date'} className={'start-date'}></small>
@@ -654,13 +708,22 @@ const Simulation = () => {
                     <h3># Cases</h3>
                     <p><i>Ongoing:</i> {numberOfCases.ongoing}</p>
                     <p><i>Finished:</i> {numberOfCases.finished}</p>
+                    <p>
+                        <i>Longest queue:</i>
+                        {longestQueue
+                            ? <button type="button" className="longest-queue" title="Show on the diagram"
+                                      onClick={() => focusTask(longestQueue.taskId)}>
+                                {waitingProcessingTimes[longestQueue.taskId]?.name || longestQueue.taskId}, {longestQueue.waiting} waiting
+                            </button>
+                            : <span className="longest-queue-none">none</span>}
+                    </p>
                 </div>
                 <div className={'stats-element'}>
-                    <h3>Average cycle time <span className="stats-unit">(hours)</span></h3>
+                    <h3>Average cycle time <span className="stats-unit">({ctInDays ? "days" : "hours"})</span></h3>
                     <div className="stats-element-chart">
                         <div className="y-axis"></div>
-                        {ctMaxHours !== null && <>
-                            <div className="y-tick y-tick-max">{ctMaxHours >= 10 ? Math.round(ctMaxHours) : ctMaxHours.toFixed(1)}</div>
+                        {ctMaxValue !== null && <>
+                            <div className="y-tick y-tick-max">{ctMaxValue >= 10 ? Math.round(ctMaxValue) : ctMaxValue.toFixed(1)}</div>
                             <div className="y-tick y-tick-zero">0</div>
                         </>}
 
@@ -681,81 +744,86 @@ const Simulation = () => {
                             />
                         </svg>
 
-                        <div id="cycle-time-chart-time-bar" style={{ width: "calc(100% - 24px)" }}></div>
+                        <div id="cycle-time-chart-time-bar"></div>
                     </div>
                 </div>
                 <div className={'stats-element'}>
-                    <h3 style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        Average WT/PT
+                    <h3 className="wtpt-title">
+                        Average waiting and processing
                         <button
+                            type="button"
                             className="sort-btn"
-                            onClick={() => setSortOrder(prev => prev === "asc" ? "desc" : "asc")}
+                            title="Change the order"
+                            onClick={() => setSortBy(current => current === "wait" ? "name" : "wait")}
                         >
-                            {sortOrder === "asc" ? "A→Z" : "Z→A"}
+                            {sortBy === "wait" ? "Longest wait" : "A→Z"}
                         </button>
                     </h3>
+                    <p className="wtpt-legend">
+                        <i className="wtpt-swatch wtpt-bar-wt"/> waiting <i className="wtpt-swatch wtpt-bar-pt"/> processing
+                    </p>
                     <div className="wtpt-list">
-                    {wtptList.map(({ nodeId, stats }) => {
-                        const hasData =
-                            stats.averageWT >= 0 &&
-                            stats.averagePT >= 0 &&
-                            stats.averageWT + stats.averagePT > 0;
+                        {tasksWithData.length === 0 && <p className="wtpt-none">No task has finished yet.</p>}
+                        {tasksWithData.map(({ nodeId, stats }) => {
+                            const total = stats.averageWT + stats.averagePT;
+                            const wtPct = (stats.averageWT / total) * 100;
+                            const ptPct = (stats.averagePT / total) * 100;
 
-                        const total = stats.averageWT + stats.averagePT;
-                        const wtPct = hasData ? (stats.averageWT / total) * 100 : 0;
-                        const ptPct = hasData ? (stats.averagePT / total) * 100 : 0;
+                            return (
+                                <button
+                                    type="button"
+                                    key={nodeId}
+                                    className={nodeId === selectedTaskId ? "wtpt-row selected" : "wtpt-row"}
+                                    aria-pressed={nodeId === selectedTaskId}
+                                    title={`Waiting ${formatDuration(stats.averageWT)}, processing ${formatDuration(stats.averagePT)}`}
+                                    onClick={() => focusTask(nodeId)}
+                                >
+                                    <div className="wtpt-row-top">
+                                        <span className="wtpt-name">{stats.name}</span>
+                                    </div>
 
-                        const wtHours = hasData ? (stats.averageWT / 3600000).toFixed(2) : null;
-                        const ptHours = hasData ? (stats.averagePT / 3600000).toFixed(2) : null;
-
-                        return (
-                            <button
-                                type="button"
-                                key={nodeId}
-                                className={nodeId === selectedTaskId ? "wtpt-row selected" : "wtpt-row"}
-                                aria-pressed={nodeId === selectedTaskId}
-                                title="Show on the diagram"
-                                onClick={() => focusTask(nodeId)}
-                            >
-                                <div className="wtpt-row-top">
-                                    <span className="wtpt-name">{stats.name}</span>
-                                </div>
-
-                                <div className="wtpt-bar-track">
-                                    {!hasData ? (
-                                        <div className="wtpt-bar wtpt-bar-empty">
-                                            <span className="wtpt-bar-empty-label">No data yet</span>
+                                    <div className="wtpt-bar-track">
+                                        <div
+                                            className="wtpt-bar wtpt-bar-wt"
+                                            style={{ width: `${wtPct}%` }}
+                                        >
+                                            {wtPct >= 12 &&
+                                                <span className="wtpt-bar-label">
+                                                    {(stats.averageWT / 3600000).toFixed(2)}h
+                                                </span>
+                                            }
                                         </div>
-                                    ) : (
-                                        <>
-                                            <div
-                                                className="wtpt-bar wtpt-bar-wt"
-                                                style={{ width: `${wtPct}%` }}
-                                            >
-                                                {wtPct >= 12 &&
-                                                    <span className="wtpt-bar-label">
-                                                        {wtHours}h
-                                                    </span>
-                                                }
-                                            </div>
 
-                                            <div
-                                                className="wtpt-bar wtpt-bar-pt"
-                                                style={{ width: `${ptPct}%` }}
-                                            >
-                                                {ptPct >= 12 &&
-                                                    <span className="wtpt-bar-label">
-                                                        {ptHours}h
-                                                    </span>
-                                                }
-                                            </div>
-                                        </>
-                                    )}
-                                </div>
-                            </button>
-                        );
-                    })}
-                </div>
+                                        <div
+                                            className="wtpt-bar wtpt-bar-pt"
+                                            style={{ width: `${ptPct}%` }}
+                                        >
+                                            {ptPct >= 12 &&
+                                                <span className="wtpt-bar-label">
+                                                    {(stats.averagePT / 3600000).toFixed(2)}h
+                                                </span>
+                                            }
+                                        </div>
+                                    </div>
+                                </button>
+                            );
+                        })}
+                        {tasksWithoutData.length > 0 && <details className="wtpt-empty">
+                            <summary>{tasksWithoutData.length} {tasksWithoutData.length === 1 ? "task" : "tasks"} without data yet</summary>
+                            {tasksWithoutData.map(({ nodeId, stats }) => (
+                                <button
+                                    type="button"
+                                    key={nodeId}
+                                    className={nodeId === selectedTaskId ? "wtpt-row selected" : "wtpt-row"}
+                                    aria-pressed={nodeId === selectedTaskId}
+                                    title="Show on the diagram"
+                                    onClick={() => focusTask(nodeId)}
+                                >
+                                    <span className="wtpt-name">{stats.name}</span>
+                                </button>
+                            ))}
+                        </details>}
+                    </div>
                 </div>
             </div>
         </div>
