@@ -76,7 +76,7 @@ npm run migrate:run
 npm run dev
 ```
 
-Open http://localhost:3000. The start page offers three sample processes, so you can try it without your own files. The BPIC 2017 sample is a real loan application log with a model discovered by Simod; its diagram was laid out again for readability, without changing the process logic. `/api/health` reports whether the database, Redis and the simulation service are reachable.
+Open http://localhost:3000. The start page offers four sample processes, so you can try it without your own files. The BPIC 2017 and P2PFin samples are real logs with models discovered by Simod; their diagrams were laid out again for readability, without changing the process logic. P2PFin is anonymised in the source data, so its activities and resources carry numbered labels. `/api/health` reports whether the database, Redis and the simulation service are reachable.
 
 ## Run with Docker
 
