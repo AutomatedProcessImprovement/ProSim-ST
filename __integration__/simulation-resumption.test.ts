@@ -4,7 +4,6 @@ jest.mock('next/server', () => ({
     },
 }));
 
-jest.mock('axios', () => ({default: {post: jest.fn()}, post: jest.fn()}));
 
 jest.mock('@db/mysql/typeorm', () => ({createMySQLConnection: jest.fn()}));
 
@@ -18,7 +17,6 @@ jest.mock('@db/redis/redis', () => ({
 import {POST} from '../app/api/simulation/[id]/resumption/route';
 import {createMySQLConnection} from '@db/mysql/typeorm';
 import {getRedisInstance} from '@db/redis/redis';
-import axios from 'axios';
 import {startTestDb, stopTestDb, clearTables, TestDb} from './helpers/db';
 import {startTestRedis, stopTestRedis, makeRedisFactory, TestRedis} from './helpers/redis';
 import {seedProcess, seedEvents, seedFrames, ts} from './helpers/fixtures';
@@ -56,7 +54,6 @@ describe('POST /api/simulation/[id]/resumption (integration)', () => {
     });
 
     it('returns 404 for an unknown process', async () => {
-        (axios.post as jest.Mock).mockResolvedValue({data: {frames: []}});
 
         const response = await POST(
             makeRequest({requestedDate: ts(BASE, 5)}),
@@ -77,7 +74,6 @@ describe('POST /api/simulation/[id]/resumption (integration)', () => {
             {caseId: 1, lifecycle: LifecycleTypes.START,    timestamp: ts(BASE, 1), nodeId: 'task1', paths: {}, processId: PROCESS_ID},
             {caseId: 1, lifecycle: LifecycleTypes.COMPLETE, timestamp: ts(BASE, 2), nodeId: 'task1', paths: {}, processId: PROCESS_ID},
         ]);
-        (axios.post as jest.Mock).mockResolvedValue({data: {frames: []}});
 
         const response = await POST(makeRequest({requestedDate: ts(BASE, 5)}), makeContext(PROCESS_ID));
 
@@ -103,7 +99,6 @@ describe('POST /api/simulation/[id]/resumption (integration)', () => {
             {caseId: 3, lifecycle: LifecycleTypes.CASE_END,     timestamp: ts(BASE, 12), nodeId: 'end',   paths: {}, processId: PROCESS_ID},
         ]);
 
-        (axios.post as jest.Mock).mockResolvedValue({data: {frames: []}});
 
         const requestedDate = new Date(BASE.getTime() + 9 * 3_600_000);
         const response = await POST(
@@ -127,7 +122,6 @@ describe('POST /api/simulation/[id]/resumption (integration)', () => {
             {caseId: 1, lifecycle: LifecycleTypes.COMPLETE, timestamp: ts(BASE, 3), nodeId: 'task1', paths: {t1: ['task1']}, processId: PROCESS_ID},
         ]);
 
-        (axios.post as jest.Mock).mockResolvedValue({data: {frames: []}});
 
         const requestedDate = new Date(BASE.getTime() + 5 * 3_600_000);
         const response = await POST(
@@ -143,30 +137,42 @@ describe('POST /api/simulation/[id]/resumption (integration)', () => {
         expect(wtpt['task1'].averagePT).toBeCloseTo(oneHourMs, -5);
     });
 
-    it('repairs token IDs in returned frames using pre-computed event paths', async () => {
+    it('rebuilds the frames of open cases by replaying the stored events', async () => {
         await seedProcess(db.dataSource, {
             id: PROCESS_ID,
             startDate: ts(BASE, 0),
             endDate: ts(BASE, 10),
         });
+        await seedFrames(db.dataSource, [
+            {caseId: 1, activeElements: {token_0: 'flow1'}, processId: PROCESS_ID},
+            {caseId: 2, activeElements: {token_0: 'flow2'}, processId: PROCESS_ID},
+        ]);
         await seedEvents(db.dataSource, [
             {
                 caseId: 1,
                 lifecycle: LifecycleTypes.START,
                 timestamp: ts(BASE, 1),
                 nodeId: 'task1',
-                paths: {'real-t1': ['task1']},
+                paths: {token_0: ['task1']},
+                processId: PROCESS_ID,
+            },
+            {
+                caseId: 2,
+                lifecycle: LifecycleTypes.CASE_END,
+                timestamp: ts(BASE, 2),
+                nodeId: 'end',
+                paths: {token_0: ['flow2', 'end']},
+                processId: PROCESS_ID,
+            },
+            {
+                caseId: 1,
+                lifecycle: LifecycleTypes.COMPLETE,
+                timestamp: ts(BASE, 7),
+                nodeId: 'task1',
+                paths: {token_0: ['task1', 'flow3']},
                 processId: PROCESS_ID,
             },
         ]);
-
-        (axios.post as jest.Mock).mockResolvedValue({
-            data: {
-                frames: [
-                    {case_id: 1, active_elements: {'py-t1': 'task1'}},
-                ],
-            },
-        });
 
         const requestedDate = new Date(BASE.getTime() + 5 * 3_600_000);
         const response = await POST(
@@ -175,10 +181,7 @@ describe('POST /api/simulation/[id]/resumption (integration)', () => {
         );
 
         expect(response.status).toBe(200);
-        const frames = (response.body as any).frames as any[];
-        expect(frames).toHaveLength(1);
-        expect(frames[0].activeElements).toHaveProperty('real-t1', 'task1');
-        expect(frames[0].activeElements).not.toHaveProperty('py-t1');
+        expect((response.body as any).frames).toEqual([{caseId: 1, activeElements: {token_0: 'task1'}}]);
     });
 
     it('returns pointer -1 and empty batches when the requested date is past the simulation end', async () => {
@@ -188,7 +191,6 @@ describe('POST /api/simulation/[id]/resumption (integration)', () => {
             endDate: ts(BASE, 5),
         });
 
-        (axios.post as jest.Mock).mockResolvedValue({data: {frames: []}});
 
         const pastDate = new Date(BASE.getTime() + 10 * 3_600_000);
         const response = await POST(

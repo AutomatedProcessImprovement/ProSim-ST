@@ -182,11 +182,6 @@ export type ProcessAnalysis = {
     averageCycleTimeMs: number | null;
 }
 
-export type ResumeSimulationRequestBodyPython = {
-    process_id: string;
-    timestamp: string;
-}
-
 export type ResumeSimulationResponse = {
     frames: Array<FrameCase>,
     batches: Array<Batch>,

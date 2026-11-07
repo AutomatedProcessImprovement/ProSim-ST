@@ -1,6 +1,6 @@
 import {LifecycleTypes, NodeTypes} from "@definitions/simulation/enums";
 import {BatchEvent, FrameCase} from "@definitions/simulation/types";
-import {applyEventToFrames} from "@modules/simulation/frameStateHelpers";
+import {applyEventToFrames, replayOpenCases} from "@modules/simulation/frameStateHelpers";
 
 function makeEvent(overrides: Partial<BatchEvent>): BatchEvent {
 	return {
@@ -108,8 +108,8 @@ describe("applyEventToFrames", () => {
 		expect(result.frames).toEqual(initial);
 	});
 
-	it("keeps active elements unchanged when neither parallel condition matches", () => {
-		const initial: FrameCase[] = [{caseId: 1, activeElements: {t1: "Task_X"}}];
+	it("moves every token when an event moves several without a parallel gateway", () => {
+		const initial: FrameCase[] = [{caseId: 1, activeElements: {t1: "Task_X", t2: "Task_Z"}}];
 		const nodeType = () => NodeTypes.TASK;
 		const result = applyEventToFrames(initial, makeEvent({
 			paths: {
@@ -118,7 +118,7 @@ describe("applyEventToFrames", () => {
 			},
 		}), nodeType);
 
-		expect(result.frames).toEqual(initial);
+		expect(result.frames[0].activeElements).toEqual({t1: "Task_Y", t2: "Task_W"});
 	});
 
 	it("does not remove token when destination is parallel gateway but token key is missing", () => {
@@ -135,3 +135,41 @@ describe("applyEventToFrames", () => {
 	});
 });
 
+describe("replayOpenCases", () => {
+	const event = (caseId: number, lifecycle: LifecycleTypes, paths: Record<string, string[]>) => ({caseId, lifecycle, paths});
+
+	it("keeps the tokens of cases no event touched", () => {
+		expect(replayOpenCases([{caseId: 1, activeElements: {token_0: "Flow_A"}}], []))
+			.toEqual([{caseId: 1, activeElements: {token_0: "Flow_A"}}]);
+	});
+
+	it("follows new cases, splits and every token of an event", () => {
+		const frames = replayOpenCases([], [
+			event(2, LifecycleTypes.CASE_ARRIVAL, {token_0: ["start", "Flow_A"]}),
+			event(2, LifecycleTypes.COMPLETE, {token_0: ["Flow_A", "split"], token_1: ["split", "Flow_B"], token_2: ["split", "Flow_C"]}),
+			event(2, LifecycleTypes.START, {token_1: ["Flow_B", "Task_B"], token_2: ["Flow_C", "Flow_D"]}),
+		]);
+
+		expect(frames).toEqual([{caseId: 2, activeElements: {token_1: "Task_B", token_2: "Flow_D"}}]);
+	});
+
+	it("drops merged tokens at a join, even when they only cross the gateway", () => {
+		const frames = replayOpenCases([{caseId: 1, activeElements: {token_0: "Flow_A", token_1: "Flow_B"}}], [
+			event(1, LifecycleTypes.COMPLETE, {token_0: ["join"], token_1: ["Flow_B", "join"], token_2: ["join", "Flow_C"]}),
+		]);
+
+		expect(frames).toEqual([{caseId: 1, activeElements: {token_2: "Flow_C"}}]);
+	});
+
+	it("leaves a token in place on events without paths and removes ended cases", () => {
+		const frames = replayOpenCases([
+			{caseId: 1, activeElements: {token_0: "Flow_A"}, arrivalTime: "2024-01-01T00:00:00.000Z"},
+			{caseId: 2, activeElements: {token_0: "Flow_B"}},
+		], [
+			event(1, LifecycleTypes.ENABLE, {}),
+			event(2, LifecycleTypes.CASE_END, {token_0: ["Flow_B", "end"]}),
+		]);
+
+		expect(frames).toEqual([{caseId: 1, activeElements: {token_0: "Flow_A"}}]);
+	});
+});

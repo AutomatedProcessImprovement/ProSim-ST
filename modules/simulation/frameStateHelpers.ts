@@ -69,14 +69,11 @@ export function applyEventToFrames(
             const eventCase = nextFrames.find((frame) => frame.caseId === event.caseId);
             if (!eventCase) return;
 
-            const source = path[0];
             const destination = path[path.length - 1];
-            const destinationType = getNodeType(destination);
-            const sourceType = getNodeType(source);
 
-            if (destinationType === NodeTypes.PARALLEL_GATEWAY) {
+            if (getNodeType(destination) === NodeTypes.PARALLEL_GATEWAY) {
                 if (eventCase.activeElements[tokenId]) delete eventCase.activeElements[tokenId];
-            } else if (sourceType === NodeTypes.PARALLEL_GATEWAY) {
+            } else {
                 eventCase.activeElements[tokenId] = destination;
             }
         });
@@ -85,3 +82,29 @@ export function applyEventToFrames(
     return {frames: nextFrames, countersDelta};
 }
 
+export function replayOpenCases(
+    initialFrames: FrameCase[],
+    events: Array<Pick<BatchEvent, "caseId" | "lifecycle" | "paths">>,
+): FrameCase[] {
+    const open = new Map(initialFrames.map(({caseId, activeElements}) => [caseId, {...activeElements}]));
+
+    events.forEach(({caseId, lifecycle, paths}) => {
+        if (lifecycle === LifecycleTypes.CASE_END) {
+            open.delete(caseId);
+            return;
+        }
+        if (lifecycle === LifecycleTypes.CASE_ARRIVAL) open.set(caseId, {});
+        const activeElements = open.get(caseId);
+        if (!activeElements) return;
+
+        const entries = Object.entries(paths);
+        entries.forEach(([tokenId, path]) => {
+            const destination = path[path.length - 1];
+            const merged = entries.some(([otherId, otherPath]) => otherId !== tokenId && otherPath[0] === destination);
+            if (merged) delete activeElements[tokenId];
+            else activeElements[tokenId] = destination;
+        });
+    });
+
+    return [...open].map(([caseId, activeElements]) => ({caseId, activeElements}));
+}

@@ -10,10 +10,6 @@ jest.mock("@db/mysql/typeorm", () => ({
     createMySQLConnection: jest.fn(),
 }));
 
-jest.mock("axios", () => ({
-    post: jest.fn(),
-}));
-
 jest.mock("@utils/events", () => ({
     groupEvents: jest.fn(),
 }));
@@ -37,7 +33,6 @@ jest.mock("@utils/dateHelpers", () => ({
 
 import {POST} from "./route";
 import {createMySQLConnection} from "@db/mysql/typeorm";
-import axios from "axios";
 import {groupEvents} from "@utils/events";
 import {buildWTPTState} from "@utils/wtpt";
 import {loadInitialFrames} from "@db/mysql/frames";
@@ -125,7 +120,6 @@ describe("POST /api/simulation/[id]/resumption", () => {
 
         expect(processRepository.update).toHaveBeenCalled();
         expect(buildWTPTState).toHaveBeenCalled();
-        expect(axios.post).not.toHaveBeenCalled();
         expect(response).toEqual({
             body: {
                 frames: [],
@@ -138,7 +132,7 @@ describe("POST /api/simulation/[id]/resumption", () => {
         });
     });
 
-    it("returns repaired frames, grouped batches, and a pointer for an in-progress resumption", async () => {
+    it("replays stored events into frames, grouped batches, and a pointer for an in-progress resumption", async () => {
         processRepository.createQueryBuilder.mockReturnValue(createQueryBuilderMock({
             id: "p1",
             fileName: "file.bpmn",
@@ -149,11 +143,7 @@ describe("POST /api/simulation/[id]/resumption", () => {
         finishedCasesBuilder.getRawOne.mockResolvedValue({count: "2"});
         (buildWTPTState as jest.Mock).mockReturnValue({Task_A: {name: "Task_A"}});
         (groupEvents as jest.Mock).mockReturnValue([{events: [], startDate: "a", endDate: "b"}]);
-        (axios.post as jest.Mock).mockResolvedValue({
-            data: {
-                frames: [{case_id: 1, active_elements: {ghostToken: "Task_A", freeToken: "Task_Z"}}],
-            },
-        });
+        (loadInitialFrames as jest.Mock).mockResolvedValue([{caseId: 1, activeElements: {token_0: "Flow_0", token_1: "Flow_9"}}]);
         (createMySQLConnection as jest.Mock).mockResolvedValue({
             getRepository: jest.fn((entity) => {
                 if (entity === Process) return processRepository;
@@ -169,14 +159,14 @@ describe("POST /api/simulation/[id]/resumption", () => {
                         lifecycle: LifecycleTypes.START,
                         timestamp: "2024-01-01 10:30:00",
                         nodeId: "Task_A",
-                        paths: {ghostToken: ["Flow_1", "Task_A"]},
+                        paths: {token_0: ["Task_A", "Flow_2"]},
                     },
                 ])
                 .mockResolvedValueOnce([
                     {
                         caseId: 1,
-                        timestamp: "2024-01-01 09:30:00",
-                        paths: {realToken: ["Flow_1", "Task_A"]},
+                        lifecycle: LifecycleTypes.START,
+                        paths: {token_0: ["Flow_0", "Task_A"]},
                     },
                 ]),
         });
@@ -186,14 +176,9 @@ describe("POST /api/simulation/[id]/resumption", () => {
         });
 
         expect(groupEvents).toHaveBeenCalled();
-        expect(axios.post).toHaveBeenCalledWith(
-            expect.stringContaining("/resumption"),
-            {process_id: "p1", timestamp: "2024-01-01T10:00:00.000Z"},
-            {headers: {"Content-Type": "application/json"}},
-        );
         expect(response).toEqual({
             body: {
-                frames: [{caseId: 1, activeElements: {realToken: "Task_A", ghostToken: "Task_Z"}}],
+                frames: [{caseId: 1, activeElements: {token_0: "Task_A", token_1: "Flow_9"}}],
                 batches: [{events: [], startDate: "a", endDate: "b"}],
                 finishedCasesNumber: 2,
                 wtpt: {Task_A: {name: "Task_A"}},
@@ -214,11 +199,7 @@ describe("POST /api/simulation/[id]/resumption", () => {
         finishedCasesBuilder.getRawOne.mockResolvedValue({count: "1"});
         (buildWTPTState as jest.Mock).mockReturnValue({});
         (groupEvents as jest.Mock).mockReturnValue([]);
-        (axios.post as jest.Mock).mockResolvedValue({
-            data: {
-                frames: [{case_id: 1, active_elements: {ghostToken: "Task_A"}}],
-            },
-        });
+        (loadInitialFrames as jest.Mock).mockResolvedValue([{caseId: 1, activeElements: {token_0: "Task_A"}}]);
         (createMySQLConnection as jest.Mock).mockResolvedValue({
             getRepository: jest.fn((entity) => {
                 if (entity === Process) return processRepository;
@@ -238,55 +219,11 @@ describe("POST /api/simulation/[id]/resumption", () => {
 
         expect(response).toEqual({
             body: {
-                frames: [{caseId: 1, activeElements: {ghostToken: "Task_A"}}],
+                frames: [{caseId: 1, activeElements: {token_0: "Task_A"}}],
                 batches: [],
                 finishedCasesNumber: 1,
                 wtpt: {},
                 pointer: -1,
-            },
-            status: 200,
-        });
-    });
-
-    it("sorts multiple unrepaired active elements before reassigning available token ids", async () => {
-        processRepository.createQueryBuilder.mockReturnValue(createQueryBuilderMock({
-            id: "p1",
-            fileName: "file.bpmn",
-            startDate: "2024-01-01 00:00:00",
-            endDate: "2024-01-02 10:00:00",
-            setToDelete: false,
-        }));
-        finishedCasesBuilder.getRawOne.mockResolvedValue({count: "0"});
-        (buildWTPTState as jest.Mock).mockReturnValue({});
-        (groupEvents as jest.Mock).mockReturnValue([]);
-        (axios.post as jest.Mock).mockResolvedValue({
-            data: {
-                frames: [{
-                    case_id: 1,
-                    active_elements: {aToken: "Task_B", bToken: "Task_A"},
-                }],
-            },
-        });
-        (createMySQLConnection as jest.Mock).mockResolvedValue({
-            getRepository: jest.fn((entity) => {
-                if (entity === Process) return processRepository;
-                throw new Error("unexpected repository");
-            }),
-            createQueryBuilder: jest.fn(() => finishedCasesBuilder),
-            query: jest.fn().mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([]),
-        });
-
-        const response = await POST(buildRequest("2024-01-01T10:00:00.000Z"), {
-            params: Promise.resolve({id: "p1"}),
-        });
-
-        expect(response).toEqual({
-            body: {
-                frames: [{caseId: 1, activeElements: {bToken: "Task_B", aToken: "Task_A"}}],
-                batches: [],
-                finishedCasesNumber: 0,
-                wtpt: {},
-                pointer: 7,
             },
             status: 200,
         });

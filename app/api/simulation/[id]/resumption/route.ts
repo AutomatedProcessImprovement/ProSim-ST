@@ -1,21 +1,16 @@
 import {NextResponse} from "next/server";
-import {
-    mapPyFrameCase,
-    PyFrameCase,
-    ResumeSimulationRequestBodyPython,
-    ResumeSimulationResponse
-} from "@definitions/api/types";
+import {ResumeSimulationResponse} from "@definitions/api/types";
 import {createMySQLConnection} from "@db/mysql/typeorm";
 import {Process} from "@db/entities/Process";
 import {Event} from "@db/entities/Event";
-import {BatchEvent, FrameCase} from "@definitions/simulation/types";
+import {BatchEvent} from "@definitions/simulation/types";
 import {LifecycleTypes} from "@definitions/simulation/enums";
 import {formatDateString, getHourDifference} from "@utils/dateHelpers";
 import {groupEvents} from "@utils/events";
-import axios from "axios";
 import {buildWTPTState} from "@utils/wtpt";
 import {getRedisInstance} from "@db/redis/redis";
 import {loadInitialFrames} from "@db/mysql/frames";
+import {replayOpenCases} from "@modules/simulation/frameStateHelpers";
 
 export const POST = async (
     request: Request,
@@ -132,74 +127,25 @@ export const POST = async (
         }));
         const batches = groupEvents(batchEvents, startDate.toISOString(), endDate.toISOString());
 
-        const reqBody: ResumeSimulationRequestBodyPython = {
-            process_id: processId,
-            timestamp: requestedDate,
-        }
-        const response = await axios.post(
-            process.env.PYTHON_MICROSERVICE_BASE_URL + `/resumption`,
-            reqBody,
-            { headers: { "Content-Type": "application/json" } }
-        )
-        const pyFrames = (response.data as { frames: Array<PyFrameCase> }).frames;
-        const frames: FrameCase[] = pyFrames.map(mapPyFrameCase);
-
-        const previousEvents: Event[] = await appDataSource.query(`
-            SELECT 
-                event.timestamp, 
-                event.caseId, 
-                event.paths,
-                CAST(event.timestamp AS CHAR) AS timestamp
+        const previousEvents: Array<Pick<BatchEvent, "caseId" | "lifecycle" | "paths">> = await appDataSource.query(`
+            SELECT event.caseId, event.lifecycle, event.paths
             FROM event
-            WHERE processId = ? AND event.timestamp < ?
+            WHERE event.processId = ? AND event.timestamp < ?
+                AND (event.lifecycle = ? OR event.caseId NOT IN (
+                    SELECT finished.caseId
+                    FROM event AS finished
+                    WHERE finished.processId = ? AND finished.lifecycle = ? AND finished.timestamp < ?
+                ))
+            ORDER BY event.id ASC
         `, [
             processId,
             formatDateString(startDate),
+            LifecycleTypes.CASE_END,
+            processId,
+            LifecycleTypes.CASE_END,
+            formatDateString(startDate),
         ]);
-
-        frames.forEach(frame => {
-            const caseId = frame.caseId;
-            const activeElements = frame.activeElements;
-            const previousCaseEvents = previousEvents.filter(event => event.caseId === caseId);
-
-            const repairedActiveTokens = {};
-            const repairedTokenIds = new Set();
-
-            Object.entries(activeElements).forEach(([activeElementTokenId, elementId]) => {
-                const previousTokenPath: [string, string][] = [];
-
-                previousCaseEvents.forEach(previousEvent => {
-                    const previousEventPaths: { [p: string]: Array<string> } = previousEvent.paths;
-                    Object.entries(previousEventPaths).forEach(([previousEventTokenId, path]) => {
-                        if (path.includes(elementId)) {
-                            previousTokenPath.push([previousEventTokenId, path[path.length - 1]])
-                        }
-                    });
-                });
-
-                if (previousTokenPath.length > 0) {
-                    const [ realTokenId, realFlow ] = previousTokenPath[previousTokenPath.length - 1];
-                    repairedActiveTokens[realTokenId] = realFlow;
-                    repairedTokenIds.add(activeElementTokenId);
-                }
-            });
-
-            const unrepairedTokenIds = Object.keys(activeElements)
-                .filter(tokenId => !repairedTokenIds.has(tokenId));
-            const availableNewTokenIds = Object.keys(activeElements)
-                .filter(tokenId => !(tokenId in repairedActiveTokens)).sort();
-
-            unrepairedTokenIds.map(unrepairedTokenId =>
-                activeElements[unrepairedTokenId]
-            ).sort((a, b) => b.localeCompare(a)).forEach(activeElement => {
-                const newTokenId = availableNewTokenIds.pop();
-                if (newTokenId !== undefined) {
-                    repairedActiveTokens[newTokenId] = activeElement;
-                }
-            });
-
-            frame.activeElements = repairedActiveTokens;
-        });
+        const frames = replayOpenCases(openCases, previousEvents);
 
         return NextResponse.json({
             frames,
