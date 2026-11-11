@@ -76,7 +76,7 @@ describe("Compare page", () => {
         expect(within(waiting).getByText("−4 h to −2 h")).toBeInTheDocument();
         expect(within(waiting).getByText("Clearly better")).toBeInTheDocument();
 
-        expect(within(row("Cases waiting on average")).getByText("Could be chance")).toBeInTheDocument();
+        expect(within(row("Cases waiting on average")).getByText("Similar")).toBeInTheDocument();
         expect(within(row("Cases finished")).getByText("Clearly better")).toBeInTheDocument();
         expect(within(row("Clerk")).getByText("95%")).toBeInTheDocument();
     });

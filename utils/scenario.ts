@@ -61,7 +61,7 @@ export const verdictOf = (change: SeedChange | undefined, seeds: number, higherI
 export const VERDICT_LABELS: Record<Verdict, string> = {
     better: "Clearly better",
     worse: "Clearly worse",
-    chance: "Could be chance",
+    chance: "Similar",
     unknown: "Not enough repeats",
 };
 

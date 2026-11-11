@@ -188,7 +188,7 @@ const Compare = () => {
                 {seeds >= MIN_SEEDS_FOR_VERDICT
                     ? " A change is clear when every seed moved the same way."
                     : " That is too few to tell a real change from chance: this model takes long to simulate."}
-                {" "}Waiting and cycle time include work that only finishes after the horizon.
+                {" "}Waiting includes work that only starts after the horizon; cycle time counts the cases finished by then.
             </p>
         </section>
 
