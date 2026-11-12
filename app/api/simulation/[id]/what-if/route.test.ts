@@ -2,7 +2,7 @@
  * @jest-environment node
  */
 import axios from "axios";
-import {copyFile} from "fs/promises";
+import {readFile, writeFile} from "fs/promises";
 import {GET, POST} from "./route";
 import {createMySQLConnection} from "@db/mysql/typeorm";
 import {saveSimulation} from "@db/mysql/simulationStore";
@@ -10,7 +10,11 @@ import {Scenario} from "@db/entities/Scenario";
 import {activeJobCount} from "@utils/simulationJobs";
 
 jest.mock("axios", () => ({get: jest.fn(), post: jest.fn()}));
-jest.mock("fs/promises", () => ({copyFile: jest.fn(), unlink: jest.fn().mockResolvedValue(undefined)}));
+jest.mock("fs/promises", () => ({
+    readFile: jest.fn().mockResolvedValue(Buffer.from("<definitions/>")),
+    writeFile: jest.fn(),
+    unlink: jest.fn().mockResolvedValue(undefined),
+}));
 jest.mock("@db/mysql/typeorm", () => ({createMySQLConnection: jest.fn()}));
 jest.mock("@db/mysql/simulationStore", () => ({
     saveSimulation: jest.fn(),
@@ -110,7 +114,8 @@ describe("what-if route", () => {
         await new Promise(resolve => setImmediate(resolve));
 
         expect(response.status).toBe(202);
-        expect(copyFile).toHaveBeenCalledWith(expect.stringContaining("base_model.bpmn"), expect.stringContaining(`${id}_model.bpmn`));
+        expect(readFile).toHaveBeenCalledWith(expect.stringContaining("base_model.bpmn"));
+        expect(writeFile).toHaveBeenCalledWith(expect.stringContaining(`${id}_model.bpmn`), Buffer.from("<definitions/>"));
         expect(axios.post).toHaveBeenCalledWith("http://py/scenario", {
             process_id: id,
             base_process_id: "base",

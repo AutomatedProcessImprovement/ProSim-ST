@@ -1,7 +1,7 @@
 import {NextResponse} from "next/server";
 import axios from "axios";
 import {randomUUID} from "crypto";
-import {copyFile, unlink} from "fs/promises";
+import {readFile, unlink, writeFile} from "fs/promises";
 import path from "path";
 import {createMySQLConnection} from "@db/mysql/typeorm";
 import {saveSimulation, simulatorError} from "@db/mysql/simulationStore";
@@ -117,7 +117,7 @@ export const POST = async (
         const scenarioId = randomUUID();
         const dir = path.join(process.cwd(), "public/assets");
         const assetPath = path.join(dir, `${scenarioId}_${base.fileName.slice(base.id.length + 1)}`);
-        await copyFile(path.join(dir, path.basename(base.fileName)), assetPath);
+        await writeFile(assetPath, await readFile(path.join(dir, path.basename(base.fileName))));
 
         createJob(scenarioId);
         void runScenario(scenarioId, base, edits, label, assetPath);
