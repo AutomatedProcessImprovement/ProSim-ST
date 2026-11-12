@@ -15,6 +15,10 @@ jest.mock("@db/mysql/frames", () => ({
     loadInitialFrames: jest.fn().mockResolvedValue([]),
 }));
 
+jest.mock("axios", () => ({
+    get: jest.fn(),
+}));
+
 jest.mock("fs/promises", () => ({
     readFile: jest.fn(),
 }));
@@ -22,6 +26,7 @@ jest.mock("fs/promises", () => ({
 import {GET} from "./route";
 import {createMySQLConnection} from "@db/mysql/typeorm";
 import {readFile} from "fs/promises";
+import axios from "axios";
 
 const BPMN = `<sequenceFlow id="F" targetRef="Task_A"/><task id="Task_A" name="Check form"/>`;
 const process = {
@@ -63,6 +68,38 @@ describe("GET /api/simulation/[id]/export", () => {
 
         expect(response.headers.get("Content-Disposition")).toBe('attachment; filename="activity-statistics-abcdefgh.csv"');
         expect((await response.text()).split("\r\n")[1]).toBe("Check form,1,1,2,1,1");
+    });
+
+    it("sends the process model the run used", async () => {
+        const response = await call("?type=model");
+
+        expect(response.headers.get("Content-Disposition")).toBe('attachment; filename="process-model-abcdefgh.bpmn"');
+        expect(await response.text()).toBe(BPMN);
+        expect(readFile).toHaveBeenCalledWith(expect.stringMatching(/public\/assets\/model\.bpmn$/), "utf-8");
+    });
+
+    it("sends the simulation parameters the run used", async () => {
+        const parameters = {resource_profiles: [{id: "pool", name: "Clerks"}]};
+        (axios.get as jest.Mock).mockResolvedValue({data: parameters});
+
+        const response = await call("?type=parameters");
+
+        expect(axios.get).toHaveBeenCalledWith(expect.stringMatching(/\/parameters\/abcdefgh-1234$/));
+        expect(response.headers.get("Content-Disposition")).toBe('attachment; filename="simulation-parameters-abcdefgh.json"');
+        expect(JSON.parse(await response.text())).toEqual(parameters);
+    });
+
+    it("answers 404 when the simulator no longer has the parameters", async () => {
+        (axios.get as jest.Mock).mockRejectedValue({response: {status: 404}});
+
+        expect((await call("?type=parameters")).status).toBe(404);
+    });
+
+    it("answers 404 for the model when its file is gone", async () => {
+        jest.spyOn(console, "warn").mockImplementation(() => {});
+        (readFile as jest.Mock).mockRejectedValue(new Error("missing"));
+
+        expect((await call("?type=model")).status).toBe(404);
     });
 
     it("refuses unknown exports", async () => {

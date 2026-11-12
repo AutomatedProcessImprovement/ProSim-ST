@@ -1,4 +1,5 @@
 import {NextResponse} from "next/server";
+import axios from "axios";
 import {readFile} from "fs/promises";
 import {join} from "path";
 import {getRedisInstance} from "@db/redis/redis";
@@ -10,13 +11,17 @@ import {AnalysisEvent, buildProcessAnalysis, readFlowTargets, readTaskNames} fro
 import {buildWTPTState} from "@utils/wtpt";
 import {LifecycleTypes} from "@definitions/simulation/enums";
 
-const csvResponse = (csv: string, fileName: string) => new NextResponse(csv, {
+const fileResponse = (body: string, fileName: string, contentType: string) => new NextResponse(body, {
     status: 200,
     headers: {
-        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Type": contentType,
         "Content-Disposition": `attachment; filename="${fileName}"`,
     },
 });
+
+const csvResponse = (csv: string, fileName: string) => fileResponse(csv, fileName, "text/csv; charset=utf-8");
+
+const EXPORT_TYPES = ["log", "activities", "model", "parameters"];
 
 export const GET = async (
     request: Request,
@@ -25,7 +30,7 @@ export const GET = async (
     try {
         const {id: processId} = await context.params;
         const type = new URL(request.url).searchParams.get("type");
-        if (type !== "log" && type !== "activities") {
+        if (!type || !EXPORT_TYPES.includes(type)) {
             return NextResponse.json({ error: "Unknown export" }, { status: 400 });
         }
 
@@ -46,7 +51,14 @@ export const GET = async (
             return NextResponse.json({ error: "Process not found" }, { status: 404 });
         }
 
-        const events: AnalysisEvent[] = await appDataSource.query(`
+        const shortId = processId.slice(0, 8).replace(/[^\w-]/g, "");
+
+        if (type === "parameters") {
+            const {data} = await axios.get(`${process.env.PYTHON_MICROSERVICE_BASE_URL}/parameters/${encodeURIComponent(processId)}`);
+            return fileResponse(JSON.stringify(data, null, 2), `simulation-parameters-${shortId}.json`, "application/json");
+        }
+
+        const events: AnalysisEvent[] = type === "model" ? [] : await appDataSource.query(`
             SELECT caseId, lifecycle, nodeId, CAST(timestamp AS CHAR) AS timestamp
             FROM event
             WHERE processId = ?
@@ -59,8 +71,12 @@ export const GET = async (
         } catch (error) {
             console.warn("Could not read the BPMN model for the export", error);
         }
+        if (type === "model") {
+            if (!bpmnXml) return NextResponse.json({ error: "Process not found" }, { status: 404 });
+            return fileResponse(bpmnXml, `process-model-${shortId}.bpmn`, "application/xml");
+        }
+
         const taskNames = readTaskNames(bpmnXml);
-        const shortId = processId.slice(0, 8).replace(/[^\w-]/g, "");
 
         if (type === "log") {
             return csvResponse(buildLogCsv(events, taskNames, simulationProcess.utcOffset ?? "+00:00"), `simulated-log-${shortId}.csv`);
@@ -77,6 +93,7 @@ export const GET = async (
 
         return csvResponse(buildActivitiesCsv(wtpt, analysis.tasks, taskNames), `activity-statistics-${shortId}.csv`);
     } catch (e) {
+        if (e?.response?.status === 404) return NextResponse.json({ error: "Process not found" }, { status: 404 });
         console.error(e);
         return NextResponse.json({ error: "Failed to export the simulation." }, { status: 500 });
     }

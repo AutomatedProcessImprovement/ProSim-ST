@@ -472,6 +472,8 @@ describe("Simulation page", () => {
 
             expect(await screen.findByRole("menuitem", {name: "Simulated log (CSV)"})).toHaveAttribute("href", "/api/simulation/p1/export?type=log");
             expect(screen.getByRole("menuitem", {name: "Activity statistics (CSV)"})).toHaveAttribute("href", "/api/simulation/p1/export?type=activities");
+            expect(screen.getByRole("menuitem", {name: "Process model (BPMN)"})).toHaveAttribute("href", "/api/simulation/p1/export?type=model");
+            expect(screen.getByRole("menuitem", {name: "Simulation parameters (JSON)"})).toHaveAttribute("href", "/api/simulation/p1/export?type=parameters");
             expect(screen.getByRole("menuitem", {name: "Diagram now (PNG)"})).toBeInTheDocument();
             expect(screen.getByRole("menuitem", {name: "Diagram now (SVG)"})).toBeInTheDocument();
         });
