@@ -16,7 +16,7 @@ export const simulatorError = (error): JobError => {
     const detail = error?.response?.data?.detail;
     if (detail && typeof detail === "object" && typeof detail.message === "string") {
         const stage = SCENARIO_STAGES.includes(detail.stage) ? detail.stage : "simulation";
-        return {stage, message: detail.message};
+        return detail.input ? {stage, message: detail.message, input: true} : {stage, message: detail.message};
     }
     if (typeof detail === "string") return {stage: "queued", message: detail};
     if (!error?.response) return {stage: "queued", message: "The simulator could not be reached. Please try again later."};

@@ -1,11 +1,31 @@
+import {splitLogLines} from "@utils/fileHelpers";
+
 export type BpmnSummary = {
     tasks: {id: string; name: string}[];
     startEvents: number;
     endEvents: number;
     divergingGateways: string[];
+    unsupported: string[];
+    hasDiagram: boolean;
 };
 
-const ELEMENT_TAG = /<(?:[\w-]+:)?(task|startEvent|endEvent|exclusiveGateway|inclusiveGateway|sequenceFlow)\b([^>]*)>/g;
+export const TASK_TYPES = ["task", "userTask", "serviceTask", "manualTask", "scriptTask", "sendTask", "receiveTask", "businessRuleTask"];
+
+const ELEMENT_TAG = new RegExp(`<(?:[\\w-]+:)?(${TASK_TYPES.join("|")}|startEvent|endEvent|exclusiveGateway|inclusiveGateway|sequenceFlow)\\b([^>]*)>`, "g");
+
+export const normalizeTaskTypes = (xml: string) =>
+    xml.replace(new RegExp(`<(/?)([\\w-]+:)?(${TASK_TYPES.slice(1).join("|")})\\b`, "g"), "<$1$2task");
+
+const UNSUPPORTED: Record<string, string> = {
+    subProcess: "subprocesses",
+    adHocSubProcess: "ad-hoc subprocesses",
+    transaction: "transactions",
+    callActivity: "call activities",
+    boundaryEvent: "boundary events",
+    complexGateway: "complex gateways",
+};
+
+const countTags = (xml: string, tag: string) => (xml.match(new RegExp(`<(?:[\\w-]+:)?${tag}\\b`, "g")) ?? []).length;
 
 const attribute = (attributes: string, name: string) =>
     new RegExp(`\\s${name}\\s*=\\s*"([^"]*)"`).exec(attributes)?.[1];
@@ -29,10 +49,11 @@ export const summarizeBpmn = (xml: string): BpmnSummary | null => {
 
     for (const [, tag, attributes] of xml.matchAll(ELEMENT_TAG)) {
         const id = attribute(attributes, "id");
+        if (TASK_TYPES.includes(tag)) {
+            if (id) tasks.push({id, name: decodeXml(attribute(attributes, "name") || id)});
+            continue;
+        }
         switch (tag) {
-            case "task":
-                if (id) tasks.push({id, name: decodeXml(attribute(attributes, "name") || id)});
-                break;
             case "startEvent":
                 startEvents++;
                 break;
@@ -54,8 +75,31 @@ export const summarizeBpmn = (xml: string): BpmnSummary | null => {
         startEvents,
         endEvents,
         divergingGateways: gateways.filter(id => (outgoing.get(id) ?? 0) > 1),
+        unsupported: Object.entries(UNSUPPORTED)
+            .map(([tag, label]) => [countTags(xml, tag), label] as const)
+            .filter(([count]) => count > 0)
+            .map(([count, label]) => `${count} ${label}`),
+        hasDiagram: /<(?:[\w-]+:)?BPMNShape\b/.test(xml),
     };
 };
+
+const xmlProblem = (xml: string) => {
+    if (typeof DOMParser === "undefined") return null;
+    const error = new DOMParser().parseFromString(xml, "application/xml").getElementsByTagName("parsererror")[0];
+    if (!error) return null;
+    const text = (error.textContent ?? "").replace(/This page contains the following errors:|Below is a rendering of the page up to the first error\./g, "");
+    return text.split("\n").find(line => line.trim())?.trim() ?? "it is not well-formed";
+};
+
+const DISTRIBUTION_PARAMS: Record<string, string[]> = {
+    fix: ["value"],
+    expon: ["mean", "min", "max"],
+    uniform: ["min", "max"],
+    norm: ["mean", "std", "min", "max"],
+    lognorm: ["mean", "variance", "min", "max"],
+    gamma: ["mean", "variance", "min", "max"],
+};
+const DISTRIBUTIONS = Object.keys(DISTRIBUTION_PARAMS);
 
 const REQUIRED_KEYS = [
     "resource_profiles",
@@ -75,13 +119,22 @@ const idsIn = (entries: unknown, key: string) =>
 export const validateSimulationInputs = (bpmnXml: string, parametersJson: string): string[] => {
     const errors: string[] = [];
 
-    const bpmn = summarizeBpmn(bpmnXml);
-    if (!bpmn) {
+    const brokenXml = bpmnXml.trim() ? xmlProblem(bpmnXml) : null;
+    const bpmn = brokenXml ? null : summarizeBpmn(bpmnXml);
+    if (brokenXml) {
+        errors.push(`The BPMN file is not valid XML (${brokenXml}).`);
+    } else if (!bpmn) {
         errors.push("The BPMN file is not a BPMN 2.0 model: it has no <definitions> or <process> element.");
     } else {
         if (bpmn.startEvents === 0) errors.push("The BPMN model has no start event, so no case can arrive.");
         if (bpmn.endEvents === 0) errors.push("The BPMN model has no end event, so no case can finish.");
         if (bpmn.tasks.length === 0) errors.push("The BPMN model has no tasks.");
+        if (bpmn.unsupported.length) {
+            errors.push(`The BPMN model has elements the simulator does not support: ${bpmn.unsupported.join(", ")}. Model them with plain tasks, gateways and events.`);
+        }
+        if (!bpmn.hasDiagram) {
+            errors.push("The BPMN model has no diagram layout (BPMNDiagram), so it cannot be drawn. Export the model together with its diagram from your modelling tool.");
+        }
     }
 
     let parameters: Record<string, unknown>;
@@ -116,6 +169,62 @@ export const validateSimulationInputs = (bpmnXml: string, parametersJson: string
         errors.push(`The JSON file assigns resources that are not in resource_profiles: ${listOf([...unknownResources])}.`);
     }
 
+    const unknownDistributions = new Set<string>();
+    const badParameters = new Set<string>();
+    const checkDistribution = (entry, allowHistogram = false) => {
+        const name = entry?.distribution_name;
+        if (allowHistogram && name === "histogram_sampling") return;
+        if (typeof name !== "string") return;
+        if (!DISTRIBUTIONS.includes(name)) {
+            unknownDistributions.add(name);
+            return;
+        }
+        const values = Array.isArray(entry.distribution_params) ? entry.distribution_params : [];
+        const expected = DISTRIBUTION_PARAMS[name];
+        if (values.length < expected.length || values.slice(0, expected.length).some(param => !Number.isFinite(Number(param?.value)))) {
+            badParameters.add(`"${name}" needs ${expected.length} numbers (${expected.join(", ")}) but has ${values.length}`);
+        }
+    };
+    checkDistribution(parameters.arrival_time_distribution, true);
+    distributions.forEach(entry => (entry?.resources ?? []).forEach(resource => checkDistribution(resource)));
+    if (unknownDistributions.size) {
+        errors.push(`The JSON file uses distributions that Prosimos does not know: ${listOf([...unknownDistributions])}. Use ${DISTRIBUTIONS.join(", ")}.`);
+    }
+    if (badParameters.size) {
+        errors.push(`Some distributions in the JSON file have the wrong distribution_params: ${[...badParameters].slice(0, 3).join("; ")}.`);
+    }
+
+    if (parameters.model_type !== "FUZZY" && Array.isArray(profiles)) {
+        const calendars = idsIn(parameters.resource_calendars, "id");
+        const missingCalendars = new Set<string>();
+        profiles.forEach(profile => (profile?.resource_list ?? []).forEach(resource => {
+            if (resource?.calendar && !calendars.has(resource.calendar)) missingCalendars.add(resource.calendar);
+        }));
+        if (missingCalendars.size) {
+            errors.push(`The JSON file gives resources calendars that are not in resource_calendars: ${listOf([...missingCalendars])}.`);
+        }
+        const idle = (Array.isArray(parameters.resource_calendars) ? parameters.resource_calendars : [])
+            .filter(calendar => Array.isArray(calendar?.time_periods) && calendar.time_periods.length === 0)
+            .map(calendar => calendar.name ?? calendar.id);
+        if (idle.length) {
+            errors.push(`These resource calendars have no working time, so their resources would never work: ${listOf(idle)}.`);
+        }
+    }
+    if (Array.isArray(parameters.arrival_time_calendar) && parameters.arrival_time_calendar.length === 0) {
+        errors.push("The arrival_time_calendar has no time periods, so no new case could ever arrive.");
+    }
+
+    const badBranches = (Array.isArray(parameters.gateway_branching_probabilities) ? parameters.gateway_branching_probabilities : [])
+        .filter(gateway => {
+            const values = (gateway?.probabilities ?? []).map(probability => probability?.value);
+            if (!values.length || values.some(value => value === undefined)) return false;
+            return Math.abs(values.reduce((total, value) => total + Number(value), 0) - 1) > 0.001;
+        })
+        .map(gateway => gateway.gateway_id);
+    if (badBranches.length) {
+        errors.push(`The branching probabilities of these gateways do not add up to 1: ${listOf(badBranches)}.`);
+    }
+
     if (!bpmn) return errors;
 
     const coveredTasks = idsIn(distributions, "task_id");
@@ -138,7 +247,7 @@ export const validateSimulationInputs = (bpmnXml: string, parametersJson: string
 };
 
 export const collectActivities = (lines: string[], activityColumn: string): Set<string> => {
-    const split = (line: string) => line.split(/[;,]/);
+    const {split} = splitLogLines(lines);
     const index = split(lines[0] ?? "").indexOf(activityColumn);
     const activities = new Set<string>();
     if (index === -1) return activities;

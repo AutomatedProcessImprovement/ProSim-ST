@@ -4,7 +4,7 @@ export const SCENARIO_STAGES = ["queued", "state", "simulation", "repeats", "pla
 export type SimulationStage = typeof SCENARIO_STAGES[number];
 export type JobStage = SimulationStage | "running" | "done" | "failed";
 
-export type JobError = {stage: SimulationStage; message: string};
+export type JobError = {stage: SimulationStage; message: string; input?: boolean};
 
 export type SimulationJob = {
     id: string;

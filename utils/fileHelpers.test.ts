@@ -1,4 +1,4 @@
-import {getCellByHeader, getLogUtcOffset, normalizeLogDate, parseCsvFile, readLines} from "@utils/fileHelpers";
+import {detectDelimiter, getLogUtcOffset, LogFileError, parseCsvFile, readLines, splitCsvLine} from "@utils/fileHelpers";
 
 const fileContents = new Map<string, string>();
 let readerMode: "success" | "error" | "abort" = "success";
@@ -70,11 +70,29 @@ describe("fileHelpers", () => {
         });
     });
 
-    it("looks up cells by header and normalizes timestamp strings", () => {
-        expect(getCellByHeader(["1", "Review"], ["case", "activity"], "activity")).toBe("Review");
-        expect(getCellByHeader(["1", "Review"], ["case", "activity"], "missing")).toBeUndefined();
-        expect(normalizeLogDate("2024-01-02 13:14:15.999")).toBe("2024-01-02T13:14:15");
-        expect(normalizeLogDate()).toBeUndefined();
+    it("reads tab separated logs and quoted values with separators inside", async () => {
+        const file = new File(["unused"], "tabs.csv", {type: "text/csv"});
+        fileContents.set(file.name, "case\tactivity\n1\tRegister\n2\tApprove");
+        await expect(parseCsvFile(file)).resolves.toMatchObject({fileHeaders: ["case", "activity"]});
+
+        expect(detectDelimiter("a;b;c")).toBe(";");
+        expect(detectDelimiter("single")).toBe(",");
+        expect(splitCsvLine('1,"Check, again","say ""hi""", x ', ",")).toEqual(["1", "Check, again", 'say "hi"', "x"]);
+    });
+
+    it.each([
+        ["empty.csv", "", "The file is empty."],
+        ["header.csv", "case,activity,start", "The log has a header row but no events."],
+        ["one.csv", "case\n1\n2", "Only one column was found."],
+        ["book.csv", "PK\u0003\u0004\u0000\u0000rest", "This is not a text CSV file."],
+        ["noise.csv", "a,b\n\u0001\ufffd\ufffd\u0002,\ufffd\n", "This is not a text CSV file."],
+        ["page.csv", "<!doctype html><html>", "it looks like HTML or XML"],
+    ])("explains why %s cannot be used", async (name, content, message) => {
+        const file = new File(["unused"], name, {type: "text/csv"});
+        fileContents.set(name, content);
+        const error = await parseCsvFile(file).catch(caught => caught);
+        expect(error).toBeInstanceOf(LogFileError);
+        expect(error.message).toContain(message);
     });
 
     it("reads the UTC offset of a log timestamp, defaulting to UTC", () => {

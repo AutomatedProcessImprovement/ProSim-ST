@@ -12,7 +12,7 @@ import {
     PyFrameCase,
     SimulationSeedData,
 } from "@definitions/api/types";
-import {validateSimulationInputs} from "@utils/inputValidation";
+import {normalizeTaskTypes, validateSimulationInputs} from "@utils/inputValidation";
 import {activeJobCount, createJob, failJob, getJob, MAX_ACTIVE_JOBS} from "@utils/simulationJobs";
 import {saveSimulation, simulatorError} from "@db/mysql/simulationStore";
 
@@ -32,7 +32,8 @@ export const POST = async (request) => {
         }
 
         const jsonFile = body.get("jsonFile");
-        const issues = validateSimulationInputs(await file.text(), jsonFile ? await jsonFile.text() : "");
+        const bpmnXml = normalizeTaskTypes(await file.text());
+        const issues = validateSimulationInputs(bpmnXml, jsonFile ? await jsonFile.text() : "");
         if (issues.length) {
             return NextResponse.json({ error: "The uploaded files cannot be simulated.", issues }, { status: 400 });
         }
@@ -55,11 +56,10 @@ export const POST = async (request) => {
 
         const baseName = path.basename(file.name).replace(/[^A-Za-z0-9._-]/g, "_").replace(/\.bpmn$/i, "");
         const fileName = `${id}_${baseName}.bpmn`;
-        const buffer = Buffer.from(await file.arrayBuffer());
-        await writeFile(path.join(dir, fileName), buffer);
+        await writeFile(path.join(dir, fileName), bpmnXml);
 
         createJob(id);
-        void runSimulation(id, body, path.join(dir, fileName));
+        void runSimulation(id, body, path.join(dir, fileName), new Blob([bpmnXml], {type: "application/xml"}));
 
         return NextResponse.json({ id }, { status: 202 });
     } catch (error) {
@@ -68,10 +68,10 @@ export const POST = async (request) => {
     }
 }
 
-const runSimulation = async (id: string, body: FormData, assetPath: string) => {
+const runSimulation = async (id: string, body: FormData, assetPath: string, bpmnModel: Blob) => {
     let simulationData: SimulationSeedData;
     try {
-        simulationData = await getSimulationData(body);
+        simulationData = await getSimulationData(body, bpmnModel);
     } catch (error) {
         console.error(`Simulation ${id} failed:`, error?.response?.data ?? error?.message ?? error);
         failJob(id, simulatorError(error));
@@ -82,7 +82,7 @@ const runSimulation = async (id: string, body: FormData, assetPath: string) => {
     await saveSimulation(simulationData, assetPath);
 }
 
-const getSimulationData = async (body: FormData): Promise<SimulationSeedData> => {
+const getSimulationData = async (body: FormData, bpmnModel: Blob): Promise<SimulationSeedData> => {
     const configInput: AlgorithmConfiguration = JSON.parse(body.get('config') as string);
     const utcOffset = /^[+-]\d{2}:\d{2}$/.test(configInput.utcOffset ?? "") ? configInput.utcOffset : "+00:00";
     const windowStart = logTimeToUtc(configInput.startingPoint, utcOffset);
@@ -93,7 +93,7 @@ const getSimulationData = async (body: FormData): Promise<SimulationSeedData> =>
     reqBody.append("start_time", toOffsetIso(windowStart, utcOffset));
     reqBody.append("simulation_horizon", toOffsetIso(windowEnd, utcOffset));
     reqBody.append("event_log", body.get("logFile"));
-    reqBody.append("bpmn_model", body.get("bpmnFile"));
+    reqBody.append("bpmn_model", bpmnModel, (body.get("bpmnFile") as File).name);
     reqBody.append("json_parameters", body.get("jsonFile"));
     reqBody.append("column_mapping", body.get('mapping'))
 

@@ -68,6 +68,9 @@ const RunPanel = ({processId, scenario, startDate, endDate, utcOffset, openAtSta
                     : `${openAtStart} ${openAtStart === 1 ? "case was" : "cases were"} in progress at the start.`}
             {stateNote && <> <span className="stats-unit">{stateNote}</span></>}
         </p>
+        {details?.renumberedCases && <p className="task-panel-text stats-unit">
+            The log uses text case IDs, so cases are numbered here in the order they first appear in the log.
+        </p>}
         {rows.length > 0 && <ul className="run-tasks">
             {rows.map(row => <li key={row.taskId}>
                 <button type="button" onClick={() => onShowTask(row.taskId)}>{taskName(row.taskId)}</button>

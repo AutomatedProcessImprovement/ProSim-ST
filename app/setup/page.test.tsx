@@ -97,6 +97,10 @@ jest.mock("@components/simulationSetup/configInput", () => ({
     StartingPointInput: () => <div>starting-point-input</div>,
 }));
 
+const LOG = "case,activity,enablement,start,end,resource,extra\n"
+    + "1,A,2024-01-01 00:00:00,2024-01-01 01:00:00,2024-01-01 02:00:00,R,x\n"
+    + "2,B,2024-01-02 00:00:00,2024-01-02 01:00:00,2024-01-02 02:00:00,R,y\n";
+
 describe("Setup page", () => {
     const baseData = {
         id: "proc-1",
@@ -106,7 +110,7 @@ describe("Setup page", () => {
             simulationHorizonUnit: TimeUnits.WEEKS,
             startingPoint: "2024-01-01T00:00",
         },
-        logFile: new File(["log"], "log.csv", {type: "text/csv"}),
+        logFile: new File([LOG], "log.csv", {type: "text/csv"}),
         bpmnFile: new File([MODEL], "model.bpmn", {type: "text/bpmn"}),
         jsonFile: new File([PARAMETERS], "params.json", {type: "application/json"}),
     };
@@ -226,14 +230,29 @@ describe("Setup page", () => {
         expect((await screen.findAllByText(/1 activity in the log has no task with the same name in the BPMN model: "Archive"/)).length).toBeGreaterThan(0);
     });
 
-    it("runs mapping and config step callbacks", () => {
+    it("runs mapping and config step callbacks", async () => {
         const {setData, setCsvData} = renderPage();
 
-        fireEvent.click(screen.getByRole("button", {name: /next-Setup the log mapping/i}));
+        await waitFor(() => {
+            (toast.error as jest.Mock).mockClear();
+            fireEvent.click(screen.getByRole("button", {name: /next-Setup the log mapping/i}));
+            expect(toast.error).not.toHaveBeenCalled();
+        });
         fireEvent.click(screen.getByRole("button", {name: /next-Setup your experiment/i}));
 
         expect(setData).toHaveBeenCalled();
-        expect(setCsvData).toHaveBeenCalled();
+        expect(setCsvData).toHaveBeenCalledWith(expect.any(Function));
+        const csv = (setCsvData as jest.Mock).mock.calls.at(-1)[0](baseCsv);
+        expect(csv).toMatchObject({logStartDate: "2024-01-01T01:00:00", logEndDate: "2024-01-02T02:00:00", logUtcOffset: "+00:00"});
+    });
+
+    it("explains on the mapping step why the log cannot be used", async () => {
+        renderPage({logFile: new File([LOG.replace("2024-01-02 02:00:00", "tomorrow")], "log.csv", {type: "text/csv"})});
+
+        await waitFor(() => {
+            fireEvent.click(screen.getByRole("button", {name: /next-Setup the log mapping/i}));
+            expect(toast.error).toHaveBeenCalledWith("The log cannot be used with this mapping", expect.objectContaining({description: expect.anything()}));
+        });
     });
 
     it("shows BPMN error when upload step validation fails", () => {

@@ -76,8 +76,8 @@ describe("Stepper", () => {
 
         expect(onSubmit).not.toHaveBeenCalled();
         expect(toast.error).toHaveBeenCalledWith(
-            "Error on form submission!",
-            {description: "Please fix the errors in the form before submitting"}
+            'The "First" step has errors',
+            {description: "Go back to that step and fix them before starting the simulation."}
         );
     });
 

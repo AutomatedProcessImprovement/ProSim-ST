@@ -4,6 +4,7 @@ import {
     activitiesMissingFromModel,
     collectActivities,
     describeMissingActivities,
+    normalizeTaskTypes,
     summarizeBpmn,
     validateSimulationInputs,
 } from "./inputValidation";
@@ -11,8 +12,9 @@ import {
 const sample = (name: string, file: string) => readFileSync(join(__dirname, "../sampleProcesses", name, file), "utf8");
 
 const bpmn = (body: string) => `<?xml version="1.0"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI">
   <bpmn:process id="p">${body}</bpmn:process>
+  <bpmndi:BPMNDiagram id="d"><bpmndi:BPMNPlane id="pl" bpmnElement="p"><bpmndi:BPMNShape id="s" bpmnElement="start"/></bpmndi:BPMNPlane></bpmndi:BPMNDiagram>
 </bpmn:definitions>`;
 
 const MODEL = bpmn(`
@@ -47,13 +49,15 @@ describe("summarizeBpmn", () => {
             startEvents: 1,
             endEvents: 1,
             divergingGateways: ["split"],
+            unsupported: [],
+            hasDiagram: true,
         });
         expect(summarizeBpmn("<html><body>no model</body></html>")).toBeNull();
     });
 });
 
 describe("validateSimulationInputs", () => {
-    it.each(["loanApplication", "p2p"])("accepts the bundled %s sample", name => {
+    it.each(["loanApplication", "p2p", "bpic2017", "p2pfin"])("accepts the bundled %s sample", name => {
         expect(validateSimulationInputs(sample(name, "bpmn_model.bpmn"), sample(name, "json_parameters.json"))).toEqual([]);
     });
 
@@ -111,6 +115,66 @@ describe("validateSimulationInputs", () => {
 
     it("leaves gateway probabilities alone when branch rules are used", () => {
         expect(validateSimulationInputs(MODEL, parameters({gateway_branching_probabilities: [], branch_rules: []}))).toEqual([]);
+    });
+});
+
+describe("model and parameter problems", () => {
+    const issues = (model: string, overrides: Record<string, unknown> = {}) => validateSimulationInputs(model, parameters(overrides));
+
+    it("accepts typed tasks such as user and service tasks", () => {
+        const typed = MODEL.replace('<bpmn:task id="a"', '<bpmn:userTask id="a"').replace('<bpmn:task id="b"', '<bpmn:serviceTask id="b"');
+        expect(issues(typed)).toEqual([]);
+    });
+
+    it("turns typed tasks into plain tasks for the simulator", () => {
+        expect(normalizeTaskTypes('<bpmn:userTask id="a"></bpmn:userTask><serviceTask id="b"/><bpmn:taskListener/>'))
+            .toBe('<bpmn:task id="a"></bpmn:task><task id="b"/><bpmn:taskListener/>');
+    });
+
+    it("reports XML that is cut off", () => {
+        expect(issues(MODEL.slice(0, MODEL.length / 2))[0]).toMatch(/^The BPMN file is not valid XML/);
+    });
+
+    it("reports a model without a diagram layout", () => {
+        expect(issues(MODEL.replace(/<bpmndi:BPMNDiagram.*<\/bpmndi:BPMNDiagram>/, ""))).toEqual([
+            expect.stringContaining("has no diagram layout"),
+        ]);
+    });
+
+    it("names elements the simulator cannot run", () => {
+        const model = MODEL.replace('<bpmn:endEvent id="end"/>', '<bpmn:endEvent id="end"/><bpmn:subProcess id="sp"/><bpmn:boundaryEvent id="be1"/><bpmn:boundaryEvent id="be2"/>');
+        expect(issues(model)).toEqual([expect.stringContaining("1 subprocesses, 2 boundary events")]);
+    });
+
+    it("reports calendars without working time", () => {
+        expect(issues(MODEL, {
+            resource_calendars: [{id: "c1", name: "Office", time_periods: []}],
+            arrival_time_calendar: [],
+        })).toEqual([
+            'These resource calendars have no working time, so their resources would never work: "Office".',
+            "The arrival_time_calendar has no time periods, so no new case could ever arrive.",
+        ]);
+    });
+
+    it("reports distributions with too few parameters", () => {
+        expect(issues(MODEL, {
+            task_resource_distribution: [
+                {task_id: "a", resources: [{resource_id: "clerk", distribution_name: "norm", distribution_params: [{value: -50}]}]},
+                {task_id: "b", resources: [{resource_id: "clerk", distribution_name: "fix", distribution_params: [{value: 60}]}]},
+            ],
+        })).toEqual(['Some distributions in the JSON file have the wrong distribution_params: "norm" needs 4 numbers (mean, std, min, max) but has 1.']);
+    });
+
+    it("reports unknown distributions, missing calendars and probabilities that do not add up", () => {
+        expect(issues(MODEL, {
+            arrival_time_distribution: {distribution_name: "weibull"},
+            resource_profiles: [{id: "pool", name: "Pool", resource_list: [{id: "clerk", name: "Clerk", amount: 1, calendar: "nights"}]}],
+            gateway_branching_probabilities: [{gateway_id: "split", probabilities: [{path_id: "f3", value: 0.9}, {path_id: "f4", value: 0.9}]}],
+        })).toEqual([
+            expect.stringContaining('distributions that Prosimos does not know: "weibull"'),
+            expect.stringContaining('calendars that are not in resource_calendars: "nights"'),
+            expect.stringContaining('do not add up to 1: "split"'),
+        ]);
     });
 });
 

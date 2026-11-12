@@ -1,21 +1,22 @@
-import {readLines} from "@utils/fileHelpers";
+import {splitLogLines} from "@utils/fileHelpers";
 
 export type CaseSpans = {
     starts: Float64Array;
     ends: Float64Array;
 };
 
-const splitCsvLine = (line: string) => line.split(/[;,]/);
+const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?\s*(Z|[+-]\d{2}:?\d{2})?$/;
 
 export const parseLogTimestamp = (raw?: string): number => {
-    const value = raw?.trim().replace(" ", "T");
-    if (!value) return NaN;
+    const trimmed = raw?.trim();
+    if (!trimmed || !ISO_TIMESTAMP.test(trimmed)) return NaN;
 
-    const hasOffset = /(Z|[+-]\d{2}:?\d{2})$/.test(value) && /T\d/.test(value);
-    return Date.parse(hasOffset ? value : value + "Z");
+    const value = trimmed.replace(" ", "T").replace(/\s+/g, "").replace(/([+-]\d{2})(\d{2})$/, "$1:$2");
+    return Date.parse(/(Z|[+-]\d{2}:\d{2})$/.test(value) ? value : value + "Z");
 };
 
 export const buildCaseSpans = (lines: string[], caseColumn: string, startColumn: string, endColumn: string): CaseSpans => {
+    const {split: splitCsvLine} = splitLogLines(lines);
     const headers = splitCsvLine(lines[0]);
     const caseIdx = headers.indexOf(caseColumn);
     const startIdx = headers.indexOf(startColumn);
@@ -44,11 +45,6 @@ export const buildCaseSpans = (lines: string[], caseColumn: string, startColumn:
         starts: Float64Array.from(values, ([start]) => start),
         ends: Float64Array.from(values, ([, end]) => end),
     };
-};
-
-export const readCaseSpans = async (logFile: File, caseColumn: string, startColumn: string, endColumn: string) => {
-    const lines = await readLines(logFile, {removeWhite: true});
-    return buildCaseSpans(lines, caseColumn, startColumn, endColumn);
 };
 
 export type OpenCasesSeries = {

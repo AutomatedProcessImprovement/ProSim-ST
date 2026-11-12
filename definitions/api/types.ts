@@ -67,6 +67,7 @@ export type RunDetails = {
     files: {log: string; bpmn: string; parameters: string} | null;
     stateSeconds: number | null;
     simulationSeconds: number | null;
+    renumberedCases?: boolean;
 }
 
 export type ScenarioLink = {

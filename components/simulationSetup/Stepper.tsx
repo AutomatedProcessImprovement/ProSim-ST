@@ -49,12 +49,13 @@ const Stepper = ({children = [], onSubmit = () => {}, className = ''}: Props) =>
                 if (activeStep === count - 1) {
                     setActiveStep(previous => previous - 1);
 
-                    if (validity.every(value => value !== false)) {
+                    const invalid = validity.findIndex(value => value === false);
+                    if (invalid === -1) {
                         onSubmit();
                     } else {
                         toast.error(
-                            'Error on form submission!',
-                            {description: 'Please fix the errors in the form before submitting'}
+                            `The "${headers[invalid]}" step has errors`,
+                            {description: 'Go back to that step and fix them before starting the simulation.'}
                         );
                     }
                 }

@@ -26,8 +26,8 @@ jest.mock("axios", () => ({
 }));
 
 const MODEL = `<definitions><process id="p">
-  <startEvent id="start"/><task id="Task_1" name="A"/><endEvent id="end"/>
-</process></definitions>`;
+  <startEvent id="start"/><userTask id="Task_1" name="A"/><endEvent id="end"/>
+</process><BPMNDiagram><BPMNPlane><BPMNShape id="s" bpmnElement="Task_1"/></BPMNPlane></BPMNDiagram></definitions>`;
 const PARAMETERS = JSON.stringify({
     resource_profiles: [], resource_calendars: [], arrival_time_distribution: {},
     gateway_branching_probabilities: [], task_resource_distribution: [{task_id: "Task_1", resources: []}],
@@ -154,7 +154,7 @@ describe("POST /api/simulation", () => {
         expect(mkdirSync).toHaveBeenCalledWith(expect.stringContaining("public/assets"), {recursive: true});
         expect(writeFile).toHaveBeenCalledWith(
             expect.stringContaining("process-1_model_file.bpmn"),
-            expect.any(Buffer),
+            MODEL.replace("<userTask", "<task"),
         );
         expect(queryRunner.connect).toHaveBeenCalled();
         expect(queryRunner.startTransaction).toHaveBeenCalled();

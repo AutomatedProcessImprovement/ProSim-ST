@@ -20,13 +20,15 @@ import {CsvContext} from "@context/CsvContext";
 import {clsx} from "clsx/lite";
 import axios from "axios";
 import {calculateEndDate, formatHorizon, formatInLogTime, formatReadableDate, formatUtcOffset, logTimeToUtc} from "@utils/dateHelpers";
-import {getCellByHeader, getLogUtcOffset, normalizeLogDate, readLines, readText} from "@utils/fileHelpers";
+import {readLines, readText} from "@utils/fileHelpers";
 import {clearSetup, loadSetup, saveSetup} from "@utils/setupStorage";
-import {CaseSpans, countOngoingCases, openCasesOverTime, readCaseSpans} from "@utils/ongoingCases";
+import {buildCaseSpans, CaseSpans, countOngoingCases, openCasesOverTime} from "@utils/ongoingCases";
+import {checkLogColumns} from "@utils/logCheck";
 import {
     activitiesMissingFromModel,
     collectActivities,
     describeMissingActivities,
+    summarizeBpmn,
     validateSimulationInputs,
 } from "@utils/inputValidation";
 import {JobStatus} from "@utils/simulationJobs";
@@ -58,6 +60,8 @@ const Setup = () => {
     const [runStatus, setRunStatus] = useState<JobStatus | null>(null);
     const [fileIssues, setFileIssues] = useState<string[] | null>(null);
     const [missingActivities, setMissingActivities] = useState<string[]>([]);
+    const [noActivityInModel, setNoActivityInModel] = useState(false);
+    const [logLines, setLogLines] = useState<string[] | null>(null);
     const mountedRef = useRef(true);
     const router = useRouter();
 
@@ -106,6 +110,18 @@ const Setup = () => {
 
     const {bpmnFile, jsonFile, logFile} = data as {bpmnFile?: File; jsonFile?: File; logFile?: File};
     useEffect(() => {
+        setLogLines(null);
+        if (!logFile) return;
+
+        let cancelled = false;
+        readLines(logFile, {removeWhite: true})
+            .then(lines => { if (!cancelled) setLogLines(lines); })
+            .catch(() => toast.error('The log could not be read', {description: 'Go back and upload it again.'}));
+
+        return () => { cancelled = true; };
+    }, [logFile]);
+
+    useEffect(() => {
         setFileIssues(null);
         if (!bpmnFile || !jsonFile) return;
 
@@ -120,28 +136,39 @@ const Setup = () => {
     const activityColumn = (data.mapping as Record<string, string>).activity;
     useEffect(() => {
         setMissingActivities([]);
-        if (!bpmnFile || !logFile || !activityColumn) return;
+        setNoActivityInModel(false);
+        if (!bpmnFile || !logLines || !activityColumn) return;
 
         let cancelled = false;
-        Promise.all([readLines(logFile, {removeWhite: true}), readText(bpmnFile)])
-            .then(([lines, bpmn]) => {
-                if (!cancelled) setMissingActivities(activitiesMissingFromModel(collectActivities(lines, activityColumn), bpmn));
+        readText(bpmnFile)
+            .then(bpmn => {
+                if (cancelled) return;
+                const activities = collectActivities(logLines, activityColumn);
+                const missing = activitiesMissingFromModel(activities, bpmn);
+                setMissingActivities(missing);
+                setNoActivityInModel(activities.size > 0 && missing.length === activities.size && (summarizeBpmn(bpmn)?.tasks.length ?? 0) > 0);
             })
             .catch(() => {});
 
         return () => { cancelled = true; };
-    }, [bpmnFile, logFile, activityColumn]);
+    }, [bpmnFile, logLines, activityColumn]);
 
-    const fileIssuesNote = fileIssues?.length > 0 &&
-        <div className='rounded-xl border border-red-300 bg-red-50 px-4 py-2 text-sm text-red-900'>
-            <p className='mb-1 font-medium'>These files cannot be simulated:</p>
-            <IssueList issues={fileIssues}/>
-        </div>;
 
-    const missingActivitiesNote = missingActivities.length > 0 &&
+    const blockingIssues = [
+        ...(fileIssues ?? []),
+        ...(noActivityInModel ? ['None of the activities in the log is a task in the BPMN model, so the log and the model do not belong to the same process. Check the Activity column in the mapping, or upload the model of this process.'] : []),
+    ];
+
+    const missingActivitiesNote = missingActivities.length > 0 && !noActivityInModel &&
         <p className='rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900'>
             {describeMissingActivities(missingActivities)}
         </p>;
+
+    const fileIssuesNote = blockingIssues.length > 0 &&
+        <div className='rounded-xl border border-red-300 bg-red-50 px-4 py-2 text-sm text-red-900'>
+            <p className='mb-1 font-medium'>These files cannot be simulated:</p>
+            <IssueList issues={blockingIssues}/>
+        </div>;
 
     useEffect(() => {
         if (data.config.startingPoint) {
@@ -151,16 +178,8 @@ const Setup = () => {
 
     const { case: caseColumn, start: startColumn, end: endColumn } = data.mapping as Record<string, string>;
     useEffect(() => {
-        if (!data.logFile || !caseColumn || !endColumn) return;
-
-        let cancelled = false;
-        setCaseSpans(null);
-        readCaseSpans(data.logFile, caseColumn, startColumn, endColumn)
-            .then(spans => { if (!cancelled) setCaseSpans(spans); })
-            .catch(() => {});
-
-        return () => { cancelled = true; };
-    }, [data.logFile, caseColumn, startColumn, endColumn]);
+        setCaseSpans(logLines && caseColumn && endColumn ? buildCaseSpans(logLines, caseColumn, startColumn, endColumn) : null);
+    }, [logLines, caseColumn, startColumn, endColumn]);
 
     const ongoingCases = (caseSpans && data.config.startingPoint)
         ? countOngoingCases(caseSpans, logTimeToUtc(data.config.startingPoint, csvData.logUtcOffset).getTime())
@@ -214,23 +233,31 @@ const Setup = () => {
             mapping: logMapping,
         }));
 
-        const startLog = normalizeLogDate(getCellByHeader(csvData.firstLine, csvData.headers, logMapping.start));
-        const rawEndLog = getCellByHeader(csvData.lastLine, csvData.headers, logMapping.end);
-        const endLog = normalizeLogDate(rawEndLog);
-
-        setCsvData((prev) => ({
-            ...prev,
-            logStartDate: startLog ?? "",
-            logEndDate: endLog ?? "",
-            logUtcOffset: getLogUtcOffset(rawEndLog),
-        }))
-
-        if (new Set(Object.keys(logMapping)).size === new Set(Object.values(logMapping)).size) {
-            return true
-        } else {
+        if (new Set(Object.keys(logMapping)).size !== new Set(Object.values(logMapping)).size) {
             toast.error('Invalid mapping', {description: 'You assigned the same column to multiple attributes!'})
             return false
         }
+        if (!logLines) {
+            toast.error('The log is still being read', {description: 'Try again in a moment.'});
+            return false;
+        }
+
+        const check = checkLogColumns(logLines, logMapping as unknown as Record<string, string>);
+        if (check.issues.length || !check.startDate) {
+            toast.error('The log cannot be used with this mapping', {
+                description: <IssueList issues={check.issues.length ? check.issues : ['The log has no events with a start and an end time.']}/>,
+                duration: 15000,
+            });
+            return false;
+        }
+
+        setCsvData((prev) => ({
+            ...prev,
+            logStartDate: check.startDate,
+            logEndDate: check.endDate,
+            logUtcOffset: check.utcOffset,
+        }))
+        return true
     }
 
     const onConfigCompleted = (data: FormData) => {
@@ -263,8 +290,8 @@ const Setup = () => {
             toast.error('Invalid JSON', {description: 'You have to upload a JSON file!'});
             return false;
         }
-        if (fileIssues?.length) {
-            toast.error('These files cannot be simulated', {description: <IssueList issues={fileIssues}/>});
+        if (blockingIssues.length) {
+            toast.error('These files cannot be simulated', {description: <IssueList issues={blockingIssues}/>});
             return false;
         }
         return true;
@@ -313,7 +340,7 @@ const Setup = () => {
         setIsSubmitting(false);
         setRunStatus(null);
         const failedStage = status.error?.stage ?? 'simulation';
-        toast.error(`The simulation failed: ${STAGE_LABELS[failedStage].toLowerCase()}`, {
+        toast.error(status.error?.input ? 'These files cannot be simulated' : `The simulation failed: ${STAGE_LABELS[failedStage].toLowerCase()}`, {
             description: status.error?.message,
             duration: 15000,
         });
@@ -387,7 +414,7 @@ const Setup = () => {
                         <ConfigFileInput type={FileTypes.JSON} />
                     </div>
                 </div>
-                {(fileIssues?.length || missingActivities.length > 0) &&
+                {(blockingIssues.length > 0 || missingActivities.length > 0) &&
                     <div className='flex flex-col gap-2 p-4'>
                         {fileIssuesNote}
                         {missingActivitiesNote}
