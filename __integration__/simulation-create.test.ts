@@ -55,6 +55,7 @@ import {startTestRedis, stopTestRedis, makeRedisFactory, TestRedis} from './help
 
 const PROCESS_ID = 'integ-create-001';
 const FAILED_PROCESS_ID = 'integ-create-002';
+const LARGE_PROCESS_ID = 'integ-create-003';
 const BPMN = readFileSync(join(__dirname, '../e2e/fixtures/sample.bpmn'), 'utf8');
 const PARAMETERS = readFileSync(join(__dirname, '../e2e/fixtures/sample.json'), 'utf8');
 
@@ -148,6 +149,36 @@ describe('POST /api/simulation (integration)', () => {
         expect(cached).not.toBeNull();
         const parsed = JSON.parse(cached!);
         expect(parsed).toHaveLength(2);
+    });
+
+    it('saves runs with more events than fit in one insert', async () => {
+        const start = Date.parse('2024-01-01T00:00:00Z');
+        const pyEvents = Array.from({length: 4500}, (_, index) => ({
+            case_id: index,
+            lifecycle: 'CASE_ARRIVAL',
+            timestamp: new Date(start + index * 60000).toISOString(),
+            node_id: 'start',
+            paths: {},
+        }));
+        (axios.post as jest.Mock).mockResolvedValue({data: {events: pyEvents, frames: [{case_id: 0, active_elements: {t1: 'start'}}]}});
+
+        const formData = new FormData();
+        formData.append('id', LARGE_PROCESS_ID);
+        formData.append('bpmnFile', new File([new Blob([BPMN])], 'model.bpmn', {type: 'application/xml'}));
+        formData.append('logFile', new File([''], 'log.csv'));
+        formData.append('jsonFile', new File([PARAMETERS], 'params.json'));
+        formData.append('config', JSON.stringify({
+            startingPoint: '2024-01-01T00:00:00',
+            simulationHorizonValue: 4,
+            simulationHorizonUnit: 'days',
+        }));
+        formData.append('mapping', JSON.stringify({case: 'case_id'}));
+
+        await POST(new Request('http://localhost/api/simulation', {method: 'POST', body: formData}));
+
+        expect((await finishedJob(LARGE_PROCESS_ID)).stage).toBe('done');
+        const [{count}] = await db.dataSource.query('SELECT COUNT(*) AS count FROM event WHERE processId = ?', [LARGE_PROCESS_ID]);
+        expect(Number(count)).toBe(4500);
     });
 
     it('returns 400 when bpmnFile is missing', async () => {

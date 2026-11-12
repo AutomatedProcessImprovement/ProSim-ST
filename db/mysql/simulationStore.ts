@@ -3,6 +3,7 @@ import {unlink} from "fs/promises";
 import path from "path";
 import {Comparison, ScenarioEdits, SimulationSeedData} from "@definitions/api/types";
 import {createMySQLConnection} from "@db/mysql/typeorm";
+import {QueryRunner} from "typeorm";
 import {failJob, JobError, setJobStage, SCENARIO_STAGES} from "@utils/simulationJobs";
 
 export type ScenarioRecord = {
@@ -42,6 +43,19 @@ export const saveSimulation = async (simulationData: SimulationSeedData, assetPa
     }
 }
 
+const INSERT_CHUNK_ROWS = 2000;
+
+const insertRows = async (queryRunner: QueryRunner, table: string, columns: string[], rows: unknown[][]) => {
+    const placeholder = `(${columns.map(() => "?").join(", ")})`;
+    for (let start = 0; start < rows.length; start += INSERT_CHUNK_ROWS) {
+        const chunk = rows.slice(start, start + INSERT_CHUNK_ROWS);
+        await queryRunner.query(
+            `INSERT INTO ${table} (${columns.join(", ")}) VALUES ${chunk.map(() => placeholder).join(", ")}`,
+            chunk.flat(),
+        );
+    }
+};
+
 const insertSimulationData = async (
     data: SimulationSeedData,
     fileName: string,
@@ -79,15 +93,6 @@ const insertSimulationData = async (
             ]
         });
 
-        const eventPlaceholders = eventValues.map(() => `(?, ?, ?, ?, ?, ?)`).join(", ");
-
-        const eventSql = `
-            INSERT INTO event (caseId, lifecycle, timestamp, nodeId, paths, processId)
-            VALUES ${eventPlaceholders};
-        `;
-
-        const flattenedEventValues = eventValues.flat();
-
         const frameValues = frames.map(frame => [
             frame.caseId,
             JSON.stringify(frame.activeElements),
@@ -96,15 +101,6 @@ const insertSimulationData = async (
             processId,
         ]);
 
-        const framePlaceholders = frameValues.map(() => `(?, ?, ?, ?, ?)`).join(", ");
-
-        const frameSql = `
-            INSERT INTO frame (caseId, activeElements, arrivalTime, taskTimes, processId)
-            VALUES ${framePlaceholders};
-        `;
-
-        const flattenedFrameValues = frameValues.flat();
-
         await queryRunner.query(processSql, [
             processId,
             fileName,
@@ -112,8 +108,8 @@ const insertSimulationData = async (
             endDate.toISOString().slice(0, 19).replace("T", " "),
             window.utcOffset,
         ]);
-        if (eventValues.length > 0) await queryRunner.query(eventSql, flattenedEventValues);
-        if (frameValues.length > 0) await queryRunner.query(frameSql, flattenedFrameValues);
+        await insertRows(queryRunner, "event", ["caseId", "lifecycle", "timestamp", "nodeId", "paths", "processId"], eventValues);
+        await insertRows(queryRunner, "frame", ["caseId", "activeElements", "arrivalTime", "taskTimes", "processId"], frameValues);
         if (scenario) {
             await queryRunner.query(
                 `INSERT INTO scenario (processId, baseProcessId, label, edits, comparison) VALUES (?, ?, ?, ?, ?)`,
