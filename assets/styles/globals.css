@@ -1350,7 +1350,7 @@ h1 {
   touch-action: none;
 }
 
-@media (max-width: 1560px) {
+@media (max-width: 1760px) {
   body:has(.simulation-toolbar) h1 {
     visibility: hidden;
   }
