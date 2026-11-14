@@ -9,7 +9,7 @@
     <startEvent id="StartEvent_1">
       <outgoing>Flow_1</outgoing>
     </startEvent>
-    <task id="Task_1" name="Sample Task">
+    <task id="Task_1" name="check_application">
       <incoming>Flow_1</incoming>
       <outgoing>Flow_2</outgoing>
     </task>
