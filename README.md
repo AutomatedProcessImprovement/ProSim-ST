@@ -76,7 +76,7 @@ npm run migrate:run
 npm run dev
 ```
 
-Open http://localhost:3000. The start page offers four sample processes, so you can try it without your own files. The BPIC 2017 and P2PFin samples are real logs with models discovered by Simod; their diagrams were laid out again for readability, without changing the process logic. P2PFin is anonymised in the source data, so its activities and resources carry numbered labels. `/api/health` reports whether the database, Redis and the simulation service are reachable.
+Open http://localhost:3000. The start page offers four sample processes, so you can try it without your own files. The download button next to each one gives its log, BPMN model and parameters as a zip, to try the upload yourself. The BPIC 2017 and P2PFin samples are real logs with models discovered by Simod; their diagrams were laid out again for readability, without changing the process logic. P2PFin is anonymised in the source data, so its activities and resources carry numbered labels. `/api/health` reports whether the database, Redis and the simulation service are reachable.
 
 ## Run with Docker
 
@@ -127,11 +127,15 @@ docker run -d --name prosim-st --network prosim \
 
 With `RUN_MIGRATIONS=1`, each app waits for MySQL and applies its migrations before it starts. The app is then at http://localhost:3000. The port is bound to `127.0.0.1`, so put a reverse proxy in front of it to serve it publicly.
 
+## Logs of a process in progress
+
+A log can stop at the present moment: an event with an empty end time is an activity still in progress. The starting point then defaults to the end of the log. Cases that wait between activities look the same as finished ones in such a log, so the simulation service keeps every case that the BPMN model does not allow to end where it stopped. The sample logs are recorded this way. A log that goes on past the chosen starting point is cut there instead, and a case is open when it has activity after that moment.
+
 ## What-if runs and resources
 
 Every run saves its computed process state and random seed. **What-if** reruns from that same state with changed pool sizes, arrival volume or task durations, and opens a comparison of queues, waiting times and resource use. With no changes, a rerun reproduces the original log exactly.
 
-A single run depends on chance, so each what-if also repeats both sides with up to 8 more seeds, and a change counts as clear only when all seeds moved the same way. The repeats share a 60-second budget, set by `SCENARIO_REPEAT_BUDGET_SECONDS` on the simulation service. Simulations that take long get fewer repeats, and the comparison then says it has too few to judge.
+A single run depends on chance, so each what-if also repeats both sides with up to 8 more seeds, and a change is marked better or worse only when all seeds moved the same way, similar otherwise. The repeats share a 60-second budget, set by `SCENARIO_REPEAT_BUDGET_SECONDS` on the simulation service. Simulations that take long get fewer repeats, and the comparison then says it has too few to judge.
 
 **Compare with an empty start**, in the same panel, reruns the model with no case in progress to show what the current state changes.
 

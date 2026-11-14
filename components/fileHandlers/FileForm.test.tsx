@@ -128,6 +128,21 @@ describe("FileForm", () => {
         expect(mockPush).toHaveBeenCalledWith("/setup");
     });
 
+    it("offers the files of each sample for download next to the button that loads it", () => {
+        render(
+            <DataContext.Provider value={baseDataContext}>
+                <CsvContext.Provider value={baseCsvContext}>
+                    <FileForm />
+                </CsvContext.Provider>
+            </DataContext.Provider>
+        );
+
+        expect(screen.getByRole("button", {name: "Loan application (1.3 MB)"})).toBeInTheDocument();
+        expect(screen.getByRole("link", {name: "Download the Loan application files"}))
+            .toHaveAttribute("href", "/api/samples/loanApplication/download");
+        expect(screen.getAllByRole("link", {name: /^Download the .* files$/})).toHaveLength(4);
+    });
+
     it("disables submission again after removing the selected file", () => {
         render(
             <DataContext.Provider value={baseDataContext}>

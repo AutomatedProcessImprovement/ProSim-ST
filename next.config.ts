@@ -3,6 +3,7 @@ const nextConfig = {
   output: 'standalone',
   outputFileTracingIncludes: {
     '/api/samples/[name]/[file]': ['./sampleProcesses/**/*'],
+    '/api/samples/[name]/download': ['./sampleProcesses/**/*'],
   },
   webpack: (config, { isServer }) => {
     if (isServer) {
