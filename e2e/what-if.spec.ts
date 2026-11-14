@@ -55,7 +55,7 @@ test.describe('What-if comparison', () => {
         await expect(page.getByText('Clerk 9 → 11 · Arrivals +20%')).toBeVisible();
         const waiting = page.getByRole('row', { name: /^Average waiting/ });
         await expect(waiting.getByText('−3 h', { exact: true })).toBeVisible();
-        await expect(waiting.getByText('Clearly better')).toBeVisible();
+        await expect(waiting.getByText('Better', { exact: true })).toBeVisible();
         await expect(page.getByRole('row', { name: /^Cases waiting on average/ }).getByText('Similar')).toBeVisible();
 
         await page.getByRole('button', { name: 'Check' }).click();

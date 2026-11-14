@@ -40,7 +40,7 @@ const line = (values: number[], max: number) => values
 const VerdictChip = ({verdict, neutral}: {verdict: Verdict; neutral: boolean}) => {
     const decided = verdict === "better" || verdict === "worse";
     return <span className={`count-chip ${neutral && decided ? "count-waiting" : VERDICT_CLASSES[verdict]}`}>
-        {neutral && decided ? "Clearly different" : VERDICT_LABELS[verdict]}
+        {neutral && decided ? "Different" : VERDICT_LABELS[verdict]}
     </span>;
 };
 
@@ -186,7 +186,7 @@ const Compare = () => {
             <p className="stats-unit compare-note">
                 A single run depends on chance, so both sides were repeated with the same {seeds} random {seeds === 1 ? "seed" : "seeds"}.
                 {seeds >= MIN_SEEDS_FOR_VERDICT
-                    ? " A change is clear when every seed moved the same way."
+                    ? " Better or worse marks a change that went the same way for every seed; similar, one where the seeds disagree."
                     : " That is too few to tell a real change from chance: this model takes long to simulate."}
                 {" "}Waiting includes work that only starts after the horizon; cycle time counts the cases finished by then.
             </p>

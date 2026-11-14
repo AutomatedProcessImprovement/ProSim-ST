@@ -58,8 +58,8 @@ describe("Compare page", () => {
         await screen.findByRole("heading", {name: "Current state vs empty start"});
         expect(screen.getByRole("link", {name: "Open empty start"})).toBeInTheDocument();
         expect(screen.getByText("An empty start ignores the work already in the process.", {exact: false})).toBeInTheDocument();
-        expect(screen.getAllByText("Clearly different").length).toBeGreaterThan(0);
-        expect(screen.queryByText("Clearly better")).not.toBeInTheDocument();
+        expect(screen.getAllByText("Different").length).toBeGreaterThan(0);
+        expect(screen.queryByText("Better")).not.toBeInTheDocument();
     });
 
     it("shows both sides, the change and how far to trust it", async () => {
@@ -74,10 +74,10 @@ describe("Compare page", () => {
         expect(within(waiting).getByText("2 h")).toBeInTheDocument();
         expect(within(waiting).getByText("−3 h")).toBeInTheDocument();
         expect(within(waiting).getByText("−4 h to −2 h")).toBeInTheDocument();
-        expect(within(waiting).getByText("Clearly better")).toBeInTheDocument();
+        expect(within(waiting).getByText("Better")).toBeInTheDocument();
 
         expect(within(row("Cases waiting on average")).getByText("Similar")).toBeInTheDocument();
-        expect(within(row("Cases finished")).getByText("Clearly better")).toBeInTheDocument();
+        expect(within(row("Cases finished")).getByText("Better")).toBeInTheDocument();
         expect(within(row("Clerk")).getByText("95%")).toBeInTheDocument();
     });
 
