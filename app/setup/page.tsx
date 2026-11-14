@@ -178,8 +178,8 @@ const Setup = () => {
 
     const { case: caseColumn, start: startColumn, end: endColumn } = data.mapping as Record<string, string>;
     useEffect(() => {
-        setCaseSpans(logLines && caseColumn && endColumn ? buildCaseSpans(logLines, caseColumn, startColumn, endColumn) : null);
-    }, [logLines, caseColumn, startColumn, endColumn]);
+        setCaseSpans(logLines && caseColumn && endColumn ? buildCaseSpans(logLines, caseColumn, activityColumn, startColumn, endColumn) : null);
+    }, [logLines, caseColumn, activityColumn, startColumn, endColumn]);
 
     const ongoingCases = (caseSpans && data.config.startingPoint)
         ? countOngoingCases(caseSpans, logTimeToUtc(data.config.startingPoint, csvData.logUtcOffset).getTime())

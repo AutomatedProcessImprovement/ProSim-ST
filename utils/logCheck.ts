@@ -80,13 +80,13 @@ export const checkLogColumns = (lines: string[], mapping: Record<string, string>
             }
             times[field] = time;
         }
-        if (times.start !== undefined && times.end !== undefined) {
+        if (times.start !== undefined) {
             if (times.end < times.start) {
                 backwards++;
                 firstBackwards ||= row;
             }
             earliest = Math.min(earliest, times.start);
-            latest = Math.max(latest, times.end);
+            latest = Math.max(latest, times.end ?? times.start);
         }
     }
 
@@ -94,7 +94,7 @@ export const checkLogColumns = (lines: string[], mapping: Record<string, string>
         const column = `column "${mapping[field]}" (${LABELS[field]})`;
         if (unreadable[field]) {
             issues.push(`The ${column} has values that are not timestamps, e.g. "${unreadable[field].value}" in row ${unreadable[field].row}. ${TIMESTAMP_HINT}`);
-        } else if (empty[field]) {
+        } else if (empty[field] && (field !== "end" || !zones.end)) {
             issues.push(`${rows(empty[field].count)} of the log ${empty[field].count === 1 ? "has" : "have"} an empty ${column}, the first in row ${empty[field].row}. Every event needs one.`);
         } else if (zones[field]?.with && zones[field]?.without) {
             issues.push(`The ${column} mixes timestamps with and without a time zone, e.g. row ${zones[field].row}. Give all of them a time zone or none.`);
@@ -110,7 +110,7 @@ export const checkLogColumns = (lines: string[], mapping: Record<string, string>
         utcOffset: offset,
         ...(Number.isFinite(earliest) && {
             startDate: formatInLogTime(new Date(earliest), offset).replace(" ", "T"),
-            endDate: formatInLogTime(new Date(latest), offset).replace(" ", "T"),
+            endDate: formatInLogTime(new Date(Math.ceil(latest / 1000) * 1000), offset).replace(" ", "T"),
         }),
     };
 };

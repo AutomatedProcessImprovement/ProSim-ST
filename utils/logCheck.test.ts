@@ -13,6 +13,13 @@ describe("checkLogColumns", () => {
         ), MAPPING)).toEqual({issues: [], startDate: "2025-03-25T09:00:00", endDate: "2025-03-25T13:00:00", utcOffset: "+02:00"});
     });
 
+    it("takes an empty end time for an activity still in progress, and ends the log at its start", () => {
+        expect(checkLogColumns(log(
+            "1,A,2025-03-25 09:00:00+02:00,2025-03-25 10:00:00+02:00,Ann",
+            "2,B,2025-03-25 10:30:00.400+02:00,,Bob",
+        ), MAPPING)).toEqual({issues: [], startDate: "2025-03-25T09:00:00", endDate: "2025-03-25T10:30:01", utcOffset: "+02:00"});
+    });
+
     it("explains timestamps it cannot read", () => {
         const {issues} = checkLogColumns(log("1,A,25/03/2025 09:00,25/03/2025 10:00,Ann"), MAPPING);
         expect(issues).toEqual([
@@ -27,8 +34,9 @@ describe("checkLogColumns", () => {
             "2,B,2025-03-25 09:00:00,,Ann",
         ), MAPPING).issues).toEqual([
             '1 row of the log has an empty column "Activity" (Activity), the first in row 2. Every event needs one.',
-            '1 row of the log has an empty column "End" (End timestamp), the first in row 3. Every event needs one.',
         ]);
+        expect(checkLogColumns(log("1,A,2025-03-25 09:00:00,,Ann"), MAPPING).issues)
+            .toEqual(['1 row of the log has an empty column "End" (End timestamp), the first in row 2. Every event needs one.']);
         expect(checkLogColumns(log("1,A,2025-03-25 10:00:00,2025-03-25 09:00:00,Ann"), MAPPING).issues)
             .toEqual(["1 event ends before it starts, the first in row 2. Check that the start and end columns are mapped the right way round."]);
     });
